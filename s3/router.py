@@ -1,260 +1,117 @@
-import hashlib
-import hmac
-import mimetypes
 from typing import Optional
 
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 from fastapi_xml import XmlAppResponse
 
-from schemas import ListBucketResultContents, ListBucketResult, PutObjectResult, DeleteResultDeleted, DeleteResult
-from utils.config import BASE_DIR, SECRET_KEY
+from schemas import (
+    DeleteResultDeleted,
+    DeleteResult,
+    ListBucketResult,
+    PutObjectResult,
+)
+from utils.dependency import S3ServiceDep, UOWDep
+from utils.exceptions import exception_handler, AuthenticationError
+from utils.s3_auth import BucketDep
 
 router = APIRouter()
 
 
-def hmac_sha256(key, message):
-    """Генерация HMAC-SHA256."""
-    return hmac.new(key, message.encode("utf-8"), hashlib.sha256).digest()
-
-
-def hash_sha256(data):
-    """SHA-256 хэширование строки."""
-    return hashlib.sha256(data.encode("utf-8")).hexdigest()
-
-
-def parse_authorization_header(header):
-    """Парсинг заголовка Authorization."""
-    if not header.startswith("AWS4-HMAC-SHA256"):
-        raise ValueError("Invalid Authorization header format")
-
-    parts = header[len("AWS4-HMAC-SHA256"):].strip().split(", ")
-    parsed = {}
-    for part in parts:
-        key, value = part.split("=")
-        parsed[key] = value
-
-    return parsed
-
-
-def generate_signing_key(secret_key, date, region, service):
-    """Генерация подписывающего ключа (SigningKey)."""
-    date_key = hmac_sha256(f"AWS4{secret_key}".encode("utf-8"), date)
-    region_key = hmac_sha256(date_key, region)
-    service_key = hmac_sha256(region_key, service)
-    signing_key = hmac_sha256(service_key, "aws4_request")
-    return signing_key
-
-
-def create_canonical_request(request, signed_headers):
-    """Формирование CanonicalRequest."""
-    canonical_headers = "".join(
-        f"{header}:{request.headers[header].strip()}\n" for header in signed_headers
-    )
-    payload_hash = request.headers.get("x-amz-content-sha256", hash_sha256(""))
-
-    canonical_request = f"""{request.method}
-{request.url.path}
-{request.url.query}
-{canonical_headers}
-{";".join(signed_headers)}
-{payload_hash}"""
-    return canonical_request
-
-
-def create_string_to_sign(canonical_request, timestamp, credential_scope):
-    """Формирование StringToSign."""
-    canonical_request_hash = hash_sha256(canonical_request)
-    string_to_sign = f"""AWS4-HMAC-SHA256
-{timestamp}
-{credential_scope}
-{canonical_request_hash}"""
-    return string_to_sign
-
-
-def verify_signature(request, secret_key):
-    """Проверка подписи запроса с отладочной информацией."""
-    # 1. Парсим заголовок Authorization
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("AWS4-HMAC-SHA256"):
-        raise ValueError("Invalid or missing Authorization header")
-
-    auth_parts = parse_authorization_header(auth_header)
-    print(auth_header)
-    credential_parts = auth_parts["Credential"].split("/")
-    access_key = credential_parts[0]
-    date = credential_parts[1]
-    region = credential_parts[2]
-    service = credential_parts[3]
-    signed_headers = auth_parts["SignedHeaders"].split(";")
-    client_signature = auth_parts["Signature"]
-
-    # 2. Проверяем заголовки
-    for header in signed_headers:
-        if header not in request.headers:
-            raise ValueError(f"Missing signed header: {header}")
-
-    # 3. Генерируем SigningKey
-    signing_key = generate_signing_key(secret_key, date, region, service)
-
-    # 4. Формируем CanonicalRequest
-    canonical_request = create_canonical_request(request, signed_headers)
-
-    # 5. Формируем StringToSign
-    credential_scope = f"{access_key}/{date}/{region}/{service}/aws4_request"
-    timestamp = request.headers["x-amz-date"]
-    string_to_sign = create_string_to_sign(canonical_request, timestamp, credential_scope)
-
-    # 6. Вычисляем подпись
-    server_signature = hmac_sha256(signing_key, string_to_sign).hex()
-
-    # 7. Логируем отладочную информацию
-    print("=== DEBUG ===")
-    print(f"CanonicalRequest:\n{canonical_request}")
-    print(f"StringToSign:\n{string_to_sign}")
-    print(f"ServerSignature: {server_signature}")
-    print(f"ClientSignature: {client_signature}")
-    print("=================")
-
-    # 8. Сравниваем подписи
-    if server_signature != client_signature:
-        raise ValueError("Signature does not match")
-
-
-@router.get("/{bucket_name}")
+@router.get(
+    "/{bucket_key}",
+    response_model=ListBucketResult,
+    response_class=XmlAppResponse,
+    summary="List objects",
+    description="Get list of objects in the bucket (S3-compatible)",
+)
+@exception_handler
 async def list_objects(
-        request: Request,
-        bucket_name: str,
-        continuation_token: Optional[str] = None,
-        delimiter: Optional[str] = None,
-        encoding_type: str = "url",
-        max_keys: int = 1000,
-        prefix: str = "",
-        start_after: Optional[str] = None,
-        list_type: int = 2,
+    uow: UOWDep,
+    s3_service: S3ServiceDep,
+    bucket: BucketDep,
+    request: Request,
+    continuation_token: Optional[str] = None,
+    delimiter: Optional[str] = None,
+    encoding_type: str = "url",
+    max_keys: int = 1000,
+    prefix: str = "",
+    start_after: Optional[str] = None,
+    list_type: int = 2,
 ):
     """ListObjectsV2 S3 совместимый запрос."""
 
+    if list_type != 2:
+        raise NotImplementedError("Only ListObjectsV2 is supported.")
+
     try:
-        verify_signature(request, secret_key=SECRET_KEY)
+        pass
+        # verify_signature(request, secret_key=SECRET_KEY)
     except ValueError as e:
         print(e)
-        raise HTTPException(status_code=401, detail=str(e))
+        raise AuthenticationError from e
 
-    bucket_path = BASE_DIR / bucket_name
+    files = await s3_service.get_files_by_bucket(uow, bucket)
+    return XmlAppResponse(files)
 
-    if not bucket_path.exists():
-        raise HTTPException(status_code=404, detail="Bucket does not exist.")
 
-    all_objects = []
-    for item in bucket_path.glob("**/*"):
-        if item.is_file():
-            relative_path = str(item.relative_to(bucket_path))
-            if relative_path.startswith(prefix):
-                all_objects.append(relative_path)
+@router.get(
+    "/{bucket_key}/{name:path}",
+    response_class=StreamingResponse,
+    summary="Get object",
+    description="Get file contents from the bucket (S3-compatible)",
+)
+@exception_handler
+async def get_object(
+    uow: UOWDep, s3_service: S3ServiceDep, bucket: BucketDep, name: str
+):
+    """GET Object S3 совместимый запрос."""
 
-    start_index = 0
-    if continuation_token:
-        try:
-            start_index = all_objects.index(continuation_token) + 1
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Continuation Token is invalid.")
+    # etag = hashlib.md5(file_path.read_bytes()).hexdigest()
 
-    objects = all_objects[start_index: start_index + max_keys]
-    is_truncated = len(all_objects) > start_index + max_keys
-
-    return XmlAppResponse(
-        ListBucketResult(
-            Name=bucket_name,
-            Prefix=prefix,
-            KeyCount=len(objects),
-            MaxKeys=max_keys,
-            IsTruncated=is_truncated,
-            Delimiter=delimiter,
-            EncodingType=encoding_type,
-            ContinuationToken=continuation_token,
-            NextContinuationToken=objects[-1],
-            StartAfter=start_after,
-            Contents=[
-                ListBucketResultContents(
-                    Key=obj,
-                    Size=(bucket_path / obj).stat().st_size,
-                    ETag=hashlib.md5((bucket_path / obj).read_bytes()).hexdigest(),
-                    LastModified="1970-01-01T00:00:00Z",
-                    StorageClass="STANDARD",
-                ) for obj in objects
-            ],
-            CommonPrefixes=None,
-        )
+    file_stream = await s3_service.get_file_by_name(uow, bucket, name)
+    return StreamingResponse(
+        file_stream,
+        headers={
+            "Content-Type": "application/octet-stream",
+            "ETag": "",
+        },
     )
 
 
-@router.get("/{bucket_name}/{object_name:path}")
-async def get_object(bucket_name: str, object_name: str):
-    """GET Object S3 совместимый запрос."""
-    bucket_path = BASE_DIR / bucket_name
-    file_path = bucket_path / object_name
-
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="The specified key does not exist")
-
-    etag = hashlib.md5(file_path.read_bytes()).hexdigest()
-
-    content_type, _ = mimetypes.guess_type(file_path)
-
-    headers = {
-        "Content-Type": content_type or "application/octet-stream",
-        "ETag": etag,
-        "Content-Length": str(file_path.stat().st_size),
-    }
-    return FileResponse(file_path, headers=headers)
-
-
-@router.put("/{bucket_name}/{object_name:path}")
+@router.put(
+    "/{bucket_key}/{name:path}",
+    response_model=PutObjectResult,
+    response_class=XmlAppResponse,
+    summary="Put object",
+    description="Put file contents to the bucket (S3-compatible)",
+)
+@exception_handler
 async def put_object(
-        bucket_name: str,
-        object_name: str,
-        request: Request
+    uow: UOWDep,
+    s3_service: S3ServiceDep,
+    bucket: BucketDep,
+    name: str,
+    request: Request,
 ):
     """PUT Object S3 совместимый запрос."""
 
-    body = await request.body()
-
-    bucket_path = BASE_DIR / bucket_name
-    bucket_path.mkdir(parents=True, exist_ok=True)
-    file_path = bucket_path / object_name
-
-    try:
-        with open(file_path, "wb") as f:
-            f.write(body)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saving object: {e}")
-
-    etag = hashlib.md5(body).hexdigest()
-
-    return XmlAppResponse(
-        PutObjectResult(ETag=etag)
-    )
+    uploaded_file = await s3_service.upload_file(uow, bucket, name, request.stream())
+    return XmlAppResponse(uploaded_file)
 
 
-@router.delete("/{bucket_name}/{object_name:path}")
+@router.delete(
+    "/{bucket_key}/{name:path}",
+    response_model=DeleteResult,
+    response_class=XmlAppResponse,
+    summary="Delete object",
+    description="Delete file from the bucket (S3-compatible)",
+)
+@exception_handler
 async def delete_object(
-        bucket_name: str,
-        object_name: str,
+    bucket: BucketDep,
+    name: str,
 ):
     """DELETE Object S3 совместимый запрос."""
 
-    bucket_path = BASE_DIR / bucket_name
-    file_path = bucket_path / object_name
-
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Object does not exist")
-
-    try:
-        file_path.unlink()
-    except Exception as e:
-        raise e
-
-    return XmlAppResponse(
-        DeleteResult(Deleted=DeleteResultDeleted(Key=object_name))
-    )
+    deleted = DeleteResult(Deleted=DeleteResultDeleted(Key=name))
+    return XmlAppResponse(deleted)
