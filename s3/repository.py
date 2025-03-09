@@ -15,12 +15,8 @@ class FileRepository(TimestampRepository):
 class FilePartRepository(TimestampRepository):
     model = FilePartModel
 
-    async def get_sorted_by_number(
-        self, session: AsyncSession, **filter_by
-    ) -> list[FilePartRead]:
-        stmt = (
-            select(self.model).filter_by(**filter_by).order_by(self.model.number.desc())
-        )
+    async def get_sorted_by_number(self, session: AsyncSession, **filter_by) -> list[FilePartRead]:
+        stmt = select(self.model).filter_by(**filter_by).order_by(self.model.number.desc())
 
         res = await session.execute(stmt)
         return [row[0].to_read_model() for row in res.all()]

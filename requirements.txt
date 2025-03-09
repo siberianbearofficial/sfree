@@ -10,11 +10,5 @@ pydantic
 pydantic-settings
 SQLAlchemy
 prometheus-fastapi-instrumentator
-pytest
-pytest-asyncio
-pytest-cov
-mypy
-ruff
-black
 asyncpg
 bcrypt

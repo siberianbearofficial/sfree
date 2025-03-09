@@ -15,9 +15,7 @@ class PutObjectResult:
 
 @dataclass
 class DeleteResultDeleted:
-    Key: str = field(
-        metadata={"examples": ["example.txt"], "name": "Key", "type": "Element"}
-    )
+    Key: str = field(metadata={"examples": ["example.txt"], "name": "Key", "type": "Element"})
 
 
 @dataclass
@@ -34,9 +32,7 @@ class ListBucketResultContents:
             "type": "Element",
         }
     )
-    Key: str = field(
-        metadata={"examples": ["example.txt"], "name": "Key", "type": "Element"}
-    )
+    Key: str = field(metadata={"examples": ["example.txt"], "name": "Key", "type": "Element"})
     LastModified: str = field(
         metadata={
             "examples": ["1970-01-01T00:00:00Z"],
@@ -52,9 +48,7 @@ class ListBucketResultContents:
 
 @dataclass
 class ListBucketResultCommonPrefixes:
-    Prefix: str = field(
-        metadata={"examples": ["example"], "name": "Prefix", "type": "Element"}
-    )
+    Prefix: str = field(metadata={"examples": ["example"], "name": "Prefix", "type": "Element"})
 
 
 @dataclass
@@ -63,25 +57,15 @@ class ListBucketResult:
         metadata={"examples": [True], "name": "IsTruncated", "type": "Element"}
     )
     Contents: list[ListBucketResultContents]
-    Name: str = field(
-        metadata={"examples": ["test-bucket"], "name": "Name", "type": "Element"}
-    )
-    Prefix: str = field(
-        metadata={"examples": ["test-bucket"], "name": "Prefix", "type": "Element"}
-    )
-    Delimiter: str = field(
-        metadata={"examples": ["/"], "name": "Delimiter", "type": "Element"}
-    )
-    MaxKeys: int = field(
-        metadata={"examples": [1000], "name": "MaxKeys", "type": "Element"}
-    )
+    Name: str = field(metadata={"examples": ["test-bucket"], "name": "Name", "type": "Element"})
+    Prefix: str = field(metadata={"examples": ["test-bucket"], "name": "Prefix", "type": "Element"})
+    Delimiter: str = field(metadata={"examples": ["/"], "name": "Delimiter", "type": "Element"})
+    MaxKeys: int = field(metadata={"examples": [1000], "name": "MaxKeys", "type": "Element"})
     CommonPrefixes: Optional[ListBucketResultCommonPrefixes]
     EncodingType: str = field(
         metadata={"examples": ["UTF-8"], "name": "EncodingType", "type": "Element"}
     )
-    KeyCount: int = field(
-        metadata={"examples": [1], "name": "KeyCount", "type": "Element"}
-    )
+    KeyCount: int = field(metadata={"examples": [1], "name": "KeyCount", "type": "Element"})
     ContinuationToken: str = field(
         metadata={"examples": ["0"], "name": "ContinuationToken", "type": "Element"}
     )

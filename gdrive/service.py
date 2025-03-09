@@ -12,9 +12,7 @@ from utils.unitofwork import IUnitOfWork
 
 
 class GDriveService:
-    def __init__(
-        self, gdrive_repository: GDriveRepository, source_repository: SourceRepository
-    ):
+    def __init__(self, gdrive_repository: GDriveRepository, source_repository: SourceRepository):
         self._gdrive_repository = gdrive_repository
         self._source_repository = source_repository
 

@@ -20,8 +20,6 @@ from utils.google_drive_exceptions import (
     GoogleDriveFileUpdateError,
 )
 
-from utils.config import GOOGLE_DRIVE_SA
-
 
 class GoogleDriveClient:
     _DIRECTORY_MIMETYPE = "application/vnd.google-apps.folder"
@@ -203,9 +201,7 @@ class GoogleDriveClient:
 
         return file.read()
 
-    def upload_file(
-        self, name: str, directory_id: str, mimetype: str, data: bytes
-    ) -> str:
+    def upload_file(self, name: str, directory_id: str, mimetype: str, data: bytes) -> str:
         if not self.service:
             raise GoogleDriveNoServiceError
 
@@ -245,9 +241,7 @@ class GoogleDriveClient:
                     fields="id",
                 )
             else:
-                req = self.service.files().update(
-                    fileId=file_id, body=body, fields="id"
-                )
+                req = self.service.files().update(fileId=file_id, body=body, fields="id")
             file = req.execute()
         except Exception as e:
             logger.error(e)
@@ -290,9 +284,7 @@ class GoogleDriveClient:
 
         return file_id
 
-    async def get_directories_async(
-        self, parent: str = "root", page_size: int = 100
-    ) -> list:
+    async def get_directories_async(self, parent: str = "root", page_size: int = 100) -> list:
         return await asyncio.to_thread(self.get_directories, parent, page_size)
 
     async def add_directory_async(self, name: str, parent: str = "root") -> str:
@@ -301,9 +293,7 @@ class GoogleDriveClient:
     async def delete_directory_async(self, directory_id: str) -> str:
         return await asyncio.to_thread(self.delete_directory, directory_id)
 
-    async def get_files_async(
-        self, directory_id: str = "root", page_size: int = 100
-    ) -> list:
+    async def get_files_async(self, directory_id: str = "root", page_size: int = 100) -> list:
         return await asyncio.to_thread(self.get_files, directory_id, page_size)
 
     async def get_file_async(self, file_id: str) -> dict:
@@ -315,18 +305,14 @@ class GoogleDriveClient:
     async def upload_file_async(
         self, name: str, directory_id: str, mimetype: str, data: bytes
     ) -> str:
-        return await asyncio.to_thread(
-            self.upload_file, name, directory_id, mimetype, data
-        )
+        return await asyncio.to_thread(self.upload_file, name, directory_id, mimetype, data)
 
     async def update_file_async(
         self, file_id: str, name: str | None = None, directory_id: str | None = None
     ) -> str:
         return await asyncio.to_thread(self.update_file, file_id, name, directory_id)
 
-    async def update_file_data_async(
-        self, file_id: str, mimetype: str, data: bytes
-    ) -> str:
+    async def update_file_data_async(self, file_id: str, mimetype: str, data: bytes) -> str:
         return await asyncio.to_thread(self.update_file_data, file_id, mimetype, data)
 
     async def delete_file_async(self, file_id: str) -> str:

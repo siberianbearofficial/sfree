@@ -18,9 +18,7 @@ class BucketService:
 
     async def get_bucket(self, uow: IUnitOfWork, key: str) -> BucketRead:
         async with uow:
-            bucket: Optional[BucketRead] = await self._bucket_repository.get(
-                uow.session, key=key
-            )
+            bucket: Optional[BucketRead] = await self._bucket_repository.get(uow.session, key=key)
             if not bucket:
                 raise NotFoundError("Bucket not found.")
 
