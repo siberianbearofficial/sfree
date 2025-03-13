@@ -12,3 +12,4 @@ SQLAlchemy
 prometheus-fastapi-instrumentator
 asyncpg
 bcrypt
+oauth2client
