@@ -20,6 +20,4 @@ async def add_gdrive(
     uow: UOWDep, gdrive_service: GDriveServiceDep, user: UserDep, gdrive: GDriveCreate
 ):
     created_gdrive = await gdrive_service.add_gdrive(uow, gdrive, user)
-    return PostGDriveApiResponse(
-        data=created_gdrive, detail="Google Drive source was added."
-    )
+    return PostGDriveApiResponse(data=created_gdrive, detail="Google Drive source was added.")

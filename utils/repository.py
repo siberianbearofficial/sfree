@@ -48,21 +48,12 @@ class SQLAlchemyRepository(IRepository):
         return data.id
 
     async def edit(self, session: AsyncSession, id: UUID, data: dict) -> UUID:
-        stmt = (
-            update(self.model).values(**data).filter_by(id=id).returning(self.model.id)
-        )
+        stmt = update(self.model).values(**data).filter_by(id=id).returning(self.model.id)
         res = await session.execute(stmt)
         return res.scalar_one()
 
-    async def edit_all(
-        self, session: AsyncSession, data: dict, **filter_by
-    ) -> list[UUID]:
-        stmt = (
-            update(self.model)
-            .values(**data)
-            .filter_by(**filter_by)
-            .returning(self.model.id)
-        )
+    async def edit_all(self, session: AsyncSession, data: dict, **filter_by) -> list[UUID]:
+        stmt = update(self.model).values(**data).filter_by(**filter_by).returning(self.model.id)
         res = await session.execute(stmt)
         return [row[0] for row in res.all()]
 
@@ -90,23 +81,14 @@ class SQLAlchemyRepository(IRepository):
 
 class TimestampRepository(SQLAlchemyRepository):
     async def get_all(self, session: AsyncSession, **filter_by) -> list[BaseModel]:
-        stmt = (
-            select(self.model)
-            .filter_by(**filter_by)
-            .order_by(self.model.created_at.desc())
-        )
+        stmt = select(self.model).filter_by(**filter_by).order_by(self.model.created_at.desc())
 
         res = await session.execute(stmt)
         return [row[0].to_read_model() for row in res.all()]
 
-    async def get_latest(
-        self, session: AsyncSession, **filter_by
-    ) -> Optional[BaseModel]:
+    async def get_latest(self, session: AsyncSession, **filter_by) -> Optional[BaseModel]:
         stmt = (
-            select(self.model)
-            .filter_by(**filter_by)
-            .order_by(self.model.created_at.asc())
-            .limit(1)
+            select(self.model).filter_by(**filter_by).order_by(self.model.created_at.asc()).limit(1)
         )
         res = await session.execute(stmt)
         res = [row[0].to_read_model() for row in res.all()]

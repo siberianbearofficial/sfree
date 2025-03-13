@@ -120,9 +120,7 @@ def verify_signature(request, secret_key):
     # 5. Формируем StringToSign
     credential_scope = f"{access_key}/{date}/{region}/{service}/aws4_request"
     timestamp = request.headers["x-amz-date"]
-    string_to_sign = create_string_to_sign(
-        canonical_request, timestamp, credential_scope
-    )
+    string_to_sign = create_string_to_sign(canonical_request, timestamp, credential_scope)
 
     # 6. Вычисляем подпись
     server_signature = hmac_sha256(signing_key, string_to_sign).hex()

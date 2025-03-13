@@ -172,9 +172,7 @@ class S3Service:
         )
 
         async with uow:
-            await self._gdrive_file_metadata_repository.add(
-                uow.session, gdrive_file_metadata_model
-            )
+            await self._gdrive_file_metadata_repository.add(uow.session, gdrive_file_metadata_model)
             await uow.commit()
 
     async def get_files_by_bucket(
@@ -183,9 +181,7 @@ class S3Service:
         bucket: BucketRead,
     ) -> ListBucketResult:
         async with uow:
-            files = await self._file_repository.get_all(
-                uow.session, bucket_key=bucket.key
-            )
+            files = await self._file_repository.get_all(uow.session, bucket_key=bucket.key)
             return ListBucketResult(
                 Name=bucket.key,
                 Prefix="",
@@ -228,20 +224,14 @@ class S3Service:
 
             return self.__download_file_parts(file_parts)
 
-    async def __download_file_parts(
-        self, file_parts: tuple[dict]
-    ) -> AsyncGenerator[bytes, None]:
+    async def __download_file_parts(self, file_parts: tuple[dict]) -> AsyncGenerator[bytes, None]:
         for part in file_parts:
             async with GoogleDriveClient(part.get("key", "")) as client:
                 yield await client.download_file_async(part.get("gdrive_file_id", ""))
 
-    async def __get_file_parts(
-        self, session: AsyncSession, file: FileRead
-    ) -> tuple[dict]:
-        file_parts: list[FilePartRead] = (
-            await self._file_part_repository.get_sorted_by_number(
-                session, file_id=file.id
-            )
+    async def __get_file_parts(self, session: AsyncSession, file: FileRead) -> tuple[dict]:
+        file_parts: list[FilePartRead] = await self._file_part_repository.get_sorted_by_number(
+            session, file_id=file.id
         )
 
         return await asyncio.gather(
@@ -270,15 +260,11 @@ class S3Service:
             raise NotFoundError("Gdrive source not found.")
 
         metadata: Optional[GDriveFileMetadataRead] = (
-            await self._gdrive_file_metadata_repository.get(
-                session, file_part_id=file_part.id
-            )
+            await self._gdrive_file_metadata_repository.get(session, file_part_id=file_part.id)
         )
 
         if not metadata:
-            raise NotFoundError(
-                f"File metadata not found for file part {file_part.id}."
-            )
+            raise NotFoundError(f"File metadata not found for file part {file_part.id}.")
 
         return {
             "key": gdrive.key,

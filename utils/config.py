@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
@@ -34,3 +35,8 @@ class DBSettings(BaseSettings):
         return f"postgresql+asyncpg://{self.access_str}"
 
     model_config = SettingsConfigDict(env_prefix="db_")
+
+
+@lru_cache
+def get_db_settings() -> DBSettings:
+    return DBSettings()  # type: ignore

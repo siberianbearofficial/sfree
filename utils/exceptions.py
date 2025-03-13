@@ -15,6 +15,13 @@ class ExistsError(Exception):
 
 
 def exception_handler(handler):
+    """
+    Перехватывает базовые Exception и превращает их в красивые HTTPException.
+    Надо подумать над тем, как делать это средствами FastAPI, а не таким колхозом.
+    :param handler: Ручка, которую оборачиваем.
+    :return:
+    """
+
     async def wrapper(*args, **kwargs):
         try:
             res = await handler(*args, **kwargs)
@@ -38,15 +45,17 @@ def exception_handler(handler):
 
     # Fix signature of wrapper
     import inspect
-    wrapper.__signature__ = inspect.Signature(
+
+    wrapper.__signature__ = inspect.Signature(  # type: ignore
         parameters=[
             # Use all parameters from handler
             *inspect.signature(handler).parameters.values(),
             # Skip *args and **kwargs from wrapper parameters:
             *filter(
-                lambda p: p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
-                inspect.signature(wrapper).parameters.values()
-            )
+                lambda p: p.kind
+                not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
+                inspect.signature(wrapper).parameters.values(),
+            ),
         ],
         return_annotation=inspect.signature(handler).return_annotation,
     )

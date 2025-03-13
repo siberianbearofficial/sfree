@@ -61,9 +61,7 @@ async def list_objects(
     description="Get file contents from the bucket (S3-compatible)",
 )
 @exception_handler
-async def get_object(
-    uow: UOWDep, s3_service: S3ServiceDep, bucket: BucketDep, name: str
-):
+async def get_object(uow: UOWDep, s3_service: S3ServiceDep, bucket: BucketDep, name: str):
     """GET Object S3 совместимый запрос."""
 
     # etag = hashlib.md5(file_path.read_bytes()).hexdigest()

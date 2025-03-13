@@ -3,9 +3,7 @@ from typing import AsyncGenerator
 from utils.config import CHUNK_SIZE
 
 
-async def read_stream(
-    stream: AsyncGenerator[bytes, None]
-) -> AsyncGenerator[bytes, None]:
+async def read_stream(stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
     chunk = bytearray()
 
     async for chunk_part in stream:
