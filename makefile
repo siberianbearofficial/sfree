@@ -31,7 +31,7 @@ mypy:
 	@mypy $(SRC)
 
 .phony: test
-pytest:
+test: tests
 	@pytest tests/
 
 .phony: test-docker
