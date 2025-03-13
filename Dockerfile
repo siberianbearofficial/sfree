@@ -9,7 +9,7 @@ COPY *.whl .
 COPY install_requirements.sh .
 COPY makefile .
 
-RUN apt install make
+RUN apt update && apt install make
 
 RUN echo "/app/dependencies" | make install-deps-stdin
 
