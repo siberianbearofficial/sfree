@@ -5,7 +5,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 
-from utils.config import DBSettings
+from utils.config import get_db_settings
 
 Base = declarative_base()
 
@@ -15,7 +15,7 @@ metadata = MetaData()
 @lru_cache()
 def get_engine():
     return create_async_engine(
-        DBSettings().db_url, connect_args={"target_session_attrs": "read-write"}
+        get_db_settings().db_url, connect_args={"target_session_attrs": "read-write"}
     )
 
 
