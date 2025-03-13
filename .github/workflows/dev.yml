@@ -51,7 +51,7 @@ jobs:
       - name: Test with pytest
         run: |
           docker compose up -d
-          docker run --rm --network s3aas_s3aas_net linters-image make pytest-docker
+          docker run --rm --network s3aas_s3aas_net linters-image make test-docker
 
       - name: Build and push runtime Docker image
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
