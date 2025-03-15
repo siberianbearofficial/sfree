@@ -4,19 +4,28 @@ import hmac
 from typing import Annotated
 from fastapi import Depends, Path, Request
 from loguru import logger
+from pydantic import BaseModel
 
 from buckets.schema import BucketRead
 from utils.dependency import UOWDep, BucketServiceDep
 from utils.exceptions import exception_handler, AuthenticationError
 
 
+class S3AuthenticatedRequest(BaseModel):
+    content: bytes
+    bucket: BucketRead
+
+
+BucketKeyDep = Annotated[str, Path()]
+
+
 @exception_handler
-async def get_bucket(
+async def get_s3_authenticated_request(
     uow: UOWDep,
     bucket_service: BucketServiceDep,
-    bucket_key: Annotated[str, Path()],
+    bucket_key: BucketKeyDep,
     request: Request,
-) -> BucketRead:
+) -> S3AuthenticatedRequest:
     # превращаем любую ошибку в AuthenticationError для безопасности
     try:
         payload = await request.body()
@@ -44,7 +53,10 @@ async def get_bucket(
         logger.error(e)
         raise AuthenticationError
 
-    return BucketRead.model_validate(bucket)  # убираем креды
+    return S3AuthenticatedRequest(
+        bucket=BucketRead.model_validate(bucket),  # убираем креды
+        content=payload,
+    )
 
 
-BucketDep = Annotated[BucketRead, Depends(get_bucket)]
+S3AuthenticatedRequestDep = Annotated[S3AuthenticatedRequest, Depends(get_s3_authenticated_request)]
