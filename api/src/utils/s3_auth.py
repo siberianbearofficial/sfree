@@ -28,6 +28,8 @@ async def get_bucket(
             content=payload,
             supported_schemas=[aws4.AWSAuthSchema],
         )
+        if not challenge.access_key_id:
+            raise RuntimeError("Empty access key")
 
         bucket = await bucket_service.get_bucket_by_access_key(
             uow, access_key=challenge.access_key_id
