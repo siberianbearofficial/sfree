@@ -31,7 +31,7 @@ from sources.repository import SourceRepository, get_source_repository
 from sources.schema import SourceRead, SourceType
 from utils.exceptions import ExistsError, NotFoundError
 from utils.google_drive_client import GoogleDriveClient
-from utils.read_stream import read_stream
+from utils.split_into_chunks import split_into_chunks
 from utils.unitofwork import IUnitOfWork
 
 
@@ -59,7 +59,6 @@ class S3Service:
         filename: str,
         content: bytes,
     ) -> PutObjectResult:
-        return PutObjectResult(ETag="test")
         async with uow:
             file_with_this_name = await self._file_repository.get(
                 uow.session, name=filename, bucket_key=bucket.key
@@ -111,7 +110,7 @@ class S3Service:
 
         hash = hashlib.md5()
         number = 1
-        async for chunk in read_stream(stream):
+        for chunk in split_into_chunks(content):
             # todo разные чанки можно будет писать в разные места, поэтому клиент создается много раз
             async with GoogleDriveClient(key=gdrive.key) as client:
                 await self.__upload_part_to_gdrive(
