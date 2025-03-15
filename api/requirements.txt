@@ -1,0 +1,15 @@
+fastapi
+fastapi-xml
+uvicorn
+aiofiles
+alembic
+python-multipart
+loguru
+google-api-python-client==2.154.0
+pydantic
+pydantic-settings
+SQLAlchemy
+prometheus-fastapi-instrumentator
+asyncpg
+bcrypt
+oauth2client
