@@ -1,14 +1,15 @@
 from datetime import datetime
+from functools import lru_cache
 from typing import Optional
 
 from buckets.exception import BucketExistsError
 from buckets.model import BucketModel
 from buckets.repository import BucketRepository, get_bucket_repository
-from buckets.schema import BucketCreate, BucketCreateResponse, BucketRead
+from buckets.schema import BucketCreate, BucketCreateResponse, BucketRead, BucketReadWithCredentials
 from users.schema import UserRead
 
 from utils.exceptions import NotFoundError
-from utils.password import generate_access_key, generate_access_secret
+from utils.password import generate_access_secret
 from utils.unitofwork import IUnitOfWork
 
 
@@ -24,6 +25,18 @@ class BucketService:
 
             return bucket
 
+    async def get_bucket_by_access_key(
+        self, uow: IUnitOfWork, access_key: str
+    ) -> BucketReadWithCredentials:
+        async with uow:
+            bucket: Optional[BucketModel] = await self._bucket_repository.get_model(
+                uow.session, access_key=access_key
+            )
+            if not bucket:
+                raise NotFoundError("Bucket not found.")
+
+            return BucketReadWithCredentials.from_orm(bucket)
+
     async def add_bucket(
         self,
         uow: IUnitOfWork,
@@ -31,7 +44,7 @@ class BucketService:
         user: UserRead,
     ) -> BucketCreateResponse:
         created_at = datetime.now()
-        access_key = f"{bucket.key}.{generate_access_key()}"
+        access_key = f"{bucket.key}.{user.id}"
         access_secret = generate_access_secret()
 
         bucket_model = BucketModel(
@@ -57,5 +70,6 @@ class BucketService:
         )
 
 
+@lru_cache
 def get_bucket_service() -> BucketService:
     return BucketService(bucket_repository=get_bucket_repository())

@@ -65,6 +65,11 @@ class SQLAlchemyRepository(IRepository):
             return res[0]
         return None
 
+    async def get_model(self, session: AsyncSession, **filter_by) -> Optional[Model]:
+        stmt = select(self.model).filter_by(**filter_by).limit(1)
+        res = await session.execute(stmt)
+        return res.scalar_one_or_none()
+
     async def get_all(self, session: AsyncSession, **filter_by) -> list[BaseModel]:
         stmt = select(self.model).filter_by(**filter_by)
         res = await session.execute(stmt)

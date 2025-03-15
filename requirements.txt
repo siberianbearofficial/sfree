@@ -13,3 +13,6 @@ prometheus-fastapi-instrumentator
 asyncpg
 bcrypt
 oauth2client
+aiobotocore>=2.5.0
+pytest-asyncio>=0.21.0
+pytest>=7.4.0

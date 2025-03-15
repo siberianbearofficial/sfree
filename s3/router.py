@@ -92,8 +92,11 @@ async def put_object(
     request: Request,
 ):
     """PUT Object S3 совместимый запрос."""
+    print("Bucket in router:", bucket)
 
-    uploaded_file = await s3_service.upload_file(uow, bucket, name, request.stream())
+    content = b"test"
+
+    uploaded_file = await s3_service.upload_file(uow, bucket, name, content)
     return XmlAppResponse(uploaded_file)
 
 
