@@ -2,10 +2,8 @@ import asyncio
 from aiobotocore.session import get_session
 
 
-AWS_ACCESS_KEY_ID = "test-bucket./}t08$?O.kcRndL.l{`<"
-AWS_SECRET_ACCESS_KEY = (
-    "w+]a;PT-hCvPG%^aXf_P#;89`Chvk_W$a&'}n~7Ht)Y^c)p%''^L\\pon`c4{-uOxi+B?38?`n?`\"B3d8"
-)
+AWS_ACCESS_KEY_ID = "test-bucket.7d1cced0-388a-44f9-af1a-39489e716e51"
+AWS_SECRET_ACCESS_KEY = "my-access-secret"
 
 
 async def main():
@@ -37,9 +35,9 @@ async def main():
         # keys = [item.get("Key") for item in response.get("Contents")]
         # print(keys)
 
-        response = await client.get_object(Bucket=bucket_name, Key="rider_2")
-        content = await response["Body"].read()
-        print("Downloaded Content:", content.decode())
+        # response = await client.get_object(Bucket=bucket_name, Key="rider_2")
+        # content = await response["Body"].read()
+        # print("Downloaded Content:", content.decode())
 
         # response = await client.delete_object(Bucket=bucket_name, Key=file_name)
         # print("Delete Response:", response)

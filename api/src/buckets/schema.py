@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class BucketRead(BaseModel):
@@ -12,15 +12,24 @@ class BucketRead(BaseModel):
     updated_at: Optional[datetime]
     deleted_at: Optional[datetime]
 
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BucketCredentials(BaseModel):
+    access_key: str
+    access_secret: str
+
+
+class BucketReadWithCredentials(BucketRead, BucketCredentials):
+    pass
+
 
 class BucketCreate(BaseModel):
     key: str  # todo validate key
 
 
-class BucketCreateResponse(BaseModel):
+class BucketCreateResponse(BucketCredentials):
     created_at: datetime
-    access_key: str
-    access_secret: str
 
 
 class BucketUpdate(BaseModel):
