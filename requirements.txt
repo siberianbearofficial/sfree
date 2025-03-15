@@ -13,3 +13,4 @@ prometheus-fastapi-instrumentator
 asyncpg
 bcrypt
 oauth2client
+auth-aws4==0.1.4
