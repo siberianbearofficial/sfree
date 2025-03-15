@@ -12,7 +12,7 @@ class BucketModel(Base):
 
     key = Column(String, primary_key=True)
     user_id = Column(Uuid, ForeignKey(UserModel.id), nullable=False, index=True)
-    access_key = Column(String, nullable=False, unique=True)
+    access_key = Column(String, nullable=False, unique=True, index=True)
     access_secret = Column(String, nullable=False)
     created_at = Column(
         TIMESTAMP,
