@@ -50,7 +50,7 @@ jobs:
 
       - name: Test with pytest
         run: |
-          docker compose up -d
+          docker compose -f ./api/docker-compose.yml up -d
           docker run --rm --network s3aas_s3aas_net linters-image make test-docker
 
       - name: Build and push runtime Docker image
