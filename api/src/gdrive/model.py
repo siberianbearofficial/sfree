@@ -1,10 +1,10 @@
 from sqlalchemy import Uuid, Column, ForeignKey, String
 
-from gdrive.schema import GDriveRead, GDriveFileMetadataRead
-from s3.model import FilePartModel
-from sources.model import SourceModel
+from src.gdrive.schema import GDriveRead, GDriveFileMetadataRead
+from src.s3.model import FilePartModel
+from src.sources.model import SourceModel
 
-from utils.model import Model
+from src.utils.model import Model
 
 
 class GDriveModel(Model):

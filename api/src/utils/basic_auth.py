@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from users.schema import UserRead
-from utils.dependency import UOWDep, UserServiceDep
-from utils.exceptions import AuthenticationError, exception_handler
+from src.users.schema import UserRead
+from src.utils.dependency import UOWDep, UserServiceDep
+from src.utils.exceptions import AuthenticationError, exception_handler
 
 security = HTTPBasic(auto_error=True, description="User Authentication")
 

@@ -3,9 +3,9 @@ from functools import lru_cache
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from s3.model import FilePartModel, FileModel
-from s3.schema import FilePartRead
-from utils.repository import TimestampRepository
+from src.s3.model import FilePartModel, FileModel
+from src.s3.schema import FilePartRead
+from src.utils.repository import TimestampRepository
 
 
 class FileRepository(TimestampRepository):

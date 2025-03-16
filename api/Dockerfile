@@ -7,7 +7,7 @@ FROM base AS dependencies
 COPY requirements.txt .
 COPY ./utils/install_requirements.sh .
 COPY ./utils/pytest_docker.sh .
-COPY ./utils/makefile .
+COPY ./makefile .
 
 RUN apt-get update && apt-get install make
 

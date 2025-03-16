@@ -6,9 +6,9 @@ import os
 from unittest.mock import Mock
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from utils.config import get_db_settings
-from utils.database import Base
-from utils.unitofwork import UnitOfWork
+from src.utils.config import get_db_settings
+from src.utils.database import Base
+from src.utils.unitofwork import UnitOfWork
 
 
 @pytest_asyncio.fixture(scope="function")

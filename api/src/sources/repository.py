@@ -1,7 +1,7 @@
 from functools import lru_cache
 
-from sources.model import SourceModel
-from utils.repository import TimestampRepository
+from src.sources.model import SourceModel
+from src.utils.repository import TimestampRepository
 
 
 class SourceRepository(TimestampRepository):

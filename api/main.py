@@ -1,11 +1,11 @@
 import fastapi
 import fastapi_xml
 
-from s3.router import router as s3_router
-from users.router import router as user_router
-from buckets.router import router as bucket_router
-from gdrive.router import router as gdrive_router
-from setup.router import router as setup_router
+from src.s3.router import router as s3_router
+from src.users.router import router as user_router
+from src.buckets.router import router as bucket_router
+from src.gdrive.router import router as gdrive_router
+from src.setup.router import router as setup_router
 
 DESCRIPTION = """
 S3aaS has **S3-complatible routes** to store/retrieve/remove data and **REST API** for administrating purposes.

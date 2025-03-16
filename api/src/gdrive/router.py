@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 
-from gdrive.response import PostGDriveApiResponse
-from gdrive.schema import GDriveCreate
-from utils.basic_auth import UserDep
-from utils.dependency import UOWDep, GDriveServiceDep
-from utils.exceptions import exception_handler
+from src.gdrive.response import PostGDriveApiResponse
+from src.gdrive.schema import GDriveCreate
+from src.utils.basic_auth import UserDep
+from src.utils.dependency import UOWDep, GDriveServiceDep
+from src.utils.exceptions import exception_handler
 
 router = APIRouter()
 

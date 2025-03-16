@@ -5,7 +5,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 
-from utils.config import get_db_settings
+from src.utils.config import get_db_settings
 
 Base = declarative_base()
 

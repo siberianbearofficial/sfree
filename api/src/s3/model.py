@@ -1,11 +1,11 @@
 from sqlalchemy import ForeignKey, Column, Uuid, String, Integer
 
-from buckets.model import BucketModel
-from sources.model import SourceModel
+from src.buckets.model import BucketModel
+from src.sources.model import SourceModel
 
-from s3.schema import FileRead, FilePartRead
+from src.s3.schema import FileRead, FilePartRead
 
-from utils.model import Model
+from src.utils.model import Model
 
 
 class FileModel(Model):

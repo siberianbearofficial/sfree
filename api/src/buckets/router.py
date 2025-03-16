@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 
-from buckets.response import PostBucketsApiResponse
-from buckets.schema import BucketCreate
-from utils.basic_auth import UserDep
-from utils.dependency import UOWDep, BucketServiceDep
-from utils.exceptions import exception_handler
+from src.buckets.response import PostBucketsApiResponse
+from src.buckets.schema import BucketCreate
+from src.utils.basic_auth import UserDep
+from src.utils.dependency import UOWDep, BucketServiceDep
+from src.utils.exceptions import exception_handler
 
 router = APIRouter()
 

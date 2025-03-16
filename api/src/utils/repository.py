@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from utils.model import Model
+from src.utils.model import Model
 
 
 class IRepository(ABC):

@@ -3,7 +3,7 @@ from functools import lru_cache
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from utils.database import get_session_maker
+from src.utils.database import get_session_maker
 
 
 class IUnitOfWork(ABC):

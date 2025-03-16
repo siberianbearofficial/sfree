@@ -2,9 +2,9 @@ from datetime import datetime
 
 from sqlalchemy import Column, String, Uuid, ForeignKey, TIMESTAMP
 
-from users.model import UserModel
-from buckets.schema import BucketRead
-from utils.database import Base
+from src.users.model import UserModel
+from src.buckets.schema import BucketRead
+from src.utils.database import Base
 
 
 class BucketModel(Base):

@@ -1,14 +1,14 @@
 import uuid
 from datetime import datetime
 
-from gdrive.model import GDriveModel
-from gdrive.repository import GDriveRepository, get_gdrive_repository
-from gdrive.schema import GDriveCreate, GDriveCreateResponse
-from sources.model import SourceModel
-from sources.repository import SourceRepository, get_source_repository
-from sources.schema import SourceType
-from users.schema import UserRead
-from utils.unitofwork import IUnitOfWork
+from src.gdrive.model import GDriveModel
+from src.gdrive.repository import GDriveRepository, get_gdrive_repository
+from src.gdrive.schema import GDriveCreate, GDriveCreateResponse
+from src.sources.model import SourceModel
+from src.sources.repository import SourceRepository, get_source_repository
+from src.sources.schema import SourceType
+from src.users.schema import UserRead
+from src.utils.unitofwork import IUnitOfWork
 
 
 class GDriveService:

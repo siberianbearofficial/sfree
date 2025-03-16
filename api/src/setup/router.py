@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Path
 from loguru import logger
 
-from setup.response import (
+from src.setup.response import (
     PostMigrationsUpgradeResponse,
     GetPublicationReadyResponse,
     GetHealthResponse,
@@ -13,7 +13,7 @@ from setup.response import (
 )
 
 # from utils.admin_auth import AdminAuthDep  # todo добавить админскую авторизацию
-from utils.exceptions import exception_handler
+from src.utils.exceptions import exception_handler
 
 router = APIRouter()
 

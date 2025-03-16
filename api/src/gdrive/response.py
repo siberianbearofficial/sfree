@@ -1,5 +1,5 @@
-from gdrive.schema import GDriveCreateResponse
-from utils.response import ApiResponse
+from src.gdrive.schema import GDriveCreateResponse
+from src.utils.response import ApiResponse
 
 
 class PostGDriveApiResponse(ApiResponse):

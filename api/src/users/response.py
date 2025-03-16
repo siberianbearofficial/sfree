@@ -1,5 +1,5 @@
-from users.schema import UserCreateResponse, UserRead
-from utils.response import ApiResponse
+from src.users.schema import UserCreateResponse, UserRead
+from src.utils.response import ApiResponse
 
 
 class PostUsersApiResponse(ApiResponse):

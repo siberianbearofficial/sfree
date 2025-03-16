@@ -1,5 +1,5 @@
-from buckets.schema import BucketCreateResponse
-from utils.response import ApiResponse
+from src.buckets.schema import BucketCreateResponse
+from src.utils.response import ApiResponse
 
 
 class PostBucketsApiResponse(ApiResponse):

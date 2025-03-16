@@ -2,9 +2,9 @@ from functools import lru_cache
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from buckets.model import BucketModel
+from src.buckets.model import BucketModel
 
-from utils.repository import TimestampRepository
+from src.utils.repository import TimestampRepository
 
 
 class BucketRepository(TimestampRepository):

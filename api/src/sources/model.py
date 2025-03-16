@@ -1,9 +1,9 @@
 from sqlalchemy import Column, String, Uuid, ForeignKey
 
-from sources.schema import SourceRead
-from users.model import UserModel
+from src.sources.schema import SourceRead
+from src.users.model import UserModel
 
-from utils.model import Model
+from src.utils.model import Model
 
 
 class SourceModel(Model):

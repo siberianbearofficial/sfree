@@ -4,10 +4,10 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from users.model import UserModel
-from users.schema import UserWithHashedPassword
+from src.users.model import UserModel
+from src.users.schema import UserWithHashedPassword
 
-from utils.repository import TimestampRepository
+from src.utils.repository import TimestampRepository
 
 
 class UserRepository(TimestampRepository):

@@ -8,7 +8,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from loguru import logger
 
-from utils.google_drive_exceptions import (
+from src.utils.google_drive_exceptions import (
     GoogleDriveNoServiceError,
     GoogleDriveDirectoryNotFound,
     GoogleDriveDirectoryCreationError,

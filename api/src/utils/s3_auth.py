@@ -4,9 +4,9 @@ from typing import Annotated
 
 from fastapi import Depends, Path
 
-from buckets.schema import BucketRead
-from utils.dependency import UOWDep, BucketServiceDep
-from utils.exceptions import exception_handler, AuthenticationError
+from src.buckets.schema import BucketRead
+from src.utils.dependency import UOWDep, BucketServiceDep
+from src.utils.exceptions import exception_handler, AuthenticationError
 
 BucketKeyDep = Annotated[str, Path()]
 

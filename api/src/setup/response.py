@@ -1,4 +1,4 @@
-from utils.response import ApiResponse
+from src.utils.response import ApiResponse
 
 
 class PostMigrationsUpgradeResponse(ApiResponse):

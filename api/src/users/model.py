@@ -1,8 +1,8 @@
 from sqlalchemy import Column, String
 
-from users.schema import UserRead, UserWithHashedPassword
+from src.users.schema import UserRead, UserWithHashedPassword
 
-from utils.model import Model
+from src.utils.model import Model
 
 
 class UserModel(Model):

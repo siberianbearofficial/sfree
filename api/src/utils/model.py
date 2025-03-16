@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Column, Uuid, TIMESTAMP
 from sqlalchemy.orm import declared_attr, DeclarativeMeta
 
-from utils.database import Base
+from src.utils.database import Base
 
 
 class BaseMixin(object):

@@ -1,7 +1,7 @@
 from functools import lru_cache
 
-from gdrive.model import GDriveModel, GDriveFileMetadataModel
-from utils.repository import TimestampRepository
+from src.gdrive.model import GDriveModel, GDriveFileMetadataModel
+from src.utils.repository import TimestampRepository
 
 
 class GDriveRepository(TimestampRepository):

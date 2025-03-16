@@ -2,11 +2,11 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from users.model import UserModel
-from users.repository import UserRepository, get_user_repository
-from users.schema import UserCreate, UserCreateResponse, UserRead
-from utils.password import generate_password, hash_password, check_password
-from utils.unitofwork import IUnitOfWork
+from src.users.model import UserModel
+from src.users.repository import UserRepository, get_user_repository
+from src.users.schema import UserCreate, UserCreateResponse, UserRead
+from src.utils.password import generate_password, hash_password, check_password
+from src.utils.unitofwork import IUnitOfWork
 
 
 class UserService:

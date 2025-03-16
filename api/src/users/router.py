@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 
-from users.response import PostUsersApiResponse, GetUsersMeApiResponse
-from users.schema import UserCreate
-from utils.basic_auth import UserDep
-from utils.dependency import UOWDep, UserServiceDep
-from utils.exceptions import exception_handler
+from src.users.response import PostUsersApiResponse, GetUsersMeApiResponse
+from src.users.schema import UserCreate
+from src.utils.basic_auth import UserDep
+from src.utils.dependency import UOWDep, UserServiceDep
+from src.utils.exceptions import exception_handler
 
 router = APIRouter()
 

@@ -1,4 +1,4 @@
-from utils.exceptions import NotFoundError
+from src.utils.exceptions import NotFoundError
 
 
 class GoogleDriveNoServiceError(Exception):
