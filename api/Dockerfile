@@ -5,11 +5,11 @@ WORKDIR /app
 FROM base AS dependencies
 
 COPY requirements.txt .
-COPY *.whl .
-COPY install_requirements.sh .
-COPY makefile .
+COPY ./utils/install_requirements.sh .
+COPY ./utils/pytest_docker.sh .
+COPY ./utils/makefile .
 
-RUN apt update && apt install make
+RUN apt-get update && apt-get install make
 
 RUN echo "/app/dependencies" | make install-deps-stdin
 

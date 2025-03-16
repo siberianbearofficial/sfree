@@ -4,7 +4,7 @@ SRC = .
 
 .phony: help
 help:
-	@echo "commands: install-deps install-deps-stdin install-dev-deps ruff black mypy pytest pytest-docker lint clean"
+	@echo "commands: install-deps install-deps-stdin install-dev-deps ruff black mypy test test-docker lint clean"
 
 .phony: install-deps
 install-deps:

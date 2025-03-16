@@ -34,18 +34,18 @@ exclude = [
     '^\.git',
     '^\.github',
     # todo надо норм модельки бд сделать, чтобы починились типы
-    '^s3/model',
-    '^s3/service',
-    '^gdrive/model',
-    '^buckets/repository',
-    '^buckets/service',
-    '^buckets/model',
-    '^sources/model',
-    '^users/model',
-    '^users/repository',
-    '^utils/repository',
-    '^utils/model',  # проблема с declared_attr в миксине
-    '^utils/unitofwork'  # проблема с сессией (она nullable)
+    '^src/s3/model',
+    '^src/s3/service',
+    '^src/gdrive/model',
+    '^src/buckets/repository',
+    '^src/buckets/service',
+    '^src/buckets/model',
+    '^src/sources/model',
+    '^src/users/model',
+    '^src/users/repository',
+    '^src/utils/repository',
+    '^src/utils/model',  # проблема с declared_attr в миксине
+    '^src/utils/unitofwork'  # проблема с сессией (она nullable)
 ]
 
 [tool.pytest.ini_options]

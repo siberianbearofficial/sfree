@@ -26,7 +26,7 @@ app = fastapi.FastAPI(
         "url": "https://github.com/siberianbearofficial",
     },
     license_info={
-        "name": "Apache 2.0",
+        "name": "MIT",
         "url": "https://www.apache.org/licenses/LICENSE-2.0.html",
     },
 )
