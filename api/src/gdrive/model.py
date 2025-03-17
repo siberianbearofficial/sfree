@@ -1,4 +1,6 @@
-from sqlalchemy import Uuid, Column, ForeignKey, String
+from sqlalchemy import Uuid, ForeignKey, String
+from sqlalchemy.orm import mapped_column, Mapped
+from uuid import UUID
 
 from src.gdrive.schema import GDriveRead, GDriveFileMetadataRead
 from src.s3.model import FilePartModel
@@ -10,8 +12,8 @@ from src.utils.model import Model
 class GDriveModel(Model):
     __tablename__ = "gdrive"
 
-    source_id = Column(Uuid, ForeignKey(SourceModel.id), nullable=False)
-    key = Column(String, nullable=False)
+    source_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey(SourceModel.id), nullable=False)
+    key: Mapped[str] = mapped_column(String, nullable=False)
 
     def to_read_model(self):
         return GDriveRead(
@@ -27,9 +29,9 @@ class GDriveModel(Model):
 class GDriveFileMetadataModel(Model):
     __tablename__ = "gdrive_file_metadata"
 
-    file_part_id = Column(Uuid, ForeignKey(FilePartModel.id), nullable=False)
-    gdrive_file_id = Column(String, nullable=False)
-    gdrive_file_name = Column(String, nullable=False)
+    file_part_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey(FilePartModel.id), nullable=False)
+    gdrive_file_id: Mapped[str] = mapped_column(String, nullable=False)
+    gdrive_file_name: Mapped[str] = mapped_column(String, nullable=False)
 
     def to_read_model(self) -> GDriveFileMetadataRead:
         return GDriveFileMetadataRead(

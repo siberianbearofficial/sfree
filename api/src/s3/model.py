@@ -1,4 +1,6 @@
-from sqlalchemy import ForeignKey, Column, Uuid, String, Integer
+from sqlalchemy import ForeignKey, Uuid, String, Integer
+from sqlalchemy.orm import mapped_column, Mapped
+from uuid import UUID
 
 from src.buckets.model import BucketModel
 from src.sources.model import SourceModel
@@ -11,8 +13,8 @@ from src.utils.model import Model
 class FileModel(Model):
     __tablename__ = "file"
 
-    bucket_key = Column(String, ForeignKey(BucketModel.key), nullable=False, index=True)
-    name = Column(String, nullable=False)
+    bucket_key: Mapped[str] = mapped_column(String, ForeignKey(BucketModel.key), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
 
     def to_read_model(self):
         return FileRead(
@@ -28,10 +30,10 @@ class FileModel(Model):
 class FilePartModel(Model):
     __tablename__ = "file_part"
 
-    file_id = Column(Uuid, ForeignKey(FileModel.id), nullable=False)
-    source_id = Column(Uuid, ForeignKey(SourceModel.id), nullable=False)
-    hash = Column(String, nullable=False)
-    number = Column(Integer, nullable=False)
+    file_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey(FileModel.id), nullable=False)
+    source_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey(SourceModel.id), nullable=False)
+    hash: Mapped[str] = mapped_column(String, nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
 
     def to_read_model(self):
         return FilePartRead(
