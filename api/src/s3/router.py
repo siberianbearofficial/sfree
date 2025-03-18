@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from fastapi_xml import XmlAppResponse
 
@@ -12,7 +12,7 @@ from src.s3.schemas import (
 )
 from src.utils.dependency import S3ServiceDep, UOWDep
 from src.utils.exceptions import exception_handler, AuthenticationError
-from src.utils.s3_auth import BucketDep
+from src.utils.s3_auth import S3AuthenticatedRequestDep
 
 router = APIRouter()
 
@@ -28,8 +28,7 @@ router = APIRouter()
 async def list_objects(
     uow: UOWDep,
     s3_service: S3ServiceDep,
-    bucket: BucketDep,
-    request: Request,
+    request: S3AuthenticatedRequestDep,
     continuation_token: Optional[str] = None,
     delimiter: Optional[str] = None,
     encoding_type: str = "url",
@@ -50,7 +49,7 @@ async def list_objects(
         print(e)
         raise AuthenticationError from e
 
-    files = await s3_service.get_files_by_bucket(uow, bucket)
+    files = await s3_service.get_files_by_bucket(uow, request.bucket)
     return XmlAppResponse(files)
 
 
@@ -61,12 +60,14 @@ async def list_objects(
     description="Get file contents from the bucket (S3-compatible)",
 )
 @exception_handler
-async def get_object(uow: UOWDep, s3_service: S3ServiceDep, bucket: BucketDep, name: str):
+async def get_object(
+    uow: UOWDep, s3_service: S3ServiceDep, request: S3AuthenticatedRequestDep, name: str
+):
     """GET Object S3 совместимый запрос."""
 
     # etag = hashlib.md5(file_path.read_bytes()).hexdigest()
 
-    file_stream = await s3_service.get_file_by_name(uow, bucket, name)
+    file_stream = await s3_service.get_file_by_name(uow, request.bucket, name)
     return StreamingResponse(
         file_stream,
         headers={
@@ -87,13 +88,11 @@ async def get_object(uow: UOWDep, s3_service: S3ServiceDep, bucket: BucketDep, n
 async def put_object(
     uow: UOWDep,
     s3_service: S3ServiceDep,
-    bucket: BucketDep,
+    request: S3AuthenticatedRequestDep,
     name: str,
-    request: Request,
 ):
     """PUT Object S3 совместимый запрос."""
-
-    uploaded_file = await s3_service.upload_file(uow, bucket, name, request.stream())
+    uploaded_file = await s3_service.upload_file(uow, request.bucket, name, request.content)
     return XmlAppResponse(uploaded_file)
 
 
@@ -106,7 +105,7 @@ async def put_object(
 )
 @exception_handler
 async def delete_object(
-    bucket: BucketDep,
+    _: S3AuthenticatedRequestDep,
     name: str,
 ):
     """DELETE Object S3 совместимый запрос."""

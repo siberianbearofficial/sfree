@@ -1,10 +1,10 @@
 import asyncio
 import hashlib
 import uuid
+
 from datetime import datetime
 from functools import lru_cache
 from typing import AsyncGenerator, Optional
-
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +31,7 @@ from src.sources.repository import SourceRepository, get_source_repository
 from src.sources.schema import SourceRead, SourceType
 from src.utils.exceptions import ExistsError, NotFoundError
 from src.utils.google_drive_client import GoogleDriveClient
-from src.utils.read_stream import read_stream
+from src.utils.split_into_chunks import split_into_chunks
 from src.utils.unitofwork import IUnitOfWork
 
 
@@ -57,7 +57,7 @@ class S3Service:
         uow: IUnitOfWork,
         bucket: BucketRead,
         filename: str,
-        stream: AsyncGenerator[bytes, None],
+        content: bytes,
     ) -> PutObjectResult:
         async with uow:
             file_with_this_name = await self._file_repository.get(
@@ -110,7 +110,7 @@ class S3Service:
 
         hash = hashlib.md5()
         number = 1
-        async for chunk in read_stream(stream):
+        for chunk in split_into_chunks(content):
             # todo разные чанки можно будет писать в разные места, поэтому клиент создается много раз
             async with GoogleDriveClient(key=gdrive.key) as client:
                 await self.__upload_part_to_gdrive(
