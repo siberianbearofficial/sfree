@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String
+from sqlalchemy import String
+from sqlalchemy.orm import mapped_column, Mapped
 
 from src.users.schema import UserRead, UserWithHashedPassword
 
@@ -8,8 +9,8 @@ from src.utils.model import Model
 class UserModel(Model):
     __tablename__ = "user"
 
-    username = Column(String, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    username: Mapped[str] = mapped_column(String, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
 
     def to_read_model(self) -> UserRead:
         return UserRead(

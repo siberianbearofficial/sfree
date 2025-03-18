@@ -1,25 +1,26 @@
 import uuid
+from uuid import UUID
 from abc import abstractmethod
 from datetime import datetime
 
-from sqlalchemy import Column, Uuid, TIMESTAMP
-from sqlalchemy.orm import declared_attr, DeclarativeMeta
+from sqlalchemy import Uuid, TIMESTAMP
+from sqlalchemy.orm import declared_attr, DeclarativeMeta, mapped_column, Mapped
 
 from src.utils.database import Base
 
 
 class BaseMixin(object):
-    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    created_at = Column(
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         default=datetime.now,
         nullable=False,
     )
-    updated_at = Column(
+    updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         nullable=True,
     )
-    deleted_at = Column(
+    deleted_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         nullable=True,
     )

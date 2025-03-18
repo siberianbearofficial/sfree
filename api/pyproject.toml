@@ -33,15 +33,9 @@ exclude = [
     '^migrations',
     '^\.git',
     '^\.github',
-    # todo надо норм модельки бд сделать, чтобы починились типы
-    '^src/s3/model',
     '^src/s3/service',
-    '^src/gdrive/model',
     '^src/buckets/repository',
     '^src/buckets/service',
-    '^src/buckets/model',
-    '^src/sources/model',
-    '^src/users/model',
     '^src/users/repository',
     '^src/utils/repository',
     '^src/utils/model',  # проблема с declared_attr в миксине
