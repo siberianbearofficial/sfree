@@ -2,15 +2,20 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Optional
 
-from buckets.exception import BucketExistsError
-from buckets.model import BucketModel
-from buckets.repository import BucketRepository, get_bucket_repository
-from buckets.schema import BucketCreate, BucketCreateResponse, BucketRead, BucketReadWithCredentials
-from users.schema import UserRead
+from src.buckets.exception import BucketExistsError
+from src.buckets.model import BucketModel
+from src.buckets.repository import BucketRepository, get_bucket_repository
+from src.buckets.schema import (
+    BucketCreate,
+    BucketCreateResponse,
+    BucketRead,
+    BucketReadWithCredentials,
+)
+from src.users.schema import UserRead
 
-from utils.exceptions import NotFoundError
-from utils.password import generate_access_secret
-from utils.unitofwork import IUnitOfWork
+from src.utils.exceptions import NotFoundError
+from src.utils.password import generate_access_secret
+from src.utils.unitofwork import IUnitOfWork
 
 
 class BucketService:

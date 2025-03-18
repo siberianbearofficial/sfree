@@ -1,38 +1,38 @@
 import asyncio
 import hashlib
 import uuid
+
 from datetime import datetime
 from functools import lru_cache
 from typing import AsyncGenerator, Optional
-
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from buckets.repository import BucketRepository, get_bucket_repository
-from buckets.schema import BucketRead
-from gdrive.model import GDriveFileMetadataModel
-from gdrive.repository import (
+from src.buckets.repository import BucketRepository, get_bucket_repository
+from src.buckets.schema import BucketRead
+from src.gdrive.model import GDriveFileMetadataModel
+from src.gdrive.repository import (
     GDriveRepository,
     GDriveFileMetadataRepository,
     get_gdrive_repository,
     get_gdrive_file_metadata_repository,
 )
-from gdrive.schema import GDriveRead, GDriveFileMetadataRead
-from s3.model import FilePartModel, FileModel
-from s3.repository import (
+from src.gdrive.schema import GDriveRead, GDriveFileMetadataRead
+from src.s3.model import FilePartModel, FileModel
+from src.s3.repository import (
     FileRepository,
     FilePartRepository,
     get_file_repository,
     get_file_part_repository,
 )
-from s3.schema import FileRead, FilePartRead
-from schemas import PutObjectResult, ListBucketResult, ListBucketResultContents
-from sources.repository import SourceRepository, get_source_repository
-from sources.schema import SourceRead, SourceType
-from utils.exceptions import ExistsError, NotFoundError
-from utils.google_drive_client import GoogleDriveClient
-from utils.split_into_chunks import split_into_chunks
-from utils.unitofwork import IUnitOfWork
+from src.s3.schema import FileRead, FilePartRead
+from src.s3.schemas import PutObjectResult, ListBucketResult, ListBucketResultContents
+from src.sources.repository import SourceRepository, get_source_repository
+from src.sources.schema import SourceRead, SourceType
+from src.utils.exceptions import ExistsError, NotFoundError
+from src.utils.google_drive_client import GoogleDriveClient
+from src.utils.split_into_chunks import split_into_chunks
+from src.utils.unitofwork import IUnitOfWork
 
 
 class S3Service:

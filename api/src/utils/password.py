@@ -2,7 +2,7 @@ import secrets
 import string
 import bcrypt
 
-from utils.config import MIN_PASSWORD_LENGTH, ACCESS_SECRET_LENGTH
+from src.utils.config import MIN_PASSWORD_LENGTH, ACCESS_SECRET_LENGTH
 
 ALPHABET = string.ascii_letters + string.digits + string.punctuation
 

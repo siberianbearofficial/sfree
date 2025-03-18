@@ -4,15 +4,15 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from fastapi_xml import XmlAppResponse
 
-from schemas import (
+from src.s3.schemas import (
     DeleteResultDeleted,
     DeleteResult,
     ListBucketResult,
     PutObjectResult,
 )
-from utils.dependency import S3ServiceDep, UOWDep
-from utils.exceptions import exception_handler, AuthenticationError
-from utils.s3_auth import S3AuthenticatedRequestDep
+from src.utils.dependency import S3ServiceDep, UOWDep
+from src.utils.exceptions import exception_handler, AuthenticationError
+from src.utils.s3_auth import S3AuthenticatedRequestDep
 
 router = APIRouter()
 

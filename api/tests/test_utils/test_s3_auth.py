@@ -7,9 +7,9 @@ from fastapi import HTTPException
 from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from buckets.schema import BucketRead, BucketReadWithCredentials
-from utils.exceptions import NotFoundError
-from utils.s3_auth import get_s3_authenticated_request, S3AuthenticatedRequest
+from src.buckets.schema import BucketRead, BucketReadWithCredentials
+from src.utils.exceptions import NotFoundError
+from src.utils.s3_auth import get_s3_authenticated_request, S3AuthenticatedRequest
 
 
 @pytest.mark.asyncio

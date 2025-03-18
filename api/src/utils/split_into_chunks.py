@@ -1,6 +1,6 @@
 from typing import Generator
 
-from utils.config import CHUNK_SIZE
+from src.utils.config import CHUNK_SIZE
 
 
 def split_into_chunks(content: bytes, chunk_size: int = CHUNK_SIZE) -> Generator[bytes, None, None]:

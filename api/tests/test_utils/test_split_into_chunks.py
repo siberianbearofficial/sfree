@@ -1,6 +1,6 @@
 import pytest
 
-from utils.split_into_chunks import split_into_chunks
+from src.utils.split_into_chunks import split_into_chunks
 
 
 def test_multiple_chunks_exact_size():
