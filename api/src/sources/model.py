@@ -12,7 +12,9 @@ class SourceModel(Model):
     __tablename__ = "source"
 
     type: Mapped[str] = mapped_column(String, nullable=False)
-    user_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey(UserModel.id), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey(UserModel.id), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
 
     def to_read_model(self):

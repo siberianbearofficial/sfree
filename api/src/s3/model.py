@@ -13,7 +13,9 @@ from src.utils.model import Model
 class FileModel(Model):
     __tablename__ = "file"
 
-    bucket_key: Mapped[str] = mapped_column(String, ForeignKey(BucketModel.key), nullable=False, index=True)
+    bucket_key: Mapped[str] = mapped_column(
+        String, ForeignKey(BucketModel.key), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
 
     def to_read_model(self):

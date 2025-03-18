@@ -13,7 +13,9 @@ class BucketModel(Base):
     __tablename__ = "bucket"
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
-    user_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey(UserModel.id), nullable=False, index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey(UserModel.id), nullable=False, index=True
+    )
     access_key: Mapped[str] = mapped_column(String, nullable=False)
     access_secret: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
