@@ -40,8 +40,8 @@ if os.getenv(LOCAL_INIT_VAR) == "1":
     import dotenv
 
     if dotenv.load_dotenv(dotenv_path=ENV_FILE_PATH, override=True):
-        DBSettings.name = os.getenv("DB_NAME")
-        DBSettings.user = os.getenv("DB_USER")
-        DBSettings.password = os.getenv("DB_PASS")
-        DBSettings.host = os.getenv("DB_HOST")
-        DBSettings.port = os.getenv("DB_PORT")
+        DBSettings.name = os.getenv("DB_NAME", DBSettings.name)
+        DBSettings.user = os.getenv("DB_USER", DBSettings.user)
+        DBSettings.password = os.getenv("DB_PASS", DBSettings.password)
+        DBSettings.host = os.getenv("DB_HOST", DBSettings.host)
+        DBSettings.port = int(os.getenv("DB_PORT", DBSettings.port))
