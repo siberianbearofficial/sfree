@@ -4,7 +4,7 @@ SRC = .
 
 .phony: help
 help:
-	@echo "commands: install-deps install-deps-stdin install-dev-deps ruff black mypy test test-docker lint clean"
+	@echo "commands: install-deps install-deps-stdin install-dev-deps ruff black mypy test test-docker lint run-environment stop-environment local-run local-stop clean"
 
 .phony: install-deps
 install-deps:
@@ -48,6 +48,15 @@ run-environment:
 .phony: stop-environment
 stop-environment:
 	docker compose down
+
+.phony: local-run
+local-run:
+	docker compose -f docker-compose-local.yml up -d
+	LOCAL_INIT=1 uvicorn main:app --reload
+
+.phony: local-stop
+local-stop:
+	docker compose -f docker-compose-local.yml stop
 
 .phony: clean
 clean:

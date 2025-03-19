@@ -8,7 +8,11 @@ import alembic.context as context
 import sys
 import os
 
-sys.path.append(os.path.join(sys.path[1], "../../api"))
+# sys.path.append(os.path.join(sys.path[0], "../../api/"))
+api_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'api'))
+
+# Добавляем путь к api в sys.path
+sys.path.append(api_path)
 
 from src.buckets.model import *
 from src.gdrive.model import *
@@ -25,6 +29,7 @@ config = context.config
 
 section = config.config_ini_section
 db_settings = DBSettings()
+print(db_settings.__dict__)
 config.set_section_option(section, "DB_HOST", db_settings.host)
 config.set_section_option(section, "DB_PORT", str(db_settings.port))
 config.set_section_option(section, "DB_NAME", db_settings.name)
