@@ -11,11 +11,11 @@ CHUNK_SIZE = 1024 * 1024 * 100  # 100 Mb
 
 
 class DBSettings(BaseSettings):
-    name: str = ""
-    user: str = ""
-    password: str = Field(alias="db_pass")
-    host: str = ""
-    port: int = 0
+    name: str = "postgres"
+    user: str = "postgres"
+    password: str = Field(default="postgres", alias="db_pass")
+    host: str = "localhost"
+    port: int = 5432
 
     @property
     def access_str(self) -> str:
