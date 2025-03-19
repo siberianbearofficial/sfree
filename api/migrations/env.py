@@ -5,11 +5,6 @@ from sqlalchemy import pool
 
 import alembic.context as context
 
-import sys
-import os
-
-sys.path.append(os.path.join(sys.path[1], "../../api"))
-
 from src.buckets.model import *
 from src.gdrive.model import *
 from src.s3.model import *

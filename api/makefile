@@ -49,6 +49,10 @@ run-environment:
 stop-environment:
 	docker compose down
 
+.phony: urev
+urev:
+	bash utils/urev.sh
+
 .phony: clean
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
