@@ -20,6 +20,7 @@ config = context.config
 
 section = config.config_ini_section
 db_settings = DBSettings()
+print(db_settings.__dict__)
 config.set_section_option(section, "DB_HOST", db_settings.host)
 config.set_section_option(section, "DB_PORT", str(db_settings.port))
 config.set_section_option(section, "DB_NAME", db_settings.name)

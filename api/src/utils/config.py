@@ -1,4 +1,5 @@
 from functools import lru_cache
+import os
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,6 +9,8 @@ MIN_PASSWORD_LENGTH = 8  # todo увеличить в несколько раз 
 ACCESS_SECRET_LENGTH = 80
 
 CHUNK_SIZE = 1024 * 1024 * 100  # 100 Mb
+ENV_FILE_PATH = "local.env"
+LOCAL_INIT_VAR = "LOCAL_INIT"
 
 
 class DBSettings(BaseSettings):
@@ -31,3 +34,13 @@ class DBSettings(BaseSettings):
 @lru_cache
 def get_db_settings() -> DBSettings:
     return DBSettings()  # type: ignore
+
+
+if os.getenv(LOCAL_INIT_VAR) == "1":
+    import dotenv
+    if dotenv.load_dotenv(dotenv_path=ENV_FILE_PATH, override=True):
+        DBSettings.name = os.getenv("DB_NAME")
+        DBSettings.user = os.getenv("DB_USER")
+        DBSettings.password = os.getenv("DB_PASS")
+        DBSettings.host = os.getenv("DB_HOST")
+        DBSettings.port = os.getenv("DB_PORT")
