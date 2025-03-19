@@ -8,16 +8,16 @@ import alembic.context as context
 import sys
 import os
 
-sys.path.append(os.path.join(sys.path[1], "../../"))
+sys.path.append(os.path.join(sys.path[1], "../../api"))
 
-from buckets.model import *
-from gdrive.model import *
-from s3.model import *
-from sources.model import *
-from users.model import *
+from src.buckets.model import *
+from src.gdrive.model import *
+from src.s3.model import *
+from src.sources.model import *
+from src.users.model import *
 
-from utils.config import DBSettings
-from utils.database import metadata, Base
+from src.utils.config import DBSettings
+from src.utils.database import metadata, Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
