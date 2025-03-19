@@ -38,6 +38,7 @@ def get_db_settings() -> DBSettings:
 
 if os.getenv(LOCAL_INIT_VAR) == "1":
     import dotenv
+
     if dotenv.load_dotenv(dotenv_path=ENV_FILE_PATH, override=True):
         DBSettings.name = os.getenv("DB_NAME")
         DBSettings.user = os.getenv("DB_USER")
