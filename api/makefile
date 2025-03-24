@@ -45,28 +45,28 @@ lint: ruff black mypy
 .phony: run-environment
 run-environment:
 	docker compose up -d
-	docker compose -f docker-compose-local.yml up -d
+	@export $$(cat local.env | xargs); docker compose -f docker-compose-local.yml up -d
 
 .phony: stop-environment
 stop-environment:
 	docker compose down
-	docker compose -f docker-compose-local.yml stop
+	@export $$(cat local.env | xargs); docker compose -f docker-compose-local.yml stop
 
 .phony: run
 run:
-	uvicorn main:app --reload
+	@export $$(cat local.env | xargs); uvicorn main:app --reload
 
 .phony: urev
 urev:
-	@export $$(cat local.env | xargs); $(UTILS)/urev.sh
+	@export $$(cat local.env | xargs); alembic -c migrations/alembic.ini upgrade head
 
 .phony: drev
 drev:
-	@export $$(cat local.env | xargs); $(UTILS)/drev.sh $(REV)
+	@export $$(cat local.env | xargs); alembic -c migrations/alembic.ini downgrade $(REV)
 
 .phony: grev
 grev:
-	@export $$(cat local.env | xargs); $(UTILS)/grev.sh $(REV)
+	@export $$(cat local.env | xargs); alembic -c migrations/alembic.ini revision --autogenerate -m $(REV)
 
 
 .phony: clean
