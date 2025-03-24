@@ -9,6 +9,7 @@ ACCESS_SECRET_LENGTH = 80
 
 CHUNK_SIZE = 1024 * 1024 * 100  # 100 Mb
 
+
 class DBSettings(BaseSettings):
     name: str = "postgres"
     user: str = "postgres"
