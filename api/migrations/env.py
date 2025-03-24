@@ -5,15 +5,6 @@ from sqlalchemy import pool
 
 import alembic.context as context
 
-import sys
-import os
-
-# sys.path.append(os.path.join(sys.path[0], "../../api/"))
-api_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'api'))
-
-# Добавляем путь к api в sys.path
-sys.path.append(api_path)
-
 from src.buckets.model import *
 from src.gdrive.model import *
 from src.s3.model import *

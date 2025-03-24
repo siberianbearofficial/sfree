@@ -1,5 +1,4 @@
 from functools import lru_cache
-import os
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,14 +33,3 @@ class DBSettings(BaseSettings):
 @lru_cache
 def get_db_settings() -> DBSettings:
     return DBSettings()  # type: ignore
-
-
-if os.getenv(LOCAL_INIT_VAR) == "1":
-    import dotenv
-
-    if dotenv.load_dotenv(dotenv_path=ENV_FILE_PATH, override=True):
-        DBSettings.name = os.getenv("DB_NAME", DBSettings.name)
-        DBSettings.user = os.getenv("DB_USER", DBSettings.user)
-        DBSettings.password = os.getenv("DB_PASS", DBSettings.password)
-        DBSettings.host = os.getenv("DB_HOST", DBSettings.host)
-        DBSettings.port = int(os.getenv("DB_PORT", DBSettings.port))
