@@ -8,9 +8,6 @@ MIN_PASSWORD_LENGTH = 8  # todo увеличить в несколько раз 
 ACCESS_SECRET_LENGTH = 80
 
 CHUNK_SIZE = 1024 * 1024 * 100  # 100 Mb
-ENV_FILE_PATH = "local.env"
-LOCAL_INIT_VAR = "LOCAL_INIT"
-
 
 class DBSettings(BaseSettings):
     name: str = "postgres"
