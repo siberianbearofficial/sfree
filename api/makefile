@@ -1,10 +1,11 @@
 all: help
 
 SRC = .
+UTILS = ./utils
 
 .phony: help
 help:
-	@echo "commands: install-deps install-deps-stdin install-dev-deps ruff black mypy test test-docker lint run-environment stop-environment local-run local-stop clean"
+	@echo "commands: install-deps install-deps-stdin install-dev-deps ruff black mypy test test-docker lint run-environment stop-environment run stop urev drev grev clean"
 
 .phony: install-deps
 install-deps:
@@ -44,14 +45,29 @@ lint: ruff black mypy
 .phony: run-environment
 run-environment:
 	docker compose up -d
+	docker compose -f docker-compose-local.yml up -d
 
 .phony: stop-environment
 stop-environment:
 	docker compose down
+	docker compose -f docker-compose-local.yml stop
+
+.phony: run
+run:
+	uvicorn main:app --reload
 
 .phony: urev
 urev:
-	bash utils/urev.sh
+	@export $$(cat local.env | xargs); $(UTILS)/urev.sh
+
+.phony: drev
+drev:
+	@export $$(cat local.env | xargs); $(UTILS)/drev.sh $(REV)
+
+.phony: grev
+grev:
+	@export $$(cat local.env | xargs); $(UTILS)/grev.sh $(REV)
+
 
 .phony: clean
 clean:
