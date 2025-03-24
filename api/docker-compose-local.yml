@@ -7,7 +7,6 @@ services:
       - 5432
     ports:
       - 5555:5432
-    env_file: 'local.env'
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASS}
