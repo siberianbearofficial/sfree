@@ -14,6 +14,10 @@ class ExistsError(Exception):
     pass
 
 
+class NoAvailableSourceError(Exception):
+    pass
+
+
 def exception_handler(handler):
     """
     Перехватывает базовые Exception и превращает их в красивые HTTPException.

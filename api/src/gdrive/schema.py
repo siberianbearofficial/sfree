@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
-class GDriveRead(BaseModel):
+class BaseSourceModel(BaseModel):
     id: UUID
     created_at: datetime
     updated_at: Optional[datetime]
@@ -14,13 +14,11 @@ class GDriveRead(BaseModel):
     key: str
 
 
-class GDriveSourceRead(BaseModel):
-    id: UUID
-    created_at: datetime
-    updated_at: Optional[datetime]
-    deleted_at: Optional[datetime]
-    user_id: UUID
-    key: str
+class GDriveRead(BaseSourceModel):
+    pass
+
+
+class GDriveSourceRead(BaseSourceModel):
     name: str
 
 
