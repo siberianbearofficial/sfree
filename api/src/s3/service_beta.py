@@ -9,7 +9,7 @@ from typing import Optional, Dict, Type
 from loguru import logger
 
 from src.buckets.schema import BucketRead
-from src.gdrive.schema import GDriveRead, BaseSourceModel
+from src.gdrive.schema import BaseSourceModel
 from src.s3.model import FileModel
 from src.s3.schemas import PutObjectResult
 from src.sources.schema import SourceRead, SourceType
@@ -44,17 +44,21 @@ class S3ServiceBeta(S3Service):
         self._gdrive_repository = gdrive_repository
         self._gdrive_file_metadata_repository = gdrive_file_metadata_repository
         self._repositories: Dict[str, TimestampRepository]
-        self._clients: Dict[str, GoogleDriveClient]     #TODO: заменить GoogleDriveClient на абстрактный класс AbsClient
+        self._clients: Dict[
+            str, GoogleDriveClient
+        ]  # TODO: заменить GoogleDriveClient на абстрактный класс AbsClient
         self.register_source(SourceType.GDRIVE.value, self._gdrive_repository, GoogleDriveClient)
-    
-    def register_source(self, type: str, repo: TimestampRepository, client: Type[GoogleDriveClient]) -> None:
+
+    def register_source(
+        self, type: str, repo: TimestampRepository, client: Type[GoogleDriveClient]
+    ) -> None:
         if not isinstance(repo, TimestampRepository):
             raise ValueError("repo must be instance of TimestampRepository")
         if not issubclass(client, GoogleDriveClient):
             raise ValueError("client must be subclass of AbsClient")
         self._repositories[type] = repo
         self._clients[type] = client
-        
+
     async def upload_file(
         self,
         uow: IUnitOfWork,
@@ -89,13 +93,17 @@ class S3ServiceBeta(S3Service):
 
             hash = hashlib.md5()
             number = 1
-            source_distr = SourceDistributor(sources=sources, uow=uow, repositories=self._repositories)
+            source_distr = SourceDistributor(
+                sources=sources, uow=uow, repositories=self._repositories
+            )
             for chunk in split_into_chunks(content):
                 # надо будет замапить сурсы на соответствующие репозитории и возвращать уже GDriveRead и тд
                 current_source = source_distr.next()
-                source_model: Optional[BaseSourceModel] = await self._repositories[current_source.type].get(uow.session, source_id=current_source.id)
+                source_model: Optional[BaseSourceModel] = await self._repositories[
+                    current_source.type
+                ].get(uow.session, source_id=current_source.id)
                 if source_model is None:
-                    uow.rollback()      # нужно ли делать так?
+                    uow.rollback()  # нужно ли делать так?
                     raise ValueError(
                         "GDrive source not found. Inconsistency in database. Consider asking for support."
                     )
@@ -124,9 +132,9 @@ class SourceDistributor:
         self._sources = sources
         self._uow = uow
         self._queue = None
-    
+
         if file is not None and not self.check_space():
-            raise ValueError("file can't be uploaded")    # ошибку другую конечно
+            raise ValueError("file can't be uploaded")  # ошибку другую конечно
 
         self.init_queue()
 
@@ -137,24 +145,22 @@ class SourceDistributor:
     def is_source_available(self, source: SourceRead, data_size: int) -> bool:
         # проверяет есть ли доступное место на конкретном сурсе
         return True
-    
+
     def init_queue(self) -> None:
         self._queue = Queue()
         for source in self._sources:
             if source.type in self._supported_types:
                 self._queue.put(source)
-        
+
         if self._queue.empty():
-            raise ValueError(
-                "Supported sources not found for this user."
-            )
-    
+            raise ValueError("Supported sources not found for this user.")
+
     def next(self) -> SourceRead:
         try:
             source = self._queue.get()
         except Empty:
             raise NoAvailableSourceError("No available source with enought space for data")
-        
+
         if self.is_source_available(source=source, data_size=0):
             self._queue.put(source)
             return source
