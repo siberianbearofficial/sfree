@@ -23,6 +23,7 @@ async def test_success():
     challenge = MagicMock(access_key_id="access_key")
 
     bucket = BucketReadWithCredentials(
+        id=uuid.uuid4(),
         key="test-bucket",
         user_id=uuid.uuid4(),
         access_key="access_key",

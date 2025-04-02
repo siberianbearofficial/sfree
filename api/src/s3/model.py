@@ -13,20 +13,13 @@ from src.utils.model import Model
 class FileModel(Model):
     __tablename__ = "file"
 
-    bucket_key: Mapped[str] = mapped_column(
-        String, ForeignKey(BucketModel.key), nullable=False, index=True
+    bucket_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey(BucketModel.id), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
 
-    def to_read_model(self):
-        return FileRead(
-            id=self.id,
-            created_at=self.created_at,
-            updated_at=self.updated_at,
-            deleted_at=self.deleted_at,
-            bucket_key=self.bucket_key,
-            name=self.name,
-        )
+    def to_read_model(self) -> FileRead:
+        raise NotImplementedError("to_read_model() is deprecated")
 
 
 class FilePartModel(Model):

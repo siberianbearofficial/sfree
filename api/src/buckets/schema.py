@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class BucketRead(BaseModel):
+    id: UUID
     key: str
     user_id: UUID
     created_at: datetime

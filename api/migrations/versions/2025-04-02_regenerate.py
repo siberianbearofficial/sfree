@@ -1,8 +1,8 @@
-"""initial
+"""regenerate
 
-Revision ID: 745f027cbef1
+Revision ID: 35af11e3bb27
 Revises: 
-Create Date: 2024-12-04 18:01:57.723065
+Create Date: 2025-04-02 15:11:24.030464
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '745f027cbef1'
+revision: str = '35af11e3bb27'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,6 +30,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('bucket',
+    sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('key', sa.String(), nullable=False),
     sa.Column('user_id', sa.Uuid(), nullable=False),
     sa.Column('access_key', sa.String(), nullable=False),
@@ -38,8 +39,10 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.TIMESTAMP(), nullable=True),
     sa.Column('deleted_at', sa.TIMESTAMP(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
-    sa.PrimaryKeyConstraint('key')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'key', name='user_key_unique_index')
     )
+    op.create_index(op.f('ix_bucket_access_key'), 'bucket', ['access_key'], unique=True)
     op.create_index(op.f('ix_bucket_user_id'), 'bucket', ['user_id'], unique=False)
     op.create_table('source',
     sa.Column('type', sa.String(), nullable=False),
@@ -54,16 +57,16 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_source_user_id'), 'source', ['user_id'], unique=False)
     op.create_table('file',
-    sa.Column('bucket_key', sa.String(), nullable=False),
+    sa.Column('bucket_id', sa.Uuid(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(), nullable=False),
     sa.Column('updated_at', sa.TIMESTAMP(), nullable=True),
     sa.Column('deleted_at', sa.TIMESTAMP(), nullable=True),
-    sa.ForeignKeyConstraint(['bucket_key'], ['bucket.key'], ),
+    sa.ForeignKeyConstraint(['bucket_id'], ['bucket.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_file_bucket_key'), 'file', ['bucket_key'], unique=False)
+    op.create_index(op.f('ix_file_bucket_id'), 'file', ['bucket_id'], unique=False)
     op.create_table('gdrive',
     sa.Column('source_id', sa.Uuid(), nullable=False),
     sa.Column('key', sa.String(), nullable=False),
@@ -106,11 +109,12 @@ def downgrade() -> None:
     op.drop_table('gdrive_file_metadata')
     op.drop_table('file_part')
     op.drop_table('gdrive')
-    op.drop_index(op.f('ix_file_bucket_key'), table_name='file')
+    op.drop_index(op.f('ix_file_bucket_id'), table_name='file')
     op.drop_table('file')
     op.drop_index(op.f('ix_source_user_id'), table_name='source')
     op.drop_table('source')
     op.drop_index(op.f('ix_bucket_user_id'), table_name='bucket')
+    op.drop_index(op.f('ix_bucket_access_key'), table_name='bucket')
     op.drop_table('bucket')
     op.drop_table('user')
     # ### end Alembic commands ###
