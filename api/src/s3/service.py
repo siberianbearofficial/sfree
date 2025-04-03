@@ -4,20 +4,21 @@ import uuid
 
 from datetime import datetime
 from functools import lru_cache
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Sequence
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.sources.model import SourceModel
 from src.buckets.repository import BucketRepository, get_bucket_repository
 from src.buckets.schema import BucketRead
-from src.gdrive.model import GDriveFileMetadataModel
+from src.gdrive.model import GDriveFileMetadataModel, GDriveModel
 from src.gdrive.repository import (
     GDriveRepository,
     GDriveFileMetadataRepository,
     get_gdrive_repository,
     get_gdrive_file_metadata_repository,
 )
-from src.gdrive.schema import GDriveRead, GDriveFileMetadataRead
+from src.gdrive.schema import GDriveRead
 from src.s3.model import FilePartModel, FileModel
 from src.s3.repository import (
     FileRepository,
@@ -25,7 +26,6 @@ from src.s3.repository import (
     get_file_repository,
     get_file_part_repository,
 )
-from src.s3.schema import FileRead, FilePartRead
 from src.s3.schemas import PutObjectResult, ListBucketResult, ListBucketResultContents
 from src.sources.repository import SourceRepository, get_source_repository
 from src.sources.schema import SourceRead, SourceType
@@ -60,10 +60,10 @@ class S3Service:
         content: bytes,
     ) -> PutObjectResult:
         async with uow:
-            file_with_this_name = await self._file_repository.get(
-                uow.session, name=filename, bucket_key=bucket.key
+            file_model = await self._file_repository.get_model(
+                uow.session, name=filename, bucket_id=bucket.id
             )
-            if file_with_this_name:
+            if file_model:
                 raise ExistsError(
                     "File with this name already exists in this bucket for this user."
                 )
@@ -99,7 +99,7 @@ class S3Service:
             file_model = FileModel(
                 id=file_id,
                 created_at=file_created_at,
-                bucket_key=bucket.key,
+                bucket_id=bucket.id,
                 name=filename,
             )
 
@@ -181,7 +181,7 @@ class S3Service:
         bucket: BucketRead,
     ) -> ListBucketResult:
         async with uow:
-            files = await self._file_repository.get_all(uow.session, bucket_key=bucket.key)
+            files = await self._file_repository.get_all(uow.session, bucket_id=bucket.id)
             return ListBucketResult(
                 Name=bucket.key,
                 Prefix="",
@@ -213,8 +213,8 @@ class S3Service:
         name: str,
     ) -> AsyncGenerator[bytes, None]:
         async with uow:
-            file: Optional[FileRead] = await self._file_repository.get(
-                uow.session, bucket_key=bucket.key, name=name
+            file = await self._file_repository.get_model(
+                uow.session, bucket_id=bucket.id, name=name
             )
             if not file:
                 raise NotFoundError("File not found.")
@@ -229,8 +229,8 @@ class S3Service:
             async with GoogleDriveClient(part.get("key", "")) as client:
                 yield await client.download_file_async(part.get("gdrive_file_id", ""))
 
-    async def __get_file_parts(self, session: AsyncSession, file: FileRead) -> tuple[dict]:
-        file_parts: list[FilePartRead] = await self._file_part_repository.get_sorted_by_number(
+    async def __get_file_parts(self, session: AsyncSession, file: FileModel) -> tuple[dict]:
+        file_parts: Sequence[FilePartModel] = await self._file_part_repository.get_sorted_by_number(
             session, file_id=file.id
         )
 
@@ -242,9 +242,9 @@ class S3Service:
         )
 
     async def __get_file_part_metadata(
-        self, session: AsyncSession, file_part: FilePartRead
+        self, session: AsyncSession, file_part: FilePartModel
     ) -> dict:
-        source: Optional[SourceRead] = await self._source_repository.get(
+        source: Optional[SourceModel] = await self._source_repository.get_model(
             session, id=file_part.source_id
         )
         if not source:
@@ -255,14 +255,17 @@ class S3Service:
         if source.type != SourceType.GDRIVE.value:
             raise ValueError("Only gdrive source type is supported.")
 
-        gdrive = await self._gdrive_repository.get(session, source_id=source.id)
+        gdrive: Optional[GDriveModel] = await self._gdrive_repository.get_model(
+            session, source_id=source.id
+        )
         if not gdrive:
             raise NotFoundError("Gdrive source not found.")
 
-        metadata: Optional[GDriveFileMetadataRead] = (
-            await self._gdrive_file_metadata_repository.get(session, file_part_id=file_part.id)
+        metadata: Optional[GDriveFileMetadataModel] = (
+            await self._gdrive_file_metadata_repository.get_model(
+                session, file_part_id=file_part.id
+            )
         )
-
         if not metadata:
             raise NotFoundError(f"File metadata not found for file part {file_part.id}.")
 

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Type
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -9,38 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.utils.model import Model
 
 
-class IRepository(ABC):
+class SQLAlchemyRepository(ABC):
+    @property
     @abstractmethod
-    async def add(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def edit(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def edit_all(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def get(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def get_all(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def delete(self, *args, **kwargs):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def delete_all(self, *args, **kwargs):
-        raise NotImplementedError
-
-
-class SQLAlchemyRepository(IRepository):
-    model = Model
+    def model(self) -> Type[Model]:
+        """Model class for SQLAlchemy."""
 
     async def add(self, session: AsyncSession, data: Model) -> UUID:
         session.add(data)

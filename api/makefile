@@ -42,6 +42,17 @@ test-docker:
 .phony: lint
 lint: ruff black mypy
 
+.phony: ruff-fix
+ruff-fix:
+	@ruff check $(SRC) --fix
+
+.phony: black-fix
+black-fix:
+	@black $(SRC)
+
+.phony: lint-fix
+lint-fix: ruff-fix black-fix mypy
+
 .phony: run-environment
 run-environment:
 	docker compose up -d
@@ -67,7 +78,6 @@ drev:
 .phony: grev
 grev:
 	@export $$(cat local.env | xargs); alembic -c migrations/alembic.ini revision --autogenerate -m $(REV)
-
 
 .phony: clean
 clean:
