@@ -1,6 +1,9 @@
 from fastapi import HTTPException
 from loguru import logger
 
+from typing import ParamSpec, TypeVar, Callable, Awaitable
+from functools import wraps
+
 
 class NotFoundError(Exception):
     pass
@@ -14,15 +17,17 @@ class ExistsError(Exception):
     pass
 
 
-def exception_handler(handler):
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def exception_handler(handler: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     """
     Перехватывает базовые Exception и превращает их в красивые HTTPException.
-    Надо подумать над тем, как делать это средствами FastAPI, а не таким колхозом.
-    :param handler: Ручка, которую оборачиваем.
-    :return:
     """
 
-    async def wrapper(*args, **kwargs):
+    @wraps(handler)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
             res = await handler(*args, **kwargs)
         except (ValueError, ExistsError) as ex:
@@ -43,20 +48,4 @@ def exception_handler(handler):
         else:
             return res
 
-    # Fix signature of wrapper
-    import inspect
-
-    wrapper.__signature__ = inspect.Signature(  # type: ignore
-        parameters=[
-            # Use all parameters from handler
-            *inspect.signature(handler).parameters.values(),
-            # Skip *args and **kwargs from wrapper parameters:
-            *filter(
-                lambda p: p.kind
-                not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
-                inspect.signature(wrapper).parameters.values(),
-            ),
-        ],
-        return_annotation=inspect.signature(handler).return_annotation,
-    )
     return wrapper
