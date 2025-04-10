@@ -1,4 +1,4 @@
-from fastapi import HTTPException
+from fastapi import Request, HTTPException
 from loguru import logger
 
 from typing import ParamSpec, TypeVar, Callable, Awaitable
@@ -49,3 +49,21 @@ def exception_handler(handler: Callable[P, Awaitable[R]]) -> Callable[P, Awaitab
             return res
 
     return wrapper
+
+
+async def endpoints_exception_handler(request: Request, ex: Exception):
+    if isinstance(ex, (ValueError, ExistsError)):
+        logger.error(ex)
+        raise HTTPException(400, detail=str(ex))
+    elif isinstance(ex, AuthenticationError):
+        logger.error(ex)
+        raise HTTPException(401, detail=str(ex))
+    elif isinstance(ex, PermissionError):
+        logger.error(ex)
+        raise HTTPException(403, detail=str(ex))
+    elif isinstance(ex, NotFoundError):
+        logger.error(ex)
+        raise HTTPException(404, detail=str(ex))
+    else:
+        logger.exception(ex)
+        raise HTTPException(500, detail=str(ex))

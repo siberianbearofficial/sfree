@@ -13,7 +13,6 @@ from src.setup.response import (
 )
 
 # from utils.admin_auth import AdminAuthDep  # todo добавить админскую авторизацию
-from src.utils.exceptions import exception_handler
 
 router = APIRouter()
 
@@ -64,7 +63,6 @@ async def get_publication_ready_handler():
     description="Накатывает миграции вплоть до указанной ревизии на PostgreSQL с помощью alembic. Ожидается, что в основном ручка будет вызываться с `name=head`",
     response_model=PostMigrationsUpgradeResponse,
 )
-@exception_handler
 async def post_migrations_upgrade(
     name: Annotated[str, Path(description="Название ревизии", example="head")],
     # _: AdminAuthDep,
