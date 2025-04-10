@@ -12,7 +12,7 @@ security = HTTPBasic(auto_error=True, description="User Authentication")
 BasicAuthCredentialsDep = Annotated[HTTPBasicCredentials, Depends(security)]
 
 
-@exception_handler
+# @exception_handler
 async def get_user(
     uow: UOWDep, credentials: BasicAuthCredentialsDep, user_service: UserServiceDep
 ) -> UserRead:

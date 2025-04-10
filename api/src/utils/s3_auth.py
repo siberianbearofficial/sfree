@@ -19,7 +19,7 @@ class S3AuthenticatedRequest(BaseModel):
 BucketKeyDep = Annotated[str, Path()]
 
 
-@exception_handler
+# @exception_handler
 async def get_s3_authenticated_request(
     uow: UOWDep,
     bucket_service: BucketServiceDep,
