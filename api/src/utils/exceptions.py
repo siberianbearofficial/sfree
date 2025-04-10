@@ -1,8 +1,6 @@
-from fastapi import Request, HTTPException
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from loguru import logger
-
-from functools import wraps
 
 
 class NotFoundError(Exception):

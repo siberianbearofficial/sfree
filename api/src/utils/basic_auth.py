@@ -5,7 +5,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from src.users.schema import UserRead
 from src.utils.dependency import UOWDep, UserServiceDep
-from src.utils.exceptions import AuthenticationError, exception_handler
+from src.utils.exceptions import AuthenticationError
 
 security = HTTPBasic(auto_error=True, description="User Authentication")
 

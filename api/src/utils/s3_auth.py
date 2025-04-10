@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from src.buckets.schema import BucketRead
 from src.utils.dependency import UOWDep, BucketServiceDep
-from src.utils.exceptions import exception_handler, AuthenticationError
+from src.utils.exceptions import AuthenticationError
 
 
 class S3AuthenticatedRequest(BaseModel):
