@@ -64,7 +64,7 @@ async def get_publication_ready_handler():
     response_model=PostMigrationsUpgradeResponse,
 )
 async def post_migrations_upgrade(
-    name: Annotated[str, Path(description="Название ревизии", example="head")],
+    name: Annotated[str, Path(description="Название ревизии", examples="head")],
     # _: AdminAuthDep,
 ):
     try:
