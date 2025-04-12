@@ -63,7 +63,7 @@ class BucketService:
         async with uow:
             old_bucket = await self._bucket_repository.get(uow.session, key=bucket.key)
             if old_bucket:
-                raise BucketExistsError
+                raise BucketExistsError()
 
             await self._bucket_repository.add(uow.session, bucket_model)
             await uow.commit()

@@ -11,7 +11,7 @@ from src.s3.schemas import (
     PutObjectResult,
 )
 from src.utils.dependency import S3ServiceDep, UOWDep
-from src.utils.exceptions import exception_handler, AuthenticationError
+from src.utils.exceptions import AuthenticationError
 from src.utils.s3_auth import S3AuthenticatedRequestDep
 
 router = APIRouter()
@@ -24,7 +24,6 @@ router = APIRouter()
     summary="List objects",
     description="Get list of objects in the bucket (S3-compatible)",
 )
-@exception_handler
 async def list_objects(
     uow: UOWDep,
     s3_service: S3ServiceDep,
@@ -59,7 +58,6 @@ async def list_objects(
     summary="Get object",
     description="Get file contents from the bucket (S3-compatible)",
 )
-@exception_handler
 async def get_object(
     uow: UOWDep, s3_service: S3ServiceDep, request: S3AuthenticatedRequestDep, name: str
 ):
@@ -84,7 +82,6 @@ async def get_object(
     summary="Put object",
     description="Put file contents to the bucket (S3-compatible)",
 )
-@exception_handler
 async def put_object(
     uow: UOWDep,
     s3_service: S3ServiceDep,
@@ -103,7 +100,6 @@ async def put_object(
     summary="Delete object",
     description="Delete file from the bucket (S3-compatible)",
 )
-@exception_handler
 async def delete_object(
     _: S3AuthenticatedRequestDep,
     name: str,

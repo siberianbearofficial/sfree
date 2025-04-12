@@ -6,6 +6,7 @@ from src.users.router import router as user_router
 from src.buckets.router import router as bucket_router
 from src.gdrive.router import router as gdrive_router
 from src.setup.router import router as setup_router
+from src.utils.exceptions import endpoints_exception_handler
 
 DESCRIPTION = """
 S3aaS has **S3-complatible routes** to store/retrieve/remove data and **REST API** for administrating purposes.
@@ -38,3 +39,6 @@ app.include_router(user_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(bucket_router, prefix="/api/v1/buckets", tags=["buckets"])
 app.include_router(gdrive_router, prefix="/api/v1/sources/gdrive", tags=["gdrive"])
 app.include_router(setup_router)
+
+# регистрируем функцию-обработчик ошибок
+app.exception_handler(Exception)(endpoints_exception_handler)

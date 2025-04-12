@@ -3,12 +3,11 @@ import aws4
 import hmac
 import uuid
 
-from fastapi import HTTPException
 from datetime import datetime
 from unittest.mock import MagicMock, AsyncMock, patch
 
 from src.buckets.schema import BucketRead, BucketReadWithCredentials
-from src.utils.exceptions import NotFoundError
+from src.utils.exceptions import NotFoundError, AuthenticationError
 from src.utils.s3_auth import get_s3_authenticated_request, S3AuthenticatedRequest
 
 
@@ -67,7 +66,7 @@ async def test_success():
 async def test_empty_access_key():
     with (
         patch("aws4.generate_challenge", return_value=MagicMock(access_key_id=None)),
-        pytest.raises(HTTPException),
+        pytest.raises(AuthenticationError),
     ):
         await get_s3_authenticated_request(AsyncMock(), AsyncMock(), "key", AsyncMock())
 
@@ -80,7 +79,7 @@ async def test_bucket_key_mismatch():
     with (
         patch("aws4.generate_challenge", return_value=MagicMock(access_key_id="access_key")),
         patch("hmac.compare_digest", return_value=False),
-        pytest.raises(HTTPException),
+        pytest.raises(AuthenticationError),
     ):
         await get_s3_authenticated_request(AsyncMock(), bucket_svc, "key", AsyncMock())
 
@@ -94,7 +93,7 @@ async def test_validation_error():
         patch("aws4.generate_challenge", return_value=MagicMock(access_key_id="access_key")),
         patch("hmac.compare_digest", return_value=True),
         patch("aws4.validate_challenge", side_effect=aws4.AWS4Exception),
-        pytest.raises(HTTPException),
+        pytest.raises(AuthenticationError),
     ):
         await get_s3_authenticated_request(AsyncMock(), bucket_svc, "key", AsyncMock())
 
@@ -106,6 +105,6 @@ async def test_get_bucket_error():
 
     with (
         patch("aws4.generate_challenge", return_value=MagicMock(access_key_id="access_key")),
-        pytest.raises(HTTPException),
+        pytest.raises(AuthenticationError),
     ):
         await get_s3_authenticated_request(AsyncMock(), bucket_svc, "key", AsyncMock())

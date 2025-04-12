@@ -7,7 +7,6 @@ from src.utils.database import get_session_maker
 
 
 class IUnitOfWork(ABC):
-
     @abstractmethod
     def __init__(self, session_factory):
         self.__session_factory = None

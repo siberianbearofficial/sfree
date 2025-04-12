@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from src.buckets.schema import BucketRead
 from src.utils.dependency import UOWDep, BucketServiceDep
-from src.utils.exceptions import exception_handler, AuthenticationError
+from src.utils.exceptions import AuthenticationError
 
 
 class S3AuthenticatedRequest(BaseModel):
@@ -19,7 +19,6 @@ class S3AuthenticatedRequest(BaseModel):
 BucketKeyDep = Annotated[str, Path()]
 
 
-@exception_handler
 async def get_s3_authenticated_request(
     uow: UOWDep,
     bucket_service: BucketServiceDep,
@@ -51,7 +50,7 @@ async def get_s3_authenticated_request(
     except Exception as e:
         # снаружи мы не поймем, что именно ломается, если будут баги, поэтому добавил лог внутри
         logger.error(e)
-        raise AuthenticationError
+        raise AuthenticationError()
 
     return S3AuthenticatedRequest(
         bucket=BucketRead.model_validate(bucket),  # убираем креды

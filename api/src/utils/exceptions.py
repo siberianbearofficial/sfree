@@ -1,4 +1,5 @@
-from fastapi import HTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from loguru import logger
 
 
@@ -14,49 +15,19 @@ class ExistsError(Exception):
     pass
 
 
-def exception_handler(handler):
-    """
-    Перехватывает базовые Exception и превращает их в красивые HTTPException.
-    Надо подумать над тем, как делать это средствами FastAPI, а не таким колхозом.
-    :param handler: Ручка, которую оборачиваем.
-    :return:
-    """
-
-    async def wrapper(*args, **kwargs):
-        try:
-            res = await handler(*args, **kwargs)
-        except (ValueError, ExistsError) as ex:
-            logger.error(ex)
-            raise HTTPException(400, detail=str(ex))
-        except AuthenticationError as ex:
-            logger.error(ex)
-            raise HTTPException(401, detail=str(ex))
-        except PermissionError as ex:
-            logger.error(ex)
-            raise HTTPException(403, detail=str(ex))
-        except NotFoundError as ex:
-            logger.error(ex)
-            raise HTTPException(404, detail=str(ex))
-        except Exception as ex:
-            logger.exception(ex)
-            raise HTTPException(500, detail=str(ex))
-        else:
-            return res
-
-    # Fix signature of wrapper
-    import inspect
-
-    wrapper.__signature__ = inspect.Signature(  # type: ignore
-        parameters=[
-            # Use all parameters from handler
-            *inspect.signature(handler).parameters.values(),
-            # Skip *args and **kwargs from wrapper parameters:
-            *filter(
-                lambda p: p.kind
-                not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD),
-                inspect.signature(wrapper).parameters.values(),
-            ),
-        ],
-        return_annotation=inspect.signature(handler).return_annotation,
-    )
-    return wrapper
+async def endpoints_exception_handler(request: Request, ex: Exception):
+    if isinstance(ex, (ValueError, ExistsError)):
+        logger.error(ex)
+        return JSONResponse(status_code=400, content={"detail": str(ex)})
+    elif isinstance(ex, AuthenticationError):
+        logger.error(ex)
+        return JSONResponse(status_code=401, content={"detail": str(ex)})
+    elif isinstance(ex, PermissionError):
+        logger.error(ex)
+        return JSONResponse(status_code=403, content={"detail": str(ex)})
+    elif isinstance(ex, NotFoundError):
+        logger.error(ex)
+        return JSONResponse(status_code=404, content={"detail": str(ex)})
+    else:
+        logger.exception(ex)
+        return JSONResponse(status_code=500, content={"detail": str(ex)})
