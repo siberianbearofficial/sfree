@@ -11,11 +11,10 @@ class BaseSourceModel(BaseModel):
     updated_at: Optional[datetime]
     deleted_at: Optional[datetime]
     source_id: UUID
-    key: str
-
+    
 
 class GDriveRead(BaseSourceModel):
-    pass
+    key: str
 
 
 class GDriveSourceRead(BaseSourceModel):

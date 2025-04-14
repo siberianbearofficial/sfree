@@ -4,9 +4,10 @@ import uuid
 
 from datetime import datetime
 from functools import lru_cache
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Dict
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
+from queue import Queue, Empty
 
 from src.buckets.repository import BucketRepository, get_bucket_repository
 from src.buckets.schema import BucketRead
@@ -29,10 +30,12 @@ from src.s3.schema import FileRead, FilePartRead
 from src.s3.schemas import PutObjectResult, ListBucketResult, ListBucketResultContents
 from src.sources.repository import SourceRepository, get_source_repository
 from src.sources.schema import SourceRead, SourceType
-from src.utils.exceptions import ExistsError, NotFoundError
+from src.utils.exceptions import ExistsError, NotFoundError, NoAvailableSourceError
 from src.utils.google_drive_client import GoogleDriveClient
 from src.utils.split_into_chunks import split_into_chunks
 from src.utils.unitofwork import IUnitOfWork
+from src.utils.repository import TimestampRepository
+from src.gdrive.schema import BaseSourceModel
 
 
 class S3Service:
@@ -51,7 +54,14 @@ class S3Service:
         self._source_repository = source_repository
         self._gdrive_repository = gdrive_repository
         self._gdrive_file_metadata_repository = gdrive_file_metadata_repository
-
+        self._repositories: Dict[str, TimestampRepository] = {
+            SourceType.GDRIVE.value: self._gdrive_repository
+        }
+        # TODO: заменить GoogleDriveClient на абстрактный класс AbsClient
+        self._clients: Dict[str, GoogleDriveClient] = {
+            SourceType.GDRIVE.value: GoogleDriveClient
+        }
+    
     async def upload_file(
         self,
         uow: IUnitOfWork,
@@ -72,28 +82,6 @@ class S3Service:
                 uow.session, user_id=bucket.user_id
             )
 
-            # todo тут нужна логика распределения частей файла по дискам, но пока сложим все на один гугл диск
-            gdrive_source_id = None
-            for source in sources:
-                if source.type == SourceType.GDRIVE.value:
-                    gdrive_source_id = source.id
-                    break
-
-            if not gdrive_source_id:
-                raise ValueError(
-                    "GDrive source not found for this user. Other source types are not supported yet."
-                )
-
-            gdrive: Optional[GDriveRead] = await self._gdrive_repository.get(
-                uow.session, source_id=gdrive_source_id
-            )
-            if not gdrive:
-                raise ValueError(
-                    "GDrive source not found. Inconsistency in database. Consider asking for support."
-                )
-
-            logger.info(f"Source to upload: {source.name}")
-
             file_id = uuid.uuid4()
             file_created_at = datetime.now()
             file_model = FileModel(
@@ -102,30 +90,40 @@ class S3Service:
                 bucket_key=bucket.key,
                 name=filename,
             )
-
             await self._file_repository.add(uow.session, file_model)
-            await uow.commit()
-
             logger.info(f"File created: {file_model.name}")
 
-        hash = hashlib.md5()
-        number = 1
-        for chunk in split_into_chunks(content):
-            # todo разные чанки можно будет писать в разные места, поэтому клиент создается много раз
-            async with GoogleDriveClient(key=gdrive.key) as client:
-                await self.__upload_part_to_gdrive(
-                    uow,
-                    client,
-                    file_id,
-                    source.id,
-                    number,
-                    chunk,
-                )
-                logger.info(f"Uploaded part: {number}")
-                number += 1
-                hash.update(chunk)
+            hash = hashlib.md5()
+            number = 1
+            source_distr = SourceDistributor(
+                sources=sources, uow=uow, repositories=self._repositories
+            )
+            for chunk in split_into_chunks(content):
+                # надо будет замапить сурсы на соответствующие репозитории и возвращать уже GDriveRead и тд
+                current_source = await source_distr.next()
+                source_model: Optional[BaseSourceModel] = await self._repositories[
+                    current_source.type
+                ].get(uow.session, source_id=current_source.id)
+                if source_model is None:
+                    raise ValueError(
+                        "GDrive source not found. Inconsistency in database. Consider asking for support."
+                    )
+                # todo разные чанки можно будет писать в разные места, поэтому клиент создается много раз
+                async with self._clients[current_source.type](key=source_model.key) as client:
+                    await self.__upload_part_to_gdrive(
+                        uow,
+                        client,
+                        file_id,
+                        current_source.id,
+                        number,
+                        chunk
+                    )
+                    logger.info(f"Uploaded part: {number}")
+                    number += 1
+                    hash.update(chunk)
 
-        logger.success("Upload finished successfully")
+            await uow.commit()
+            logger.success("Upload finished successfully")
 
         return PutObjectResult(ETag=hash.hexdigest())
 
@@ -283,3 +281,45 @@ def get_s3_service() -> S3Service:
         gdrive_repository=get_gdrive_repository(),
         gdrive_file_metadata_repository=get_gdrive_file_metadata_repository(),
     )
+
+
+class SourceDistributor:
+    def __init__(self, sources: list[SourceRead], uow: IUnitOfWork, file: FileModel | None = None):
+        self._supported_types = [SourceType.GDRIVE.value]
+        self._sources = sources
+        self._uow = uow
+        self._queue = None
+
+        if file is not None and not self.check_space():
+            raise ValueError("file can't be uploaded")  # ошибку другую конечно
+
+        self.init_queue()
+
+    def check_space(self) -> bool:
+        # сделать логику проверки доступности необходимого пространства на дисках в зависимости от переданного FileModel
+        return True
+
+    async def is_source_available(self, source: SourceRead, data_size: int) -> bool:
+        # проверяет есть ли доступное место на конкретном сурсе
+        return True
+
+    def init_queue(self) -> None:
+        self._queue = Queue()
+        for source in self._sources:
+            if source.type in self._supported_types:
+                self._queue.put(source)
+
+        if self._queue.empty():
+            raise ValueError("Supported sources not found for this user.")
+
+    async def next(self) -> SourceRead:
+        try:
+            source = self._queue.get()
+        except Empty:
+            raise NoAvailableSourceError("No available source with enought space for data")
+
+        if await self.is_source_available(source=source, data_size=0):
+            self._queue.put(source)
+            return source
+        else:
+            return self.next()
