@@ -12,6 +12,7 @@ import (
 	"github.com/example/s3aas/api-go/internal/app"
 	"github.com/example/s3aas/api-go/internal/config"
 	"github.com/example/s3aas/api-go/internal/db"
+	_ "github.com/example/s3aas/api-go/internal/docs"
 )
 
 func main() {
