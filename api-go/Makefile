@@ -9,17 +9,22 @@ run: build
 
 test: test-unit test-integration test-e2e
 
+
 test-unit:
-       go test ./...
+	go test ./...
+
 
 test-integration:
-       ENV=test go test -tags=integration ./...
+	ENV=test go test -tags=integration ./...
+
 
 test-e2e:
-       ENV=test go test -tags=e2e ./...
+	ENV=test go test -tags=e2e ./...
+
 
 lint:
 	golangci-lint run
+
 
 docker-build:
 	docker build -t api-go:latest .
