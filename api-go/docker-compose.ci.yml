@@ -4,4 +4,12 @@ services:
     build: .
     environment:
       - GIN_MODE=release
+      - ENV=test
     command: ["make", "test"]
+    depends_on:
+      - mongo
+  mongo:
+    image: mongo:7
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
