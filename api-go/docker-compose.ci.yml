@@ -1,0 +1,7 @@
+version: '3.8'
+services:
+  api-go:
+    build: .
+    environment:
+      - GIN_MODE=release
+    command: ["make", "test"]
