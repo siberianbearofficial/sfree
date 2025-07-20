@@ -1,0 +1,6 @@
+mongo:
+  host: mongo
+  port: 27017
+  user: root
+  password: example
+  database: s3aas_test

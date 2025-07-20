@@ -7,7 +7,7 @@ import (
 )
 
 func TestSetupRouter(t *testing.T) {
-	r := SetupRouter()
+	r := SetupRouter(nil)
 	endpoints := []string{"/readyz", "/healthz", "/publication/ready"}
 	for _, e := range endpoints {
 		req, _ := http.NewRequest(http.MethodGet, e, nil)
