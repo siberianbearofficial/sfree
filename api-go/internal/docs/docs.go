@@ -85,6 +85,36 @@ const docTemplate = `{
                 }
             }
         }
+        ,"/api/v1/buckets": {
+            "post": {
+                "tags": [
+                    "buckets"
+                ],
+                "summary": "Create bucket",
+                "responses": {
+                    "200": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "key": {"type": "string"},
+                                "access_key": {"type": "string"},
+                                "access_secret": {"type": "string"},
+                                "created_at": {"type": "string"}
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {"type": "string"}
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {"type": "string"}
+                    }
+                }
+            }
+        }
     }
 }`
 
