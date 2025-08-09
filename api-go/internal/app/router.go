@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/example/s3aas/api-go/internal/db"
 	"github.com/example/s3aas/api-go/internal/handlers"
+	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
@@ -16,6 +17,14 @@ func SetupRouter(m *db.Mongo) *gin.Engine {
 	router.GET("/healthz", handlers.Healthz)
 	router.GET("/publication/ready", handlers.PublicationReady)
 	router.GET("/dbz", handlers.DBProbe(m))
+	if m != nil {
+		if userRepo, err := repository.NewUserRepository(m.DB); err == nil {
+			router.POST("/api/v1/users", handlers.CreateUser(userRepo))
+		}
+		if bucketRepo, err := repository.NewBucketRepository(m.DB); err == nil {
+			router.POST("/api/v1/buckets", handlers.CreateBucket(bucketRepo))
+		}
+	}
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	return router

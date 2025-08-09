@@ -3,6 +3,7 @@
 // @title S3aaS API
 // @version 1.0
 // @BasePath /
+// @securityDefinitions.basic BasicAuth
 package main
 
 import (
