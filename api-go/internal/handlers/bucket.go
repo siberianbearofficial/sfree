@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"crypto/rand"
+	"log"
 	"math/big"
 	"net/http"
 	"time"
@@ -25,24 +26,38 @@ func generateAccessSecret() string {
 	return string(b)
 }
 
-func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
-	type request struct {
-		Key string `json:"key" binding:"required"`
-	}
-	type response struct {
-		Key          string    `json:"key"`
-		AccessKey    string    `json:"access_key"`
-		AccessSecret string    `json:"access_secret"`
-		CreatedAt    time.Time `json:"created_at"`
-	}
+type createBucketRequest struct {
+	Key string `json:"key" binding:"required"`
+}
 
+type createBucketResponse struct {
+	Key          string    `json:"key"`
+	AccessKey    string    `json:"access_key"`
+	AccessSecret string    `json:"access_secret"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// CreateBucket godoc
+// @Summary Create bucket
+// @Tags buckets
+// @Accept json
+// @Produce json
+// @Param bucket body createBucketRequest true "Bucket to create"
+// @Success 200 {object} createBucketResponse
+// @Failure 400 {string} string ""
+// @Failure 409 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets [post]
+func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req request
+		var req createBucketRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Printf("create bucket: invalid request: %v", err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
 		if repo == nil {
+			log.Print("create bucket: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -57,13 +72,15 @@ func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 		created, err := repo.Create(c.Request.Context(), bucket)
 		if err != nil {
 			if mongo.IsDuplicateKeyError(err) {
+				log.Printf("create bucket: key %s already exists: %v", req.Key, err)
 				c.Status(http.StatusConflict)
 				return
 			}
+			log.Printf("create bucket: failed to create bucket: %v", err)
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		c.JSON(http.StatusOK, response{
+		c.JSON(http.StatusOK, createBucketResponse{
 			Key:          created.Key,
 			AccessKey:    created.AccessKey,
 			AccessSecret: created.AccessSecret,

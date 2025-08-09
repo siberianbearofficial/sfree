@@ -15,6 +15,56 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/buckets": {
+            "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "buckets"
+                ],
+                "summary": "Create bucket",
+                "parameters": [
+                    {
+                        "description": "Bucket to create",
+                        "name": "bucket",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.createBucketRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.createBucketResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/dbz": {
             "get": {
                 "tags": [
@@ -85,35 +135,40 @@ const docTemplate = `{
                 }
             }
         }
-        ,"/api/v1/buckets": {
-            "post": {
-                "tags": [
-                    "buckets"
-                ],
-                "summary": "Create bucket",
-                "responses": {
-                    "200": {
-                        "description": "Created",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "key": {"type": "string"},
-                                "access_key": {"type": "string"},
-                                "access_secret": {"type": "string"},
-                                "created_at": {"type": "string"}
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {"type": "string"}
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {"type": "string"}
-                    }
+    },
+    "definitions": {
+        "handlers.createBucketRequest": {
+            "type": "object",
+            "required": [
+                "key"
+            ],
+            "properties": {
+                "key": {
+                    "type": "string"
                 }
             }
+        },
+        "handlers.createBucketResponse": {
+            "type": "object",
+            "properties": {
+                "access_key": {
+                    "type": "string"
+                },
+                "access_secret": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BasicAuth": {
+            "type": "basic"
         }
     }
 }`
