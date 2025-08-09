@@ -6,6 +6,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/example/s3aas/api-go/internal/config"
 	"github.com/example/s3aas/api-go/internal/db"
@@ -27,9 +28,13 @@ func TestUserRepository(t *testing.T) {
 	}
 	password := "secret"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	user := User{Username: "testuser", PasswordHash: string(hash)}
-	if err := repo.Create(context.Background(), user); err != nil {
+	user := User{Username: "testuser", PasswordHash: string(hash), CreatedAt: time.Now()}
+	created, err := repo.Create(context.Background(), user)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if created.ID.IsZero() {
+		t.Fatalf("expected ID to be set")
 	}
 	u, err := repo.GetByUsername(context.Background(), "testuser")
 	if err != nil {

@@ -18,8 +18,10 @@ func SetupRouter(m *db.Mongo) *gin.Engine {
 	router.GET("/publication/ready", handlers.PublicationReady)
 	router.GET("/dbz", handlers.DBProbe(m))
 	if m != nil {
-		bucketRepo, err := repository.NewBucketRepository(m.DB)
-		if err == nil {
+		if userRepo, err := repository.NewUserRepository(m.DB); err == nil {
+			router.POST("/api/v1/users", handlers.CreateUser(userRepo))
+		}
+		if bucketRepo, err := repository.NewBucketRepository(m.DB); err == nil {
 			router.POST("/api/v1/buckets", handlers.CreateBucket(bucketRepo))
 		}
 	}
