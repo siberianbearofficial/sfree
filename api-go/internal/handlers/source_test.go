@@ -16,10 +16,11 @@ import (
 	"github.com/example/s3aas/api-go/internal/db"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
 
-func TestCreateBucket(t *testing.T) {
+func TestCreateGDriveSource(t *testing.T) {
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +34,7 @@ func TestCreateBucket(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte("pass"), bcrypt.DefaultCost)
-	_, err = userRepo.Create(context.Background(), repository.User{
+	user, err := userRepo.Create(context.Background(), repository.User{
 		Username:     "tester",
 		PasswordHash: string(hash),
 		CreatedAt:    time.Now().UTC(),
@@ -41,15 +42,15 @@ func TestCreateBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := repository.NewBucketRepository(mongoConn.DB)
+	repo, err := repository.NewSourceRepository(mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
 	router := gin.New()
 	auth := BasicAuth(userRepo)
-	router.POST("/api/v1/buckets", auth, CreateBucket(repo))
-	body, _ := json.Marshal(map[string]string{"key": "bucket-test"})
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/buckets", bytes.NewReader(body))
+	router.POST("/api/v1/sources/gdrive", auth, CreateGDriveSource(repo))
+	body, _ := json.Marshal(map[string]string{"name": "src-test", "key": "{}"})
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sources/gdrive", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth("tester", "pass")
 	w := httptest.NewRecorder()
@@ -58,23 +59,27 @@ func TestCreateBucket(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	var resp struct {
-		Key          string    `json:"key"`
-		AccessKey    string    `json:"access_key"`
-		AccessSecret string    `json:"access_secret"`
-		CreatedAt    time.Time `json:"created_at"`
+		ID        string    `json:"id"`
+		Name      string    `json:"name"`
+		Type      string    `json:"type"`
+		Key       string    `json:"key"`
+		CreatedAt time.Time `json:"created_at"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("invalid json: %v", err)
 	}
-	if resp.Key != "bucket-test" || resp.AccessKey == "" || resp.AccessSecret == "" {
+	if resp.Name != "src-test" || resp.Type != string(repository.SourceTypeGDrive) || resp.Key != "{}" {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
-	badReq, _ := http.NewRequest(http.MethodPost, "/api/v1/buckets", bytes.NewReader(body))
-	badReq.Header.Set("Content-Type", "application/json")
-	badReq.SetBasicAuth("tester", "wrong")
-	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, badReq)
-	if w2.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", w2.Code)
+	oid, err := primitive.ObjectIDFromHex(resp.ID)
+	if err != nil {
+		t.Fatalf("invalid id: %v", err)
+	}
+	stored, err := repo.GetByID(context.Background(), oid)
+	if err != nil {
+		t.Fatalf("failed to get stored source: %v", err)
+	}
+	if stored.UserID != user.ID {
+		t.Fatalf("unexpected user id: %s != %s", stored.UserID.Hex(), user.ID.Hex())
 	}
 }

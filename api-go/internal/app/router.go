@@ -19,10 +19,14 @@ func SetupRouter(m *db.Mongo) *gin.Engine {
 	router.GET("/dbz", handlers.DBProbe(m))
 	if m != nil {
 		if userRepo, err := repository.NewUserRepository(m.DB); err == nil {
+			auth := handlers.BasicAuth(userRepo)
 			router.POST("/api/v1/users", handlers.CreateUser(userRepo))
-		}
-		if bucketRepo, err := repository.NewBucketRepository(m.DB); err == nil {
-			router.POST("/api/v1/buckets", handlers.CreateBucket(bucketRepo))
+			if bucketRepo, err := repository.NewBucketRepository(m.DB); err == nil {
+				router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo))
+			}
+			if sourceRepo, err := repository.NewSourceRepository(m.DB); err == nil {
+				router.POST("/api/v1/sources/gdrive", auth, handlers.CreateGDriveSource(sourceRepo))
+			}
 		}
 	}
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
