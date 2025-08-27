@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -22,6 +23,22 @@ type createSourceResponse struct {
 	Type      string    `json:"type"`
 	Key       string    `json:"key"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type sourceInfoFile struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+type sourceInfoResponse struct {
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Type         string           `json:"type"`
+	Files        []sourceInfoFile `json:"files"`
+	StorageTotal int64            `json:"storage_total"`
+	StorageUsed  int64            `json:"storage_used"`
+	StorageFree  int64            `json:"storage_free"`
 }
 
 // CreateGDriveSource godoc
@@ -172,5 +189,92 @@ func DeleteSource(repo *repository.SourceRepository) gin.HandlerFunc {
 			return
 		}
 		c.Status(http.StatusOK)
+	}
+}
+
+// GetSourceInfo godoc
+// @Summary Get source info
+// @Tags sources
+// @Param id path string true "Source ID"
+// @Success 200 {object} sourceInfoResponse
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources/{id}/info [get]
+func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if repo == nil {
+			log.Print("get source info: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		idHex := c.Param("id")
+		id, err := primitive.ObjectIDFromHex(idHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		src, err := repo.GetByID(c.Request.Context(), id)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("get source info: get source: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if src.UserID != userID {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		switch src.Type {
+		case repository.SourceTypeGDrive:
+			cli, err := gdrive.NewClient(c.Request.Context(), []byte(src.Key))
+			if err != nil {
+				log.Printf("get source info: create client: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			files, err := cli.ListFiles(c.Request.Context())
+			if err != nil {
+				log.Printf("get source info: list files: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			total, used, free, err := cli.StorageInfo(c.Request.Context())
+			if err != nil {
+				log.Printf("get source info: storage info: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			resp := sourceInfoResponse{
+				ID:           src.ID.Hex(),
+				Name:         src.Name,
+				Type:         string(src.Type),
+				Files:        make([]sourceInfoFile, len(files)),
+				StorageTotal: total,
+				StorageUsed:  used,
+				StorageFree:  free,
+			}
+			for i, f := range files {
+				resp.Files[i] = sourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size}
+			}
+			c.JSON(http.StatusOK, resp)
+		default:
+			c.Status(http.StatusNotImplemented)
+		}
 	}
 }
