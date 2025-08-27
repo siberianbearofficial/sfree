@@ -1,0 +1,15 @@
+when:
+  - event: push
+
+steps:
+  - name: build and push
+    image: woodpeckerci/plugin-docker-buildx
+    settings:
+      repo: ghcr.io/siberianbearofficial/s3aas-webui
+      registry: ghcr.io
+      username: siberianbearofficial
+      password:
+        from_secret: GITHUB_TOKEN
+      context: webui
+      dockerfile: webui/Dockerfile
+      tag: main
