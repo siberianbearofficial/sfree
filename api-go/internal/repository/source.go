@@ -9,15 +9,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// SourceType represents type of external source.
 type SourceType string
 
 const (
-	// SourceTypeGDrive is Google Drive source type.
 	SourceTypeGDrive SourceType = "gdrive"
 )
 
-// Source represents external data source stored in MongoDB.
 type Source struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty"`
 	UserID    primitive.ObjectID `bson:"user_id"`
@@ -27,12 +24,10 @@ type Source struct {
 	CreatedAt time.Time          `bson:"created_at"`
 }
 
-// SourceRepository handles CRUD operations on sources.
 type SourceRepository struct {
 	coll *mongo.Collection
 }
 
-// NewSourceRepository creates new SourceRepository.
 func NewSourceRepository(db *mongo.Database) (*SourceRepository, error) {
 	coll := db.Collection("sources")
 	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
@@ -44,7 +39,6 @@ func NewSourceRepository(db *mongo.Database) (*SourceRepository, error) {
 	return &SourceRepository{coll: coll}, nil
 }
 
-// Create stores new source in MongoDB.
 func (r *SourceRepository) Create(ctx context.Context, s Source) (*Source, error) {
 	s.CreatedAt = s.CreatedAt.UTC()
 	res, err := r.coll.InsertOne(ctx, s)
@@ -57,7 +51,6 @@ func (r *SourceRepository) Create(ctx context.Context, s Source) (*Source, error
 	return &s, nil
 }
 
-// GetByID returns source by its ID.
 func (r *SourceRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*Source, error) {
 	var s Source
 	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&s)
@@ -65,4 +58,35 @@ func (r *SourceRepository) GetByID(ctx context.Context, id primitive.ObjectID) (
 		return nil, err
 	}
 	return &s, nil
+}
+
+func (r *SourceRepository) ListByUser(ctx context.Context, userID primitive.ObjectID) ([]Source, error) {
+	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var sources []Source
+	for cursor.Next(ctx) {
+		var s Source
+		if err := cursor.Decode(&s); err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return sources, nil
+}
+
+func (r *SourceRepository) Delete(ctx context.Context, id, userID primitive.ObjectID) error {
+	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": id, "user_id": userID})
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
 }

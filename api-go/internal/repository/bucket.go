@@ -10,8 +10,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// Bucket represents storage bucket information
-// stored in MongoDB.
 type Bucket struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"`
 	Key          string             `bson:"key"`
@@ -55,4 +53,35 @@ func (r *BucketRepository) GetByKey(ctx context.Context, key string) (*Bucket, e
 		return nil, err
 	}
 	return &b, nil
+}
+
+func (r *BucketRepository) List(ctx context.Context) ([]Bucket, error) {
+	cursor, err := r.coll.Find(ctx, bson.D{})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var buckets []Bucket
+	for cursor.Next(ctx) {
+		var b Bucket
+		if err := cursor.Decode(&b); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, b)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return buckets, nil
+}
+
+func (r *BucketRepository) Delete(ctx context.Context, id primitive.ObjectID) error {
+	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
 }

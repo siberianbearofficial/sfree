@@ -9,10 +9,10 @@ import (
 
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// random string generator
 const accessSecretLength = 80
 
 var alphabet = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
@@ -31,6 +31,14 @@ type createBucketRequest struct {
 }
 
 type createBucketResponse struct {
+	Key          string    `json:"key"`
+	AccessKey    string    `json:"access_key"`
+	AccessSecret string    `json:"access_secret"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type bucketResponse struct {
+	ID           string    `json:"id"`
 	Key          string    `json:"key"`
 	AccessKey    string    `json:"access_key"`
 	AccessSecret string    `json:"access_secret"`
@@ -87,5 +95,78 @@ func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 			AccessSecret: created.AccessSecret,
 			CreatedAt:    created.CreatedAt,
 		})
+	}
+}
+
+// ListBuckets godoc
+// @Summary List buckets
+// @Tags buckets
+// @Produce json
+// @Success 200 {array} bucketResponse
+// @Failure 401 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets [get]
+func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if repo == nil {
+			log.Print("list buckets: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		buckets, err := repo.List(c.Request.Context())
+		if err != nil {
+			log.Printf("list buckets: failed to list buckets: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		resp := make([]bucketResponse, 0, len(buckets))
+		for _, b := range buckets {
+			resp = append(resp, bucketResponse{
+				ID:           b.ID.Hex(),
+				Key:          b.Key,
+				AccessKey:    b.AccessKey,
+				AccessSecret: b.AccessSecret,
+				CreatedAt:    b.CreatedAt,
+			})
+		}
+		c.JSON(http.StatusOK, resp)
+	}
+}
+
+// DeleteBucket godoc
+// @Summary Delete bucket
+// @Tags buckets
+// @Param id path string true "Bucket ID"
+// @Success 200 {string} string ""
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets/{id} [delete]
+func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if repo == nil {
+			log.Print("delete bucket: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		idHex := c.Param("id")
+		id, err := primitive.ObjectIDFromHex(idHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if err := repo.Delete(c.Request.Context(), id); err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("delete bucket: failed to delete: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusOK)
 	}
 }

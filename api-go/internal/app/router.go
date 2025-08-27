@@ -23,9 +23,13 @@ func SetupRouter(m *db.Mongo) *gin.Engine {
 			router.POST("/api/v1/users", handlers.CreateUser(userRepo))
 			if bucketRepo, err := repository.NewBucketRepository(m.DB); err == nil {
 				router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo))
+				router.GET("/api/v1/buckets", auth, handlers.ListBuckets(bucketRepo))
+				router.DELETE("/api/v1/buckets/:id", auth, handlers.DeleteBucket(bucketRepo))
 			}
 			if sourceRepo, err := repository.NewSourceRepository(m.DB); err == nil {
 				router.POST("/api/v1/sources/gdrive", auth, handlers.CreateGDriveSource(sourceRepo))
+				router.GET("/api/v1/sources", auth, handlers.ListSources(sourceRepo))
+				router.DELETE("/api/v1/sources/:id", auth, handlers.DeleteSource(sourceRepo))
 			}
 		}
 	}
