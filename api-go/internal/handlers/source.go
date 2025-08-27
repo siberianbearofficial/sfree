@@ -8,6 +8,7 @@ import (
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type createGDriveSourceRequest struct {
@@ -78,5 +79,98 @@ func CreateGDriveSource(repo *repository.SourceRepository) gin.HandlerFunc {
 			Key:       created.Key,
 			CreatedAt: created.CreatedAt,
 		})
+	}
+}
+
+// ListSources godoc
+// @Summary List sources
+// @Tags sources
+// @Produce json
+// @Success 200 {array} createSourceResponse
+// @Failure 401 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources [get]
+func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if repo == nil {
+			log.Print("list sources: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		sources, err := repo.ListByUser(c.Request.Context(), userID)
+		if err != nil {
+			log.Printf("list sources: failed to list: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		resp := make([]createSourceResponse, 0, len(sources))
+		for _, s := range sources {
+			resp = append(resp, createSourceResponse{
+				ID:        s.ID.Hex(),
+				Name:      s.Name,
+				Type:      string(s.Type),
+				Key:       s.Key,
+				CreatedAt: s.CreatedAt,
+			})
+		}
+		c.JSON(http.StatusOK, resp)
+	}
+}
+
+// DeleteSource godoc
+// @Summary Delete source
+// @Tags sources
+// @Param id path string true "Source ID"
+// @Success 200 {string} string ""
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources/{id} [delete]
+func DeleteSource(repo *repository.SourceRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if repo == nil {
+			log.Print("delete source: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		idHex := c.Param("id")
+		id, err := primitive.ObjectIDFromHex(idHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if err := repo.Delete(c.Request.Context(), id, userID); err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("delete source: failed to delete: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusOK)
 	}
 }
