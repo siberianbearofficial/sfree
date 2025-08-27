@@ -16,6 +16,7 @@ import (
 	"github.com/example/s3aas/api-go/internal/db"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestCreateBucket(t *testing.T) {
@@ -27,15 +28,30 @@ func TestCreateBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	userRepo, err := repository.NewUserRepository(mongoConn.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("pass"), bcrypt.DefaultCost)
+	_, err = userRepo.Create(context.Background(), repository.User{
+		Username:     "tester",
+		PasswordHash: string(hash),
+		CreatedAt:    time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	repo, err := repository.NewBucketRepository(mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
 	router := gin.New()
-	router.POST("/api/v1/buckets", CreateBucket(repo))
+	auth := BasicAuth(userRepo)
+	router.POST("/api/v1/buckets", auth, CreateBucket(repo))
 	body, _ := json.Marshal(map[string]string{"key": "bucket-test"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/buckets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth("tester", "pass")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -52,5 +68,13 @@ func TestCreateBucket(t *testing.T) {
 	}
 	if resp.Key != "bucket-test" || resp.AccessKey == "" || resp.AccessSecret == "" {
 		t.Fatalf("unexpected response: %+v", resp)
+	}
+	badReq, _ := http.NewRequest(http.MethodPost, "/api/v1/buckets", bytes.NewReader(body))
+	badReq.Header.Set("Content-Type", "application/json")
+	badReq.SetBasicAuth("tester", "wrong")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, badReq)
+	if w2.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w2.Code)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestCreateGDriveSource(t *testing.T) {
@@ -28,17 +29,30 @@ func TestCreateGDriveSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	userRepo, err := repository.NewUserRepository(mongoConn.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte("pass"), bcrypt.DefaultCost)
+	user, err := userRepo.Create(context.Background(), repository.User{
+		Username:     "tester",
+		PasswordHash: string(hash),
+		CreatedAt:    time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	repo, err := repository.NewSourceRepository(mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	userID := primitive.NewObjectID()
 	router := gin.New()
-	router.Use(func(c *gin.Context) { c.Set("userID", userID.Hex()) })
-	router.POST("/api/v1/sources/gdrive", CreateGDriveSource(repo))
+	auth := BasicAuth(userRepo)
+	router.POST("/api/v1/sources/gdrive", auth, CreateGDriveSource(repo))
 	body, _ := json.Marshal(map[string]string{"name": "src-test", "key": "{}"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/sources/gdrive", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth("tester", "pass")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -65,7 +79,7 @@ func TestCreateGDriveSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get stored source: %v", err)
 	}
-	if stored.UserID != userID {
-		t.Fatalf("unexpected user id: %s != %s", stored.UserID.Hex(), userID.Hex())
+	if stored.UserID != user.ID {
+		t.Fatalf("unexpected user id: %s != %s", stored.UserID.Hex(), user.ID.Hex())
 	}
 }

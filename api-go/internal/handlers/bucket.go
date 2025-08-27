@@ -45,6 +45,7 @@ type createBucketResponse struct {
 // @Param bucket body createBucketRequest true "Bucket to create"
 // @Success 200 {object} createBucketResponse
 // @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
 // @Failure 409 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets [post]
