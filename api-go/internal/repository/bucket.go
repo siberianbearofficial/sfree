@@ -46,6 +46,15 @@ func (r *BucketRepository) Create(ctx context.Context, b Bucket) (*Bucket, error
 	return &b, nil
 }
 
+func (r *BucketRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*Bucket, error) {
+	var b Bucket
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&b)
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
 func (r *BucketRepository) GetByKey(ctx context.Context, key string) (*Bucket, error) {
 	var b Bucket
 	err := r.coll.FindOne(ctx, bson.M{"key": key}).Decode(&b)

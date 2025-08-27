@@ -18,8 +18,13 @@ type MongoConfig struct {
 	Database string `yaml:"database"`
 }
 
+type UploadConfig struct {
+	ChunkSize int `yaml:"chunk_size"`
+}
+
 type Config struct {
-	Mongo MongoConfig `yaml:"mongo"`
+	Mongo  MongoConfig  `yaml:"mongo"`
+	Upload UploadConfig `yaml:"upload"`
 }
 
 func Load() (*Config, error) {
@@ -59,5 +64,10 @@ func overrideEnv(cfg *Config) {
 	}
 	if v := os.Getenv("DB_NAME"); v != "" {
 		cfg.Mongo.Database = v
+	}
+	if v := os.Getenv("UPLOAD_CHUNK_SIZE"); v != "" {
+		if s, err := strconv.Atoi(v); err == nil {
+			cfg.Upload.ChunkSize = s
+		}
 	}
 }

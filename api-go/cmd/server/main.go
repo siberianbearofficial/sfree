@@ -26,7 +26,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect mongo: %v", err)
 	}
-	router := app.SetupRouter(mongoConn)
+	router := app.SetupRouter(mongoConn, cfg)
 	if err := router.Run(); err != nil {
 		log.Fatalf("failed to run server: %v", err)
 	}
