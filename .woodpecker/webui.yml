@@ -1,5 +1,7 @@
 when:
   - event: push
+    path:
+      include: [ '.woodpecker/webui.yml', 'webui/**' ]
 
 steps:
   - name: build and push
