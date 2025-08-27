@@ -4,3 +4,5 @@ mongo:
   user: root
   password: example
   database: s3aas_test
+upload:
+  chunk_size: 5242880

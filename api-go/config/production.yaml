@@ -3,3 +3,5 @@ mongo:
   port: 27017
   user: root
   database: s3aas
+upload:
+  chunk_size: 5242880
