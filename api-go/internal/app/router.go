@@ -24,6 +24,9 @@ func SetupRouter(m *db.Mongo) *gin.Engine {
 		if bucketRepo, err := repository.NewBucketRepository(m.DB); err == nil {
 			router.POST("/api/v1/buckets", handlers.CreateBucket(bucketRepo))
 		}
+		if sourceRepo, err := repository.NewSourceRepository(m.DB); err == nil {
+			router.POST("/api/v1/sources/gdrive", handlers.CreateGDriveSource(sourceRepo))
+		}
 	}
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
