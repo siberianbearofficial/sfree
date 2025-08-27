@@ -50,3 +50,12 @@ func (r *FileRepository) Create(ctx context.Context, f File) (*File, error) {
 	}
 	return &f, nil
 }
+
+func (r *FileRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*File, error) {
+	var f File
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&f)
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
