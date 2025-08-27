@@ -1,17 +1,17 @@
 when:
   - event: push
     path:
-      include: [ '.woodpecker/api-go.yml', 'api-go/**' ]
+      include: [ '.woodpecker/webui.yml', 'webui/**' ]
 
 steps:
   - name: build and push
     image: woodpeckerci/plugin-docker-buildx
     settings:
-      repo: ghcr.io/siberianbearofficial/s3aas-api-go
+      repo: ghcr.io/siberianbearofficial/s3aas-webui
       registry: ghcr.io
       username: siberianbearofficial
       password:
         from_secret: GITHUB_TOKEN
-      context: api-go
-      dockerfile: api-go/Dockerfile
+      context: webui
+      dockerfile: webui/Dockerfile
       tag: main
