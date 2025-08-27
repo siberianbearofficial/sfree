@@ -3,10 +3,12 @@ package handlers
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"log"
 	"math/big"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/example/s3aas/api-go/internal/gdrive"
@@ -311,5 +313,100 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			Name:      created.Name,
 			CreatedAt: created.CreatedAt,
 		})
+	}
+}
+
+// DownloadFile godoc
+// @Summary Download file
+// @Tags buckets
+// @Produce octet-stream
+// @Param bucket_id path string true "Bucket ID"
+// @Param file_id path string true "File ID"
+// @Success 200 {file} file
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets/{bucket_id}/files/{file_id}/download [get]
+func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+			log.Print("download file: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		bucketHex := c.Param("bucket_id")
+		fileHex := c.Param("file_id")
+		bucketID, err := primitive.ObjectIDFromHex(bucketHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		fileID, err := primitive.ObjectIDFromHex(fileHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if _, err := bucketRepo.GetByID(c.Request.Context(), bucketID); err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("download file: get bucket: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("download file: get file: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if fileDoc.BucketID != bucketID {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		var total int64
+		for _, ch := range fileDoc.Chunks {
+			total += ch.Size
+		}
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileDoc.Name))
+		c.Header("Content-Type", "application/octet-stream")
+		c.Header("Content-Length", strconv.FormatInt(total, 10))
+		c.Status(http.StatusOK)
+		ctx := c.Request.Context()
+		clients := make(map[primitive.ObjectID]*gdrive.Client)
+		for _, ch := range fileDoc.Chunks {
+			cli, ok := clients[ch.SourceID]
+			if !ok {
+				src, err := sourceRepo.GetByID(ctx, ch.SourceID)
+				if err != nil {
+					log.Printf("download file: get source: %v", err)
+					return
+				}
+				cli, err = gdrive.NewClient(ctx, []byte(src.Key))
+				if err != nil {
+					log.Printf("download file: create client: %v", err)
+					return
+				}
+				clients[ch.SourceID] = cli
+			}
+			rc, err := cli.Download(ctx, ch.Name)
+			if err != nil {
+				log.Printf("download file: download chunk: %v", err)
+				return
+			}
+			_, err = io.Copy(c.Writer, rc)
+			_ = rc.Close()
+			if err != nil {
+				log.Printf("download file: write chunk: %v", err)
+				return
+			}
+		}
 	}
 }

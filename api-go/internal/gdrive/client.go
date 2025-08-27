@@ -28,3 +28,11 @@ func (c *Client) Upload(ctx context.Context, name string, r io.Reader) (string, 
 	}
 	return created.Id, nil
 }
+
+func (c *Client) Download(ctx context.Context, id string) (io.ReadCloser, error) {
+	res, err := c.service.Files.Get(id).Context(ctx).Download()
+	if err != nil {
+		return nil, err
+	}
+	return res.Body, nil
+}
