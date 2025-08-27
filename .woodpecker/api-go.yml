@@ -1,5 +1,7 @@
 when:
   - event: push
+    path:
+      include: [ '.woodpecker/api-go.yml', 'api-go/**' ]
 
 steps:
   - name: build and push
