@@ -5,6 +5,7 @@ import (
 	"github.com/example/s3aas/api-go/internal/db"
 	"github.com/example/s3aas/api-go/internal/handlers"
 	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
@@ -13,6 +14,12 @@ import (
 
 func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 	router := gin.New()
+	router.Use(cors.New(cors.Config{
+		AllowAllOrigins:  true,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 	router.Use(gin.Recovery())
 	router.GET("/readyz", handlers.Readyz)
 	router.GET("/healthz", handlers.Healthz)

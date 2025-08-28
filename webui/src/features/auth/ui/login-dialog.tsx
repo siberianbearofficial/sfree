@@ -7,6 +7,7 @@ type Props = {isOpen: boolean; onOpenChange: (open: boolean) => void};
 export function LoginDialog({isOpen, onOpenChange}: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   return (
     <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
       <ModalContent>
@@ -18,7 +19,21 @@ export function LoginDialog({isOpen, onOpenChange}: Props) {
               <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             </ModalBody>
             <ModalFooter>
-              <Button color="primary" onPress={() => {saveAuth(username, password); onClose();}}>Log In</Button>
+              <Button
+                color="primary"
+                isLoading={isLoading}
+                onPress={async () => {
+                  setIsLoading(true);
+                  try {
+                    saveAuth(username, password);
+                    onClose();
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+              >
+                Log In
+              </Button>
             </ModalFooter>
           </>
         )}
