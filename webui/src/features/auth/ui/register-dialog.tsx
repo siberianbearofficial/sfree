@@ -8,6 +8,7 @@ type Props = {isOpen: boolean; onOpenChange: (open: boolean) => void};
 export function RegisterDialog({isOpen, onOpenChange}: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   return (
     <Modal
@@ -38,10 +39,16 @@ export function RegisterDialog({isOpen, onOpenChange}: Props) {
               ) : (
                 <Button
                   color="primary"
+                  isLoading={isLoading}
                   onPress={async () => {
-                    const {password} = await createUser(username);
-                    saveAuth(username, password);
-                    setPassword(password);
+                    setIsLoading(true);
+                    try {
+                      const {password} = await createUser(username);
+                      saveAuth(username, password);
+                      setPassword(password);
+                    } finally {
+                      setIsLoading(false);
+                    }
                   }}
                 >
                   Sign Up
