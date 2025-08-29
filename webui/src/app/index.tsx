@@ -3,7 +3,7 @@ import LandingPage from "../pages/landing";
 import DashboardPage from "../pages/dashboard";
 
 export default function App() {
-  const isAuthenticated = Boolean(localStorage.getItem("authToken"));
+  const isAuthenticated = Boolean(localStorage.getItem("auth"));
 
   return (
     <BrowserRouter>
