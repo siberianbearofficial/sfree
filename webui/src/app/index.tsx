@@ -1,6 +1,7 @@
 import {BrowserRouter, Routes, Route, Navigate} from "react-router-dom";
 import LandingPage from "../pages/landing";
 import DashboardPage from "../pages/dashboard";
+import BucketsPage from "../pages/buckets";
 
 export default function App() {
   const isAuthenticated = Boolean(localStorage.getItem("auth"));
@@ -13,6 +14,7 @@ export default function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LandingPage />}
         />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/buckets" element={<BucketsPage />} />
       </Routes>
     </BrowserRouter>
   );
