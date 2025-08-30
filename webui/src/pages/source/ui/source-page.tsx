@@ -1,7 +1,7 @@
 import {Button, CircularProgress} from "@heroui/react";
 import {useEffect, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
-import {fileDownloadUrl, getSourceInfo} from "../../../shared/api/sources";
+import {downloadFile, getSourceInfo} from "../../../shared/api/sources";
 import type {SourceInfo} from "../../../shared/api/sources";
 import {SourceTypeChip} from "../../../entities/source";
 import {DownloadIcon} from "../../../shared/icons";
@@ -66,9 +66,13 @@ export function SourcePage() {
                   <td className="py-2">{f.name}</td>
                   <td className="py-2">{f.size}</td>
                   <td className="py-2">
-                    <a href={fileDownloadUrl(id!, f.id)}>
+                    <Button
+                      isIconOnly
+                      variant="light"
+                      onPress={() => downloadFile(id!, f)}
+                    >
                       <DownloadIcon className="w-5 h-5" />
-                    </a>
+                    </Button>
                   </td>
                 </tr>
               ))}

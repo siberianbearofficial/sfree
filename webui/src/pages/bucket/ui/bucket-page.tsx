@@ -1,7 +1,7 @@
 import {Button} from "@heroui/react";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
-import {fileDownloadUrl, listBuckets, listFiles, uploadFile} from "../../../shared/api/buckets";
+import {downloadFile, listBuckets, listFiles, uploadFile} from "../../../shared/api/buckets";
 import type {Bucket, FileInfo} from "../../../shared/api/buckets";
 import {DownloadIcon} from "../../../shared/icons";
 import {ArrowLeftIcon} from "@heroui/shared-icons";
@@ -92,9 +92,13 @@ export function BucketPage() {
                   <td className="py-2">{f.size}</td>
                   <td className="py-2">{new Date(f.created_at).toLocaleString()}</td>
                   <td className="py-2">
-                    <a href={fileDownloadUrl(id!, f.id)}>
+                    <Button
+                      isIconOnly
+                      variant="light"
+                      onPress={() => downloadFile(id!, f)}
+                    >
                       <DownloadIcon className="w-5 h-5" />
-                    </a>
+                    </Button>
                   </td>
                 </tr>
               ))}

@@ -56,6 +56,16 @@ export async function deleteSource(id: string): Promise<void> {
   if (!res.ok) throw new Error("failed to delete source");
 }
 
-export function fileDownloadUrl(sourceId: string, fileId: string): string {
-  return `${API_BASE}/sources/${sourceId}/files/${fileId}/download`;
+export async function downloadFile(sourceId: string, file: SourceFile): Promise<void> {
+  const res = await fetch(`${API_BASE}/sources/${sourceId}/files/${file.id}/download`, {
+    headers: authHeader(),
+  });
+  if (!res.ok) throw new Error("failed to download file");
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = file.name;
+  a.click();
+  window.URL.revokeObjectURL(url);
 }
