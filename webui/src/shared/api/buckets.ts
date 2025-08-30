@@ -60,3 +60,25 @@ export async function uploadFile(bucketId: string, file: File): Promise<FileInfo
   if (!res.ok) throw new Error("failed to upload file");
   return res.json();
 }
+
+export async function deleteBucket(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/buckets/${id}`, {
+    method: "DELETE",
+    headers: authHeader(),
+  });
+  if (!res.ok) throw new Error("failed to delete bucket");
+}
+
+export async function downloadFile(bucketId: string, file: FileInfo): Promise<void> {
+  const res = await fetch(`${API_BASE}/buckets/${bucketId}/files/${file.id}/download`, {
+    headers: authHeader(),
+  });
+  if (!res.ok) throw new Error("failed to download file");
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = file.name;
+  a.click();
+  window.URL.revokeObjectURL(url);
+}

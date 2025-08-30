@@ -1,11 +1,14 @@
 import {Button} from "@heroui/react";
 import {useCallback, useEffect, useRef, useState} from "react";
-import {useParams} from "react-router-dom";
-import {listBuckets, listFiles, uploadFile} from "../../../shared/api/buckets";
+import {useNavigate, useParams} from "react-router-dom";
+import {downloadFile, listBuckets, listFiles, uploadFile} from "../../../shared/api/buckets";
 import type {Bucket, FileInfo} from "../../../shared/api/buckets";
+import {DownloadIcon} from "../../../shared/icons";
+import {ArrowLeftIcon} from "@heroui/shared-icons";
 
 export function BucketPage() {
   const {id} = useParams<{id: string}>();
+  const navigate = useNavigate();
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,6 +52,9 @@ export function BucketPage() {
 
   return (
     <div className="p-8 flex flex-col gap-6">
+      <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
+        <ArrowLeftIcon className="w-5 h-5" />
+      </Button>
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold">{bucket.key}</h1>
         <p>ID: {bucket.id}</p>
@@ -76,6 +82,7 @@ export function BucketPage() {
                 <th className="pb-2">Name</th>
                 <th className="pb-2">Size</th>
                 <th className="pb-2">Created</th>
+                <th className="pb-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -84,6 +91,15 @@ export function BucketPage() {
                   <td className="py-2">{f.name}</td>
                   <td className="py-2">{f.size}</td>
                   <td className="py-2">{new Date(f.created_at).toLocaleString()}</td>
+                  <td className="py-2">
+                    <Button
+                      isIconOnly
+                      variant="light"
+                      onPress={() => downloadFile(id!, f)}
+                    >
+                      <DownloadIcon className="w-5 h-5" />
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
