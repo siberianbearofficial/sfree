@@ -59,3 +59,23 @@ func (r *FileRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*F
 	}
 	return &f, nil
 }
+
+func (r *FileRepository) ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]File, error) {
+	cursor, err := r.coll.Find(ctx, bson.M{"bucket_id": bucketID})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var files []File
+	for cursor.Next(ctx) {
+		var f File
+		if err := cursor.Decode(&f); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return files, nil
+}

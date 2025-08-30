@@ -50,6 +50,13 @@ type bucketResponse struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type fileResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	Size      int64     `json:"size"`
+}
+
 // CreateBucket godoc
 // @Summary Create bucket
 // @Tags buckets
@@ -313,6 +320,63 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			Name:      created.Name,
 			CreatedAt: created.CreatedAt,
 		})
+	}
+}
+
+// ListFiles godoc
+// @Summary List files in bucket
+// @Tags buckets
+// @Produce json
+// @Param bucket_id path string true "Bucket ID"
+// @Success 200 {array} fileResponse
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets/{bucket_id}/files [get]
+func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if bucketRepo == nil || fileRepo == nil {
+			log.Print("list files: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		bucketHex := c.Param("bucket_id")
+		bucketID, err := primitive.ObjectIDFromHex(bucketHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if _, err := bucketRepo.GetByID(c.Request.Context(), bucketID); err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("list files: get bucket: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		files, err := fileRepo.ListByBucket(c.Request.Context(), bucketID)
+		if err != nil {
+			log.Printf("list files: list files: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		resp := make([]fileResponse, 0, len(files))
+		for _, f := range files {
+			var size int64
+			for _, ch := range f.Chunks {
+				size += ch.Size
+			}
+			resp = append(resp, fileResponse{
+				ID:        f.ID.Hex(),
+				Name:      f.Name,
+				CreatedAt: f.CreatedAt,
+				Size:      size,
+			})
+		}
+		c.JSON(http.StatusOK, resp)
 	}
 }
 
