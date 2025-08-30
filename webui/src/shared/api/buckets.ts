@@ -1,6 +1,19 @@
 const API_BASE = "https://s3aas-api.dev.nachert.art/api/v1";
 
-export type Bucket = {id: string; key: string; created_at: string};
+export type Bucket = {
+  id: string;
+  key: string;
+  access_key: string;
+  access_secret: string;
+  created_at: string;
+};
+
+export type FileInfo = {
+  id: string;
+  name: string;
+  created_at: string;
+  size: number;
+};
 
 function authHeader(): Record<string, string> {
   const auth = localStorage.getItem("auth");
@@ -25,5 +38,25 @@ export async function createBucket(key: string): Promise<{key: string; access_ke
     body: JSON.stringify({key}),
   });
   if (!res.ok) throw new Error("failed to create bucket");
+  return res.json();
+}
+
+export async function listFiles(bucketId: string): Promise<FileInfo[]> {
+  const res = await fetch(`${API_BASE}/buckets/${bucketId}/files`, {
+    headers: authHeader(),
+  });
+  if (!res.ok) throw new Error("failed to list files");
+  return res.json();
+}
+
+export async function uploadFile(bucketId: string, file: File): Promise<FileInfo> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/buckets/${bucketId}/upload`, {
+    method: "POST",
+    headers: authHeader(),
+    body: form,
+  });
+  if (!res.ok) throw new Error("failed to upload file");
   return res.json();
 }
