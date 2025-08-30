@@ -79,3 +79,14 @@ func (r *FileRepository) ListByBucket(ctx context.Context, bucketID primitive.Ob
 	}
 	return files, nil
 }
+
+func (r *FileRepository) Delete(ctx context.Context, id primitive.ObjectID) error {
+	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
+}
