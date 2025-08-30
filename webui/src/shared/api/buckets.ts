@@ -60,3 +60,15 @@ export async function uploadFile(bucketId: string, file: File): Promise<FileInfo
   if (!res.ok) throw new Error("failed to upload file");
   return res.json();
 }
+
+export async function deleteBucket(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/buckets/${id}`, {
+    method: "DELETE",
+    headers: authHeader(),
+  });
+  if (!res.ok) throw new Error("failed to delete bucket");
+}
+
+export function fileDownloadUrl(bucketId: string, fileId: string): string {
+  return `${API_BASE}/buckets/${bucketId}/files/${fileId}/download`;
+}

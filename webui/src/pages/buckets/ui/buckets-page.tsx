@@ -2,13 +2,20 @@ import {Button, Card, CardBody, CardHeader, useDisclosure} from "@heroui/react";
 import {useEffect, useState} from "react";
 import {Link} from "react-router-dom";
 import {CreateBucketDialog} from "../../../features/bucket";
-import {listBuckets} from "../../../shared/api/buckets";
+import {deleteBucket, listBuckets} from "../../../shared/api/buckets";
 import type {Bucket} from "../../../shared/api/buckets";
+import {DeleteIcon} from "@heroui/shared-icons";
 
 export function BucketsPage() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const create = useDisclosure();
+
+  async function handleDelete(id: string) {
+    if (!window.confirm("Delete bucket?")) return;
+    await deleteBucket(id);
+    await load();
+  }
 
   async function load() {
     setIsLoading(true);
@@ -38,15 +45,26 @@ export function BucketsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {buckets.map((b) => (
-            <Card key={b.id}>
-              <CardHeader className="font-bold">{b.key}</CardHeader>
-              <CardBody className="flex justify-between items-center">
-                {new Date(b.created_at).toLocaleString()}
-                <Button as={Link} to={`/buckets/${b.id}`} color="primary" variant="flat">
-                  Open
-                </Button>
-              </CardBody>
-            </Card>
+            <Link key={b.id} to={`/buckets/${b.id}`}>
+              <Card>
+                <CardHeader className="flex justify-between items-center font-bold">
+                  {b.key}
+                  <Button
+                    isIconOnly
+                    variant="light"
+                    color="danger"
+                    onPress={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDelete(b.id);
+                    }}
+                  >
+                    <DeleteIcon className="w-4 h-4" />
+                  </Button>
+                </CardHeader>
+                <CardBody>{new Date(b.created_at).toLocaleString()}</CardBody>
+              </Card>
+            </Link>
           ))}
         </div>
       )}

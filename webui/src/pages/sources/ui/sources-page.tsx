@@ -2,13 +2,21 @@ import {Button, Card, CardBody, CardHeader, useDisclosure} from "@heroui/react";
 import {Link} from "react-router-dom";
 import {useEffect, useState} from "react";
 import {CreateSourceDialog} from "../../../features/source";
-import {listSources} from "../../../shared/api/sources";
+import {deleteSource, listSources} from "../../../shared/api/sources";
 import type {Source} from "../../../shared/api/sources";
+import {SourceTypeChip} from "../../../entities/source";
+import {DeleteIcon} from "@heroui/shared-icons";
 
 export function SourcesPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const create = useDisclosure();
+
+  async function handleDelete(id: string) {
+    if (!window.confirm("Delete source?")) return;
+    await deleteSource(id);
+    await load();
+  }
 
   async function load() {
     setIsLoading(true);
@@ -40,8 +48,25 @@ export function SourcesPage() {
           {sources.map((s) => (
             <Link key={s.id} to={`/sources/${s.id}`}>
               <Card>
-                <CardHeader className="font-bold">{s.name}</CardHeader>
-                <CardBody>{new Date(s.created_at).toLocaleString()}</CardBody>
+                <CardHeader className="flex justify-between items-center font-bold">
+                  {s.name}
+                  <Button
+                    isIconOnly
+                    variant="light"
+                    color="danger"
+                    onPress={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDelete(s.id);
+                    }}
+                  >
+                    <DeleteIcon className="w-4 h-4" />
+                  </Button>
+                </CardHeader>
+                <CardBody className="flex justify-between items-center">
+                  <SourceTypeChip type={s.type} />
+                  {new Date(s.created_at).toLocaleString()}
+                </CardBody>
               </Card>
             </Link>
           ))}
