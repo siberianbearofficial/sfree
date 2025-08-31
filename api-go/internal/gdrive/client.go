@@ -43,6 +43,10 @@ func (c *Client) Download(ctx context.Context, id string) (io.ReadCloser, error)
 	return res.Body, nil
 }
 
+func (c *Client) Delete(ctx context.Context, id string) error {
+	return c.service.Files.Delete(id).Context(ctx).Do()
+}
+
 func (c *Client) ListFiles(ctx context.Context) ([]File, error) {
 	var all []File
 	pageToken := ""

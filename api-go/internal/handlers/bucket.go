@@ -327,14 +327,14 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Summary List files in bucket
 // @Tags buckets
 // @Produce json
-// @Param bucket_id path string true "Bucket ID"
+// @Param id path string true "Bucket ID"
 // @Success 200 {array} fileResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
-// @Router /api/v1/buckets/{bucket_id}/files [get]
+// @Router /api/v1/buckets/{id}/files [get]
 func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || fileRepo == nil {
@@ -342,8 +342,8 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketHex := c.Param("bucket_id")
-		bucketID, err := primitive.ObjectIDFromHex(bucketHex)
+		idHex := c.Param("id")
+		bucketID, err := primitive.ObjectIDFromHex(idHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
 			return
@@ -384,7 +384,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 // @Summary Download file
 // @Tags buckets
 // @Produce octet-stream
-// @Param bucket_id path string true "Bucket ID"
+// @Param id path string true "Bucket ID"
 // @Param file_id path string true "File ID"
 // @Success 200 {file} file
 // @Failure 400 {string} string ""
@@ -392,7 +392,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
-// @Router /api/v1/buckets/{bucket_id}/files/{file_id}/download [get]
+// @Router /api/v1/buckets/{id}/files/{file_id}/download [get]
 func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -400,9 +400,9 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketHex := c.Param("bucket_id")
+		idHex := c.Param("id")
 		fileHex := c.Param("file_id")
-		bucketID, err := primitive.ObjectIDFromHex(bucketHex)
+		bucketID, err := primitive.ObjectIDFromHex(idHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
 			return
@@ -472,5 +472,93 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 				return
 			}
 		}
+	}
+}
+
+// DeleteFile godoc
+// @Summary Delete file
+// @Tags buckets
+// @Param id path string true "Bucket ID"
+// @Param file_id path string true "File ID"
+// @Success 200 {string} string ""
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets/{id}/files/{file_id} [delete]
+func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+			log.Print("delete file: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		idHex := c.Param("id")
+		fileHex := c.Param("file_id")
+		bucketID, err := primitive.ObjectIDFromHex(idHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		fileID, err := primitive.ObjectIDFromHex(fileHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if _, err := bucketRepo.GetByID(c.Request.Context(), bucketID); err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("delete file: get bucket: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("delete file: get file: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if fileDoc.BucketID != bucketID {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		ctx := c.Request.Context()
+		clients := make(map[primitive.ObjectID]*gdrive.Client)
+		for _, ch := range fileDoc.Chunks {
+			cli, ok := clients[ch.SourceID]
+			if !ok {
+				src, err := sourceRepo.GetByID(ctx, ch.SourceID)
+				if err != nil {
+					log.Printf("delete file: get source: %v", err)
+					c.Status(http.StatusInternalServerError)
+					return
+				}
+				cli, err = gdrive.NewClient(ctx, []byte(src.Key))
+				if err != nil {
+					log.Printf("delete file: create client: %v", err)
+					c.Status(http.StatusInternalServerError)
+					return
+				}
+				clients[ch.SourceID] = cli
+			}
+			if err := cli.Delete(ctx, ch.Name); err != nil {
+				log.Printf("delete file: delete chunk: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+		}
+		if err := fileRepo.Delete(ctx, fileID); err != nil {
+			log.Printf("delete file: delete metadata: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusOK)
 	}
 }

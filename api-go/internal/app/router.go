@@ -53,8 +53,9 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 				chunkSize = cfg.Upload.ChunkSize
 			}
 			router.POST("/api/v1/buckets/:id/upload", auth, handlers.UploadFile(bucketRepo, sourceRepo, fileRepo, chunkSize))
-			router.GET("/api/v1/buckets/:bucket_id/files", auth, handlers.ListFiles(bucketRepo, fileRepo))
-			router.GET("/api/v1/buckets/:bucket_id/files/:file_id/download", auth, handlers.DownloadFile(bucketRepo, sourceRepo, fileRepo))
+			router.GET("/api/v1/buckets/:id/files", auth, handlers.ListFiles(bucketRepo, fileRepo))
+			router.GET("/api/v1/buckets/:id/files/:file_id/download", auth, handlers.DownloadFile(bucketRepo, sourceRepo, fileRepo))
+			router.DELETE("/api/v1/buckets/:id/files/:file_id", auth, handlers.DeleteFile(bucketRepo, sourceRepo, fileRepo))
 		}
 	}
 

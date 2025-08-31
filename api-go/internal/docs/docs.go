@@ -108,7 +108,61 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/buckets/{bucket_id}/files": {
+        "/api/v1/buckets/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "tags": [
+                    "buckets"
+                ],
+                "summary": "Delete bucket",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bucket ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/buckets/{id}/files": {
             "get": {
                 "security": [
                     {
@@ -126,7 +180,7 @@ const docTemplate = `{
                     {
                         "type": "string",
                         "description": "Bucket ID",
-                        "name": "bucket_id",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     }
@@ -168,25 +222,22 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/buckets/{bucket_id}/files/{file_id}/download": {
-            "get": {
+        "/api/v1/buckets/{id}/files/{file_id}": {
+            "delete": {
                 "security": [
                     {
                         "BasicAuth": []
                     }
                 ],
-                "produces": [
-                    "application/octet-stream"
-                ],
                 "tags": [
                     "buckets"
                 ],
-                "summary": "Download file",
+                "summary": "Delete file",
                 "parameters": [
                     {
                         "type": "string",
                         "description": "Bucket ID",
-                        "name": "bucket_id",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     },
@@ -202,7 +253,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "file"
+                            "type": "string"
                         }
                     },
                     "400": {
@@ -232,22 +283,32 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/buckets/{id}": {
-            "delete": {
+        "/api/v1/buckets/{id}/files/{file_id}/download": {
+            "get": {
                 "security": [
                     {
                         "BasicAuth": []
                     }
                 ],
+                "produces": [
+                    "application/octet-stream"
+                ],
                 "tags": [
                     "buckets"
                 ],
-                "summary": "Delete bucket",
+                "summary": "Download file",
                 "parameters": [
                     {
                         "type": "string",
                         "description": "Bucket ID",
                         "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "file_id",
                         "in": "path",
                         "required": true
                     }
@@ -256,7 +317,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "string"
+                            "type": "file"
                         }
                     },
                     "400": {

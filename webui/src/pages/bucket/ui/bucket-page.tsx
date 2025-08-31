@@ -1,18 +1,29 @@
-import {Button} from "@heroui/react";
-import {useCallback, useEffect, useRef, useState} from "react";
-import {useNavigate, useParams} from "react-router-dom";
-import {downloadFile, listBuckets, listFiles, uploadFile} from "../../../shared/api/buckets";
-import type {Bucket, FileInfo} from "../../../shared/api/buckets";
-import {DownloadIcon} from "../../../shared/icons";
-import {ArrowLeftIcon} from "@heroui/shared-icons";
+import { Button, useDisclosure } from "@heroui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  deleteFile,
+  downloadFile,
+  listBuckets,
+  listFiles,
+  uploadFile,
+} from "../../../shared/api/buckets";
+import type { Bucket, FileInfo } from "../../../shared/api/buckets";
+import { DownloadIcon } from "../../../shared/icons";
+import { DeleteIcon } from "@heroui/shared-icons";
+import { ConfirmDialog } from "../../../shared/ui";
+import { ArrowLeftIcon } from "@heroui/shared-icons";
 
 export function BucketPage() {
-  const {id} = useParams<{id: string}>();
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
+  const confirm = useDisclosure();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -47,6 +58,18 @@ export function BucketPage() {
     if (f) handleUpload(f);
   }
 
+  async function handleDelete() {
+    if (!id || !deleteId) return;
+    setIsDeleting(true);
+    try {
+      await deleteFile(id, deleteId);
+      await load();
+    } finally {
+      setIsDeleting(false);
+      confirm.onClose();
+    }
+  }
+
   if (isLoading) return <div className="p-8">Loading...</div>;
   if (!bucket) return <div className="p-8">Bucket not found</div>;
 
@@ -63,7 +86,12 @@ export function BucketPage() {
         <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
       </div>
       <div className="flex justify-end">
-        <input type="file" ref={fileInput} className="hidden" onChange={onFileChange} />
+        <input
+          type="file"
+          ref={fileInput}
+          className="hidden"
+          onChange={onFileChange}
+        />
         <Button color="primary" onPress={() => fileInput.current?.click()}>
           Upload File
         </Button>
@@ -90,15 +118,30 @@ export function BucketPage() {
                 <tr key={f.id} className="border-t">
                   <td className="py-2">{f.name}</td>
                   <td className="py-2">{f.size}</td>
-                  <td className="py-2">{new Date(f.created_at).toLocaleString()}</td>
                   <td className="py-2">
-                    <Button
-                      isIconOnly
-                      variant="light"
-                      onPress={() => downloadFile(id!, f)}
-                    >
-                      <DownloadIcon className="w-5 h-5" />
-                    </Button>
+                    {new Date(f.created_at).toLocaleString()}
+                  </td>
+                  <td className="py-2">
+                    <div className="flex gap-2">
+                      <Button
+                        isIconOnly
+                        variant="light"
+                        onPress={() => downloadFile(id!, f)}
+                      >
+                        <DownloadIcon className="w-5 h-5" />
+                      </Button>
+                      <Button
+                        isIconOnly
+                        variant="light"
+                        color="danger"
+                        onPress={() => {
+                          setDeleteId(f.id);
+                          confirm.onOpen();
+                        }}
+                      >
+                        <DeleteIcon className="w-5 h-5" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -106,6 +149,18 @@ export function BucketPage() {
           </table>
         )}
       </div>
+      <ConfirmDialog
+        isOpen={confirm.isOpen}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+          confirm.onOpenChange();
+        }}
+        title="Delete file?"
+        message="Are you sure you want to delete this file?"
+        onConfirm={handleDelete}
+        confirmLabel="Delete"
+        isConfirmLoading={isDeleting}
+      />
     </div>
   );
 }
