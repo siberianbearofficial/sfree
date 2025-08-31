@@ -10,6 +10,7 @@ import (
 
 	"github.com/example/s3aas/api-go/internal/config"
 	"github.com/example/s3aas/api-go/internal/db"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func TestBucketRepository(t *testing.T) {
@@ -25,7 +26,7 @@ func TestBucketRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := Bucket{Key: "testbucket", AccessKey: "ak", AccessSecret: "secret", CreatedAt: time.Now()}
+	b := Bucket{UserID: primitive.NewObjectID(), Key: "testbucket", AccessKey: "ak", AccessSecretHash: "secret", CreatedAt: time.Now()}
 	created, err := repo.Create(context.Background(), b)
 	if err != nil {
 		t.Fatal(err)

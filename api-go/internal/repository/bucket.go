@@ -11,11 +11,12 @@ import (
 )
 
 type Bucket struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty"`
-	Key          string             `bson:"key"`
-	AccessKey    string             `bson:"access_key"`
-	AccessSecret string             `bson:"access_secret"`
-	CreatedAt    time.Time          `bson:"created_at"`
+	ID               primitive.ObjectID `bson:"_id,omitempty"`
+	UserID           primitive.ObjectID `bson:"user_id"`
+	Key              string             `bson:"key"`
+	AccessKey        string             `bson:"access_key"`
+	AccessSecretHash string             `bson:"access_secret"`
+	CreatedAt        time.Time          `bson:"created_at"`
 }
 
 type BucketRepository struct {
@@ -24,9 +25,14 @@ type BucketRepository struct {
 
 func NewBucketRepository(db *mongo.Database) (*BucketRepository, error) {
 	coll := db.Collection("buckets")
-	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
-		Keys:    bson.D{{Key: "key", Value: 1}},
-		Options: options.Index().SetUnique(true),
+	_, err := coll.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "key", Value: 1}},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys: bson.D{{Key: "user_id", Value: 1}},
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -64,8 +70,8 @@ func (r *BucketRepository) GetByKey(ctx context.Context, key string) (*Bucket, e
 	return &b, nil
 }
 
-func (r *BucketRepository) List(ctx context.Context) ([]Bucket, error) {
-	cursor, err := r.coll.Find(ctx, bson.D{})
+func (r *BucketRepository) ListByUser(ctx context.Context, userID primitive.ObjectID) ([]Bucket, error) {
+	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID})
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +90,8 @@ func (r *BucketRepository) List(ctx context.Context) ([]Bucket, error) {
 	return buckets, nil
 }
 
-func (r *BucketRepository) Delete(ctx context.Context, id primitive.ObjectID) error {
-	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
+func (r *BucketRepository) Delete(ctx context.Context, id, userID primitive.ObjectID) error {
+	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": id, "user_id": userID})
 	if err != nil {
 		return err
 	}

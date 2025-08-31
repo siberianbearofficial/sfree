@@ -740,9 +740,6 @@ const docTemplate = `{
                 "access_key": {
                     "type": "string"
                 },
-                "access_secret": {
-                    "type": "string"
-                },
                 "created_at": {
                     "type": "string"
                 },
@@ -916,21 +913,16 @@ const docTemplate = `{
                 }
             }
         }
-    },
-    "securityDefinitions": {
-        "BasicAuth": {
-            "type": "basic"
-        }
     }
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
+	Version:          "",
 	Host:             "",
-	BasePath:         "/",
+	BasePath:         "",
 	Schemes:          []string{},
-	Title:            "S3aaS API",
+	Title:            "",
 	Description:      "",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,

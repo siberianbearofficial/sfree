@@ -82,7 +82,6 @@ export function BucketPage() {
         <h1 className="text-3xl font-bold">{bucket.key}</h1>
         <p>ID: {bucket.id}</p>
         <p>Access Key: {bucket.access_key}</p>
-        <p>Access Secret: {bucket.access_secret}</p>
         <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
       </div>
       <div className="flex justify-end">
