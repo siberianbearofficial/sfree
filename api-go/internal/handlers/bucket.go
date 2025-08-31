@@ -327,14 +327,14 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Summary List files in bucket
 // @Tags buckets
 // @Produce json
-// @Param bucket_id path string true "Bucket ID"
+// @Param id path string true "Bucket ID"
 // @Success 200 {array} fileResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
-// @Router /api/v1/buckets/{bucket_id}/files [get]
+// @Router /api/v1/buckets/{id}/files [get]
 func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || fileRepo == nil {
@@ -342,8 +342,8 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketHex := c.Param("bucket_id")
-		bucketID, err := primitive.ObjectIDFromHex(bucketHex)
+		idHex := c.Param("id")
+		bucketID, err := primitive.ObjectIDFromHex(idHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
 			return
@@ -384,7 +384,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 // @Summary Download file
 // @Tags buckets
 // @Produce octet-stream
-// @Param bucket_id path string true "Bucket ID"
+// @Param id path string true "Bucket ID"
 // @Param file_id path string true "File ID"
 // @Success 200 {file} file
 // @Failure 400 {string} string ""
@@ -392,7 +392,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
-// @Router /api/v1/buckets/{bucket_id}/files/{file_id}/download [get]
+// @Router /api/v1/buckets/{id}/files/{file_id}/download [get]
 func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -400,9 +400,9 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketHex := c.Param("bucket_id")
+		idHex := c.Param("id")
 		fileHex := c.Param("file_id")
-		bucketID, err := primitive.ObjectIDFromHex(bucketHex)
+		bucketID, err := primitive.ObjectIDFromHex(idHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
 			return
@@ -478,7 +478,7 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 // DeleteFile godoc
 // @Summary Delete file
 // @Tags buckets
-// @Param bucket_id path string true "Bucket ID"
+// @Param id path string true "Bucket ID"
 // @Param file_id path string true "File ID"
 // @Success 200 {string} string ""
 // @Failure 400 {string} string ""
@@ -486,7 +486,7 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
-// @Router /api/v1/buckets/{bucket_id}/files/{file_id} [delete]
+// @Router /api/v1/buckets/{id}/files/{file_id} [delete]
 func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -494,9 +494,9 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketHex := c.Param("bucket_id")
+		idHex := c.Param("id")
 		fileHex := c.Param("file_id")
-		bucketID, err := primitive.ObjectIDFromHex(bucketHex)
+		bucketID, err := primitive.ObjectIDFromHex(idHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
 			return
