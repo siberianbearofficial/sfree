@@ -740,9 +740,6 @@ const docTemplate = `{
                 "access_key": {
                     "type": "string"
                 },
-                "access_secret": {
-                    "type": "string"
-                },
                 "created_at": {
                     "type": "string"
                 },

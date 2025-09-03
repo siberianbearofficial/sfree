@@ -16,11 +16,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
-const accessSecretLength = 80
+const accessSecretLength = 35
 
-var alphabet = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+var alphabet = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
 func generateAccessSecret() string {
 	b := make([]rune, accessSecretLength)
@@ -43,11 +44,10 @@ type createBucketResponse struct {
 }
 
 type bucketResponse struct {
-	ID           string    `json:"id"`
-	Key          string    `json:"key"`
-	AccessKey    string    `json:"access_key"`
-	AccessSecret string    `json:"access_secret"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Key       string    `json:"key"`
+	AccessKey string    `json:"access_key"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type fileResponse struct {
@@ -82,13 +82,30 @@ func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
 		accessKey := req.Key
 		accessSecret := generateAccessSecret()
+		hash, err := bcrypt.GenerateFromPassword([]byte(accessSecret), bcrypt.DefaultCost)
+		if err != nil {
+			log.Printf("create bucket: hash secret: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 		bucket := repository.Bucket{
-			Key:          req.Key,
-			AccessKey:    accessKey,
-			AccessSecret: accessSecret,
-			CreatedAt:    time.Now().UTC(),
+			UserID:           userID,
+			Key:              req.Key,
+			AccessKey:        accessKey,
+			AccessSecretHash: string(hash),
+			CreatedAt:        time.Now().UTC(),
 		}
 		created, err := repo.Create(c.Request.Context(), bucket)
 		if err != nil {
@@ -104,7 +121,7 @@ func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 		c.JSON(http.StatusOK, createBucketResponse{
 			Key:          created.Key,
 			AccessKey:    created.AccessKey,
-			AccessSecret: created.AccessSecret,
+			AccessSecret: accessSecret,
 			CreatedAt:    created.CreatedAt,
 		})
 	}
@@ -126,7 +143,17 @@ func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		buckets, err := repo.List(c.Request.Context())
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		buckets, err := repo.ListByUser(c.Request.Context(), userID)
 		if err != nil {
 			log.Printf("list buckets: failed to list buckets: %v", err)
 			c.Status(http.StatusInternalServerError)
@@ -135,11 +162,10 @@ func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 		resp := make([]bucketResponse, 0, len(buckets))
 		for _, b := range buckets {
 			resp = append(resp, bucketResponse{
-				ID:           b.ID.Hex(),
-				Key:          b.Key,
-				AccessKey:    b.AccessKey,
-				AccessSecret: b.AccessSecret,
-				CreatedAt:    b.CreatedAt,
+				ID:        b.ID.Hex(),
+				Key:       b.Key,
+				AccessKey: b.AccessKey,
+				CreatedAt: b.CreatedAt,
 			})
 		}
 		c.JSON(http.StatusOK, resp)
@@ -164,13 +190,23 @@ func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
 		idHex := c.Param("id")
 		id, err := primitive.ObjectIDFromHex(idHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if err := repo.Delete(c.Request.Context(), id); err != nil {
+		if err := repo.Delete(c.Request.Context(), id, userID); err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
@@ -216,15 +252,6 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if _, err := bucketRepo.GetByID(c.Request.Context(), bucketID); err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			log.Printf("upload file: get bucket: %v", err)
-			c.Status(http.StatusInternalServerError)
-			return
-		}
 		userIDHex := c.GetString("userID")
 		if userIDHex == "" {
 			c.Status(http.StatusUnauthorized)
@@ -233,6 +260,20 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		userID, err := primitive.ObjectIDFromHex(userIDHex)
 		if err != nil {
 			c.Status(http.StatusUnauthorized)
+			return
+		}
+		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("upload file: get bucket: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if bucketDoc.UserID != userID {
+			c.Status(http.StatusNotFound)
 			return
 		}
 		sources, err := sourceRepo.ListByUser(c.Request.Context(), userID)
@@ -348,13 +389,28 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if _, err := bucketRepo.GetByID(c.Request.Context(), bucketID); err != nil {
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
+		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
 			log.Printf("list files: get bucket: %v", err)
 			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if bucketDoc.UserID != userID {
+			c.Status(http.StatusNotFound)
 			return
 		}
 		files, err := fileRepo.ListByBucket(c.Request.Context(), bucketID)
@@ -412,13 +468,28 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if _, err := bucketRepo.GetByID(c.Request.Context(), bucketID); err != nil {
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
+		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
 			log.Printf("download file: get bucket: %v", err)
 			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if bucketDoc.UserID != userID {
+			c.Status(http.StatusNotFound)
 			return
 		}
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
@@ -506,13 +577,28 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if _, err := bucketRepo.GetByID(c.Request.Context(), bucketID); err != nil {
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
+		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
 			log.Printf("delete file: get bucket: %v", err)
 			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if bucketDoc.UserID != userID {
+			c.Status(http.StatusNotFound)
 			return
 		}
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)

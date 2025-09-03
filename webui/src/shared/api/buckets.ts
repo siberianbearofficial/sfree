@@ -4,7 +4,6 @@ export type Bucket = {
   id: string;
   key: string;
   access_key: string;
-  access_secret: string;
   created_at: string;
 };
 
@@ -28,9 +27,7 @@ export async function listBuckets(): Promise<Bucket[]> {
   return res.json();
 }
 
-export async function createBucket(
-  key: string,
-): Promise<{
+export async function createBucket(key: string): Promise<{
   key: string;
   access_key: string;
   access_secret: string;
