@@ -47,7 +47,7 @@ func TestCreateBucket(t *testing.T) {
 	}
 	router := gin.New()
 	auth := BasicAuth(userRepo)
-	router.POST("/api/v1/buckets", auth, CreateBucket(repo))
+	router.POST("/api/v1/buckets", auth, CreateBucket(repo, "testkey"))
 	body, _ := json.Marshal(map[string]string{"key": "bucket-test"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/buckets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

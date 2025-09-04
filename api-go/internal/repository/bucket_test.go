@@ -26,7 +26,7 @@ func TestBucketRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := Bucket{UserID: primitive.NewObjectID(), Key: "testbucket", AccessKey: "ak", AccessSecretHash: "secret", CreatedAt: time.Now()}
+	b := Bucket{UserID: primitive.NewObjectID(), Key: "testbucket", AccessKey: "ak", AccessSecretEnc: "secret", CreatedAt: time.Now()}
 	created, err := repo.Create(context.Background(), b)
 	if err != nil {
 		t.Fatal(err)

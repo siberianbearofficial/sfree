@@ -23,8 +23,9 @@ type UploadConfig struct {
 }
 
 type Config struct {
-	Mongo  MongoConfig  `yaml:"mongo"`
-	Upload UploadConfig `yaml:"upload"`
+	Mongo           MongoConfig  `yaml:"mongo"`
+	Upload          UploadConfig `yaml:"upload"`
+	AccessSecretKey string       `yaml:"-"`
 }
 
 func Load() (*Config, error) {
@@ -69,5 +70,8 @@ func overrideEnv(cfg *Config) {
 		if s, err := strconv.Atoi(v); err == nil {
 			cfg.Upload.ChunkSize = s
 		}
+	}
+	if v := os.Getenv("ACCESS_SECRET_KEY"); v != "" {
+		cfg.AccessSecretKey = v
 	}
 }
