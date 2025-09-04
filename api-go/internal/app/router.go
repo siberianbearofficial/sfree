@@ -44,7 +44,11 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 	}
 
 	if auth != nil && bucketRepo != nil {
-		router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo))
+		secretKey := ""
+		if cfg != nil {
+			secretKey = cfg.AccessSecretKey
+		}
+		router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo, secretKey))
 		router.GET("/api/v1/buckets", auth, handlers.ListBuckets(bucketRepo))
 		router.DELETE("/api/v1/buckets/:id", auth, handlers.DeleteBucket(bucketRepo))
 		if sourceRepo != nil && fileRepo != nil {

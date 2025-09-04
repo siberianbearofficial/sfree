@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"crypto/rand"
 	"log"
-	"math/big"
 	"net/http"
 	"time"
 
+	"github.com/example/s3aas/api-go/internal/cryptoutil"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -15,13 +14,8 @@ import (
 
 const passwordLength = 12
 
-func generatePassword() string {
-	b := make([]rune, passwordLength)
-	for i := range b {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
-		b[i] = alphabet[n.Int64()]
-	}
-	return string(b)
+func generatePassword() (string, error) {
+	return cryptoutil.RandomString(passwordLength)
 }
 
 type createUserRequest struct {
@@ -57,7 +51,12 @@ func CreateUser(repo *repository.UserRepository) gin.HandlerFunc {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		password := generatePassword()
+		password, err := generatePassword()
+		if err != nil {
+			log.Printf("create user: generate password: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
 			log.Printf("create user: failed to hash password: %v", err)

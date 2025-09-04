@@ -2,35 +2,20 @@ package handlers
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"io"
 	"log"
-	"math/big"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/example/s3aas/api-go/internal/cryptoutil"
 	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"golang.org/x/crypto/bcrypt"
 )
-
-const accessSecretLength = 35
-
-var alphabet = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-
-func generateAccessSecret() string {
-	b := make([]rune, accessSecretLength)
-	for i := range b {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(alphabet))))
-		b[i] = alphabet[n.Int64()]
-	}
-	return string(b)
-}
 
 type createBucketRequest struct {
 	Key string `json:"key" binding:"required"`
@@ -69,7 +54,7 @@ type fileResponse struct {
 // @Failure 409 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets [post]
-func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
+func CreateBucket(repo *repository.BucketRepository, secretKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createBucketRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -92,20 +77,30 @@ func CreateBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
+		if secretKey == "" {
+			log.Print("create bucket: secret key is empty")
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 		accessKey := req.Key
-		accessSecret := generateAccessSecret()
-		hash, err := bcrypt.GenerateFromPassword([]byte(accessSecret), bcrypt.DefaultCost)
+		accessSecret, err := cryptoutil.GenerateSecret()
 		if err != nil {
-			log.Printf("create bucket: hash secret: %v", err)
+			log.Printf("create bucket: generate secret: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		encrypted, err := cryptoutil.Encrypt(accessSecret, secretKey)
+		if err != nil {
+			log.Printf("create bucket: encrypt secret: %v", err)
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 		bucket := repository.Bucket{
-			UserID:           userID,
-			Key:              req.Key,
-			AccessKey:        accessKey,
-			AccessSecretHash: string(hash),
-			CreatedAt:        time.Now().UTC(),
+			UserID:          userID,
+			Key:             req.Key,
+			AccessKey:       accessKey,
+			AccessSecretEnc: encrypted,
+			CreatedAt:       time.Now().UTC(),
 		}
 		created, err := repo.Create(c.Request.Context(), bucket)
 		if err != nil {
