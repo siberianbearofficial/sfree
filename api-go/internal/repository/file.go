@@ -60,6 +60,15 @@ func (r *FileRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*F
 	return &f, nil
 }
 
+func (r *FileRepository) GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*File, error) {
+	var f File
+	err := r.coll.FindOne(ctx, bson.M{"bucket_id": bucketID, "name": name}).Decode(&f)
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
 func (r *FileRepository) ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]File, error) {
 	cursor, err := r.coll.Find(ctx, bson.M{"bucket_id": bucketID})
 	if err != nil {
