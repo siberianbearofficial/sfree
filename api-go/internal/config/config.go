@@ -25,7 +25,7 @@ type UploadConfig struct {
 type Config struct {
 	Mongo           MongoConfig  `yaml:"mongo"`
 	Upload          UploadConfig `yaml:"upload"`
-	AccessSecretKey string       `yaml:"-"`
+	AccessSecretKey string       `yaml:"access_secret_key"`
 }
 
 func Load() (*Config, error) {

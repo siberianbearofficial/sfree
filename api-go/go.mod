@@ -3,7 +3,6 @@ module github.com/example/s3aas/api-go
 go 1.24.3
 
 require (
-	github.com/allaboutapps/aws4 v0.0.0-20200604111205-3c45f7eabfb9
 	github.com/gin-contrib/cors v1.5.0
 	github.com/gin-gonic/gin v1.10.1
 	github.com/prometheus/client_golang v1.22.0
