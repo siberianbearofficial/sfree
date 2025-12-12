@@ -22,6 +22,10 @@ test-e2e:
 	ENV=test go test -tags=e2e ./...
 
 
+simple-test-e2e:
+	cd ../api && venv/bin/python client.py
+
+
 lint:
 	golangci-lint run
 

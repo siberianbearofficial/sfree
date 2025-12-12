@@ -72,5 +72,12 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	if bucketRepo != nil && sourceRepo != nil && fileRepo != nil {
+		secretKey := ""
+		if cfg != nil {
+			secretKey = cfg.AccessSecretKey
+		}
+		router.GET("/api/s3/:bucket/*object", handlers.AWS4Auth(bucketRepo, secretKey), handlers.GetObject(bucketRepo, sourceRepo, fileRepo))
+	}
 	return router
 }

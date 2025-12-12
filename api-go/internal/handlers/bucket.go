@@ -11,6 +11,7 @@ import (
 
 	"github.com/example/s3aas/api-go/internal/cryptoutil"
 	"github.com/example/s3aas/api-go/internal/gdrive"
+	"github.com/example/s3aas/api-go/internal/manager"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -509,34 +510,8 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 		c.Header("Content-Type", "application/octet-stream")
 		c.Header("Content-Length", strconv.FormatInt(total, 10))
 		c.Status(http.StatusOK)
-		ctx := c.Request.Context()
-		clients := make(map[primitive.ObjectID]*gdrive.Client)
-		for _, ch := range fileDoc.Chunks {
-			cli, ok := clients[ch.SourceID]
-			if !ok {
-				src, err := sourceRepo.GetByID(ctx, ch.SourceID)
-				if err != nil {
-					log.Printf("download file: get source: %v", err)
-					return
-				}
-				cli, err = gdrive.NewClient(ctx, []byte(src.Key))
-				if err != nil {
-					log.Printf("download file: create client: %v", err)
-					return
-				}
-				clients[ch.SourceID] = cli
-			}
-			rc, err := cli.Download(ctx, ch.Name)
-			if err != nil {
-				log.Printf("download file: download chunk: %v", err)
-				return
-			}
-			_, err = io.Copy(c.Writer, rc)
-			_ = rc.Close()
-			if err != nil {
-				log.Printf("download file: write chunk: %v", err)
-				return
-			}
+		if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
+			log.Printf("download file: %v", err)
 		}
 	}
 }

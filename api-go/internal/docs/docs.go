@@ -15,6 +15,53 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/s3/{bucket}/{object}": {
+            "get": {
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "s3"
+                ],
+                "summary": "Get object",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bucket key",
+                        "name": "bucket",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Object key",
+                        "name": "object",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/buckets": {
             "get": {
                 "security": [
@@ -35,7 +82,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.bucketResponse"
+                                "$ref": "#/definitions/internal_handlers.bucketResponse"
                             }
                         }
                     },
@@ -76,7 +123,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.createBucketRequest"
+                            "$ref": "#/definitions/internal_handlers.createBucketRequest"
                         }
                     }
                 ],
@@ -84,7 +131,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.createBucketResponse"
+                            "$ref": "#/definitions/internal_handlers.createBucketResponse"
                         }
                     },
                     "400": {
@@ -191,7 +238,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.fileResponse"
+                                "$ref": "#/definitions/internal_handlers.fileResponse"
                             }
                         }
                     },
@@ -384,7 +431,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.uploadFileResponse"
+                            "$ref": "#/definitions/internal_handlers.uploadFileResponse"
                         }
                     },
                     "400": {
@@ -434,7 +481,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handlers.createSourceResponse"
+                                "$ref": "#/definitions/internal_handlers.createSourceResponse"
                             }
                         }
                     },
@@ -477,7 +524,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.createGDriveSourceRequest"
+                            "$ref": "#/definitions/internal_handlers.createGDriveSourceRequest"
                         }
                     }
                 ],
@@ -485,7 +532,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.createSourceResponse"
+                            "$ref": "#/definitions/internal_handlers.createSourceResponse"
                         }
                     },
                     "400": {
@@ -587,7 +634,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.sourceInfoResponse"
+                            "$ref": "#/definitions/internal_handlers.sourceInfoResponse"
                         }
                     },
                     "400": {
@@ -636,7 +683,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handlers.createUserRequest"
+                            "$ref": "#/definitions/internal_handlers.createUserRequest"
                         }
                     }
                 ],
@@ -644,7 +691,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handlers.createUserResponse"
+                            "$ref": "#/definitions/internal_handlers.createUserResponse"
                         }
                     },
                     "400": {
@@ -734,7 +781,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "handlers.bucketResponse": {
+        "internal_handlers.bucketResponse": {
             "type": "object",
             "properties": {
                 "access_key": {
@@ -751,7 +798,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.createBucketRequest": {
+        "internal_handlers.createBucketRequest": {
             "type": "object",
             "required": [
                 "key"
@@ -762,7 +809,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.createBucketResponse": {
+        "internal_handlers.createBucketResponse": {
             "type": "object",
             "properties": {
                 "access_key": {
@@ -779,7 +826,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.createGDriveSourceRequest": {
+        "internal_handlers.createGDriveSourceRequest": {
             "type": "object",
             "required": [
                 "key",
@@ -794,7 +841,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.createSourceResponse": {
+        "internal_handlers.createSourceResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -814,7 +861,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.createUserRequest": {
+        "internal_handlers.createUserRequest": {
             "type": "object",
             "required": [
                 "username"
@@ -825,7 +872,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.createUserResponse": {
+        "internal_handlers.createUserResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -839,7 +886,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.fileResponse": {
+        "internal_handlers.fileResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -856,7 +903,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.sourceInfoFile": {
+        "internal_handlers.sourceInfoFile": {
             "type": "object",
             "properties": {
                 "id": {
@@ -870,13 +917,13 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.sourceInfoResponse": {
+        "internal_handlers.sourceInfoResponse": {
             "type": "object",
             "properties": {
                 "files": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/handlers.sourceInfoFile"
+                        "$ref": "#/definitions/internal_handlers.sourceInfoFile"
                     }
                 },
                 "id": {
@@ -899,7 +946,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handlers.uploadFileResponse": {
+        "internal_handlers.uploadFileResponse": {
             "type": "object",
             "properties": {
                 "created_at": {
