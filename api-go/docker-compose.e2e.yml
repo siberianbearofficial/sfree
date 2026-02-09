@@ -1,0 +1,28 @@
+services:
+  mongo:
+    image: mongo:7
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
+
+  api-go:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - ENV=test
+      - GIN_MODE=release
+    depends_on:
+      - mongo
+    ports:
+      - "8080:8080"
+
+  e2e-tests:
+    build:
+      context: .
+      dockerfile: e2e/Dockerfile
+    environment:
+      - E2E_BASE_API_URL=http://api-go:8080
+      - E2E_GDRIVE_KEY=${E2E_GDRIVE_KEY}
+    depends_on:
+      - api-go
