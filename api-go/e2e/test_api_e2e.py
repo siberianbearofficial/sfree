@@ -35,11 +35,17 @@ async def test_http_and_s3_endpoints(client):
     assert source_info["id"] == source_id
     assert source_info["type"] == "gdrive"
 
-    uploaded = await client.upload_file_http(auth, bucket_id, filename, payload)
-    file_id = uploaded["id"]
+    await client.upload_file_s3(
+        access_key=bucket["access_key"],
+        access_secret=bucket["access_secret"],
+        bucket_key=bucket_key,
+        object_key=filename,
+        content=payload,
+    )
 
     files = await client.list_files(auth, bucket_id)
-    assert any(item["id"] == file_id and item["name"] == filename for item in files)
+    file_doc = next(item for item in files if item["name"] == filename)
+    file_id = file_doc["id"]
 
     downloaded_http = await client.download_file_http(auth, bucket_id, file_id)
     assert downloaded_http == payload
@@ -52,7 +58,16 @@ async def test_http_and_s3_endpoints(client):
     )
     assert downloaded_s3 == payload
 
+    filename_http = f"e2e-http-{uuid4().hex[:8]}.txt"
+    payload_http = b"s3aas e2e http payload"
+    uploaded = await client.upload_file_http(auth, bucket_id, filename_http, payload_http)
+    file_id_http = uploaded["id"]
+
+    downloaded_http_uploaded = await client.download_file_http(auth, bucket_id, file_id_http)
+    assert downloaded_http_uploaded == payload_http
+
     await client.delete_file(auth, bucket_id, file_id)
+    await client.delete_file(auth, bucket_id, file_id_http)
     assert not await client.list_files(auth, bucket_id)
 
     await client.delete_source(auth, source_id)

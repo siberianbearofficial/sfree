@@ -106,6 +106,17 @@ class S3AASClient:
         async with self._http.delete(f"{self.config.buckets_url}/{bucket_id}/files/{file_id}", auth=auth):
             return
 
+    async def upload_file_s3(self, access_key: str, access_secret: str, bucket_key: str, object_key: str, content: bytes) -> None:
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            region_name="us-east-1",
+            endpoint_url=self.config.s3_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=access_secret,
+        ) as s3_client:
+            await s3_client.put_object(Bucket=bucket_key, Key=object_key, Body=content)
+
     async def download_file_s3(self, access_key: str, access_secret: str, bucket_key: str, object_key: str) -> bytes:
         session = get_session()
         async with session.create_client(
