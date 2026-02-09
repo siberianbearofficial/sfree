@@ -1,16 +1,13 @@
 package handlers
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/example/s3aas/api-go/internal/cryptoutil"
-	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/manager"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
@@ -297,47 +294,11 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		defer func() { _ = f.Close() }()
 
 		ctx := c.Request.Context()
-		clients := make([]*gdrive.Client, len(sources))
-		chunks := make([]repository.FileChunk, 0)
-		buf := make([]byte, chunkSize)
-		idx := 0
-		for {
-			n, err := f.Read(buf)
-			if err != nil && err != io.EOF {
-				log.Printf("upload file: read chunk: %v", err)
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			if n == 0 {
-				break
-			}
-			src := sources[idx%len(sources)]
-			if clients[idx%len(sources)] == nil {
-				cli, err := gdrive.NewClient(ctx, []byte(src.Key))
-				if err != nil {
-					log.Printf("upload file: create gdrive client: %v", err)
-					c.Status(http.StatusInternalServerError)
-					return
-				}
-				clients[idx%len(sources)] = cli
-			}
-			name := primitive.NewObjectID().Hex()
-			driveID, err := clients[idx%len(sources)].Upload(ctx, name, bytes.NewReader(buf[:n]))
-			if err != nil {
-				log.Printf("upload file: upload chunk: %v", err)
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			chunks = append(chunks, repository.FileChunk{
-				SourceID: src.ID,
-				Name:     driveID,
-				Order:    idx,
-				Size:     int64(n),
-			})
-			idx++
-			if err == io.EOF {
-				break
-			}
+		chunks, err := manager.UploadFileChunks(ctx, f, sources, chunkSize)
+		if err != nil {
+			log.Printf("upload file: upload chunks: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
 		}
 
 		fileDoc := repository.File{
@@ -348,6 +309,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		created, err := fileRepo.Create(ctx, fileDoc)
 		if err != nil {
+			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
 			log.Printf("upload file: save file: %v", err)
 			c.Status(http.StatusInternalServerError)
 			return

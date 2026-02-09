@@ -1,20 +1,16 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/xml"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/manager"
 	"github.com/example/s3aas/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -145,45 +141,11 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		if err == mongo.ErrNoDocuments {
 			existingFile = nil
 		}
-		if chunkSize <= 0 {
-			chunkSize = 5 * 1024 * 1024
-		}
-		clients := make([]*gdrive.Client, len(sources))
-		chunks := make([]repository.FileChunk, 0)
-		buf := make([]byte, chunkSize)
-		idx := 0
-		for {
-			n, err := c.Request.Body.Read(buf)
-			if err != nil && err != io.EOF {
-				log.Printf("put object: read chunk: %v", err)
-				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-				return
-			}
-			if n == 0 {
-				break
-			}
-			src := sources[idx%len(sources)]
-			if clients[idx%len(sources)] == nil {
-				cli, err := gdrive.NewClient(ctx, []byte(src.Key))
-				if err != nil {
-					log.Printf("put object: create gdrive client: %v", err)
-					writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-					return
-				}
-				clients[idx%len(sources)] = cli
-			}
-			driveName := primitive.NewObjectID().Hex()
-			driveID, err := clients[idx%len(sources)].Upload(ctx, driveName, bytes.NewReader(buf[:n]))
-			if err != nil {
-				log.Printf("put object: upload chunk: %v", err)
-				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-				return
-			}
-			chunks = append(chunks, repository.FileChunk{SourceID: src.ID, Name: driveID, Order: idx, Size: int64(n)})
-			idx++
-			if err == io.EOF {
-				break
-			}
+		chunks, err := manager.UploadFileChunks(ctx, c.Request.Body, sources, chunkSize)
+		if err != nil {
+			log.Printf("put object: upload chunks: %v", err)
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
 		}
 
 		fileDoc := repository.File{BucketID: bucketDoc.ID, Name: name, CreatedAt: time.Now().UTC(), Chunks: chunks}
