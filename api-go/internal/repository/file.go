@@ -99,3 +99,20 @@ func (r *FileRepository) Delete(ctx context.Context, id primitive.ObjectID) erro
 	}
 	return nil
 }
+
+func (r *FileRepository) UpdateByID(ctx context.Context, f File) (*File, error) {
+	f.CreatedAt = f.CreatedAt.UTC()
+	res, err := r.coll.UpdateOne(ctx, bson.M{"_id": f.ID}, bson.M{"$set": bson.M{
+		"bucket_id":  f.BucketID,
+		"name":       f.Name,
+		"created_at": f.CreatedAt,
+		"chunks":     f.Chunks,
+	}})
+	if err != nil {
+		return nil, err
+	}
+	if res.MatchedCount == 0 {
+		return nil, mongo.ErrNoDocuments
+	}
+	return &f, nil
+}
