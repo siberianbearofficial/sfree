@@ -17,6 +17,7 @@ steps:
     image: docker:27-cli
     environment:
       DOCKER_HOST: tcp://docker:2375
+      DOCKER_TLS_CERTDIR: ""
       E2E_GDRIVE_KEY:
         from_secret: E2E_GDRIVE_KEY
     commands:
@@ -43,6 +44,8 @@ services:
   - name: docker
     image: docker:27-dind
     privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
     command:
       - --host=tcp://0.0.0.0:2375
       - --tls=false
