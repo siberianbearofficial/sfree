@@ -1,7 +1,16 @@
 when:
-  - event: push
+  - event: pull_request
     path:
-      include: [ '.woodpecker/api-go.yml', 'api-go/**' ]
+      include:
+        - .woodpecker/api-go.yml
+        - api-go/**
+
+  - event: push
+    branch: main
+    path:
+      include:
+        - .woodpecker/api-go.yml
+        - api-go/**
 
 steps:
   - name: e2e tests
@@ -17,6 +26,9 @@ steps:
 
   - name: build and push
     image: woodpeckerci/plugin-docker-buildx
+    when:
+      - event: push
+        branch: main
     settings:
       repo: ghcr.io/siberianbearofficial/s3aas-api-go
       registry: ghcr.io
