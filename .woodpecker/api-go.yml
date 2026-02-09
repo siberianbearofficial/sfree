@@ -1,11 +1,38 @@
 when:
-  - event: push
+  - event: pull_request
     path:
-      include: [ '.woodpecker/api-go.yml', 'api-go/**' ]
+      include:
+        - .woodpecker/api-go.yml
+        - api-go/**
+
+  - event: push
+    branch: main
+    path:
+      include:
+        - .woodpecker/api-go.yml
+        - api-go/**
 
 steps:
+  - name: e2e tests
+    image: docker:27-cli
+    environment:
+      DOCKER_HOST: tcp://docker:2375
+      DOCKER_TLS_CERTDIR: ""
+      E2E_GDRIVE_KEY:
+        from_secret: E2E_GDRIVE_KEY
+    commands:
+      - echo "Waiting for Docker daemon..."
+      - for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; echo "still waiting ($i)"; sleep 1; done
+      - docker info
+      - cd api-go
+      - docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e-tests
+      - docker compose -f docker-compose.e2e.yml down -v
+
   - name: build and push
     image: woodpeckerci/plugin-docker-buildx
+    when:
+      - event: push
+        branch: main
     settings:
       repo: ghcr.io/siberianbearofficial/s3aas-api-go
       registry: ghcr.io
@@ -15,3 +42,13 @@ steps:
       context: api-go
       dockerfile: api-go/Dockerfile
       tag: main
+
+services:
+  - name: docker
+    image: docker:27-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    command:
+      - --host=tcp://0.0.0.0:2375
+      - --tls=false
