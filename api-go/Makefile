@@ -23,7 +23,9 @@ test-e2e:
 
 
 test-e2e-python:
-	cd .. && python3 -m venv .venv-e2e && . .venv-e2e/bin/activate && pip install -r api-go/e2e/requirements.txt && PYTHONPATH=api-go pytest -q api-go/e2e/test_api_e2e.py
+	cd .. && python3 -m venv .venv-e2e && . .venv-e2e/bin/activate && \
+	pip install -r api-go/e2e/requirements.txt && \
+	cd api-go/e2e && PYTHONPATH=.. pytest -q test_api_e2e.py
 
 
 test-e2e-local:
