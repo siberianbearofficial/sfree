@@ -135,6 +135,16 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 			return
 		}
+		var existingFile *repository.File
+		existingFile, err = fileRepo.GetByName(ctx, bucketDoc.ID, name)
+		if err != nil && err != mongo.ErrNoDocuments {
+			log.Printf("put object: get existing file: %v", err)
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		if err == mongo.ErrNoDocuments {
+			existingFile = nil
+		}
 		if chunkSize <= 0 {
 			chunkSize = 5 * 1024 * 1024
 		}
@@ -177,10 +187,25 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		}
 
 		fileDoc := repository.File{BucketID: bucketDoc.ID, Name: name, CreatedAt: time.Now().UTC(), Chunks: chunks}
-		if _, err := fileRepo.Create(ctx, fileDoc); err != nil {
-			log.Printf("put object: save file: %v", err)
+		if existingFile == nil {
+			if _, err := fileRepo.Create(ctx, fileDoc); err != nil {
+				_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
+				log.Printf("put object: save file: %v", err)
+				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+				return
+			}
+			c.Status(http.StatusOK)
+			return
+		}
+		fileDoc.ID = existingFile.ID
+		if _, err := fileRepo.UpdateByID(ctx, fileDoc); err != nil {
+			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
+			log.Printf("put object: update file: %v", err)
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
+		}
+		if err := manager.DeleteFileChunks(ctx, sourceRepo, existingFile.Chunks); err != nil {
+			log.Printf("put object: delete old chunks: %v", err)
 		}
 		c.Status(http.StatusOK)
 	}

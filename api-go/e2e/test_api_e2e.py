@@ -1,77 +1,83 @@
 from uuid import uuid4
 
-from aiohttp import BasicAuth
+
+async def test_sources_lifecycle(client, e2e_context):
+    sources = await client.list_sources(e2e_context.auth)
+    assert any(item["id"] == e2e_context.source_id for item in sources)
+
+    source_info = await client.get_source_info(e2e_context.auth, e2e_context.source_id)
+    assert source_info["id"] == e2e_context.source_id
+    assert source_info["type"] == "gdrive"
 
 
-async def test_http_and_s3_endpoints(client):
-    username = f"e2e-user-{uuid4().hex[:10]}"
-    bucket_key = f"e2e-bucket-{uuid4().hex[:10]}"
-    source_name = f"e2e-source-{uuid4().hex[:10]}"
+async def test_upload_download_via_s3_and_http(client, e2e_context):
     filename = f"e2e-object-{uuid4().hex[:8]}.txt"
     payload = b"s3aas e2e payload"
 
-    user = await client.create_user(username)
-    assert user["id"]
-    assert user["password"]
-    auth = BasicAuth(login=username, password=user["password"])
-
-    bucket = await client.create_bucket(auth=auth, key=bucket_key)
-    assert bucket["key"] == bucket_key
-    assert bucket["access_key"]
-    assert bucket["access_secret"]
-
-    buckets = await client.list_buckets(auth)
-    bucket_from_list = next(item for item in buckets if item["key"] == bucket_key)
-    bucket_id = bucket_from_list["id"]
-
-    source = await client.create_gdrive_source(auth, source_name)
-    assert source["name"] == source_name
-    source_id = source["id"]
-
-    sources = await client.list_sources(auth)
-    assert any(item["id"] == source_id for item in sources)
-
-    source_info = await client.get_source_info(auth, source_id)
-    assert source_info["id"] == source_id
-    assert source_info["type"] == "gdrive"
-
     await client.upload_file_s3(
-        access_key=bucket["access_key"],
-        access_secret=bucket["access_secret"],
-        bucket_key=bucket_key,
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
         object_key=filename,
         content=payload,
     )
 
-    files = await client.list_files(auth, bucket_id)
+    files = await client.list_files(e2e_context.auth, e2e_context.bucket_id)
     file_doc = next(item for item in files if item["name"] == filename)
-    file_id = file_doc["id"]
 
-    downloaded_http = await client.download_file_http(auth, bucket_id, file_id)
+    downloaded_http = await client.download_file_http(e2e_context.auth, e2e_context.bucket_id, file_doc["id"])
     assert downloaded_http == payload
 
     downloaded_s3 = await client.download_file_s3(
-        access_key=bucket["access_key"],
-        access_secret=bucket["access_secret"],
-        bucket_key=bucket_key,
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
         object_key=filename,
     )
     assert downloaded_s3 == payload
 
-    filename_http = f"e2e-http-{uuid4().hex[:8]}.txt"
-    payload_http = b"s3aas e2e http payload"
-    uploaded = await client.upload_file_http(auth, bucket_id, filename_http, payload_http)
-    file_id_http = uploaded["id"]
 
-    downloaded_http_uploaded = await client.download_file_http(auth, bucket_id, file_id_http)
-    assert downloaded_http_uploaded == payload_http
+async def test_s3_put_overwrites_existing_object(client, e2e_context):
+    filename = f"e2e-overwrite-{uuid4().hex[:8]}.txt"
+    payload_v1 = b"payload-version-1"
+    payload_v2 = b"payload-version-2"
 
-    await client.delete_file(auth, bucket_id, file_id)
-    await client.delete_file(auth, bucket_id, file_id_http)
-    assert not await client.list_files(auth, bucket_id)
+    await client.upload_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+        content=payload_v1,
+    )
+    await client.upload_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+        content=payload_v2,
+    )
 
-    await client.delete_source(auth, source_id)
-    assert not await client.list_sources(auth)
+    files = await client.list_files(e2e_context.auth, e2e_context.bucket_id)
+    matched = [item for item in files if item["name"] == filename]
+    assert len(matched) == 1
 
-    await client.delete_bucket(auth, bucket_id)
-    assert not await client.list_buckets(auth)
+    file_id = matched[0]["id"]
+    downloaded_http = await client.download_file_http(e2e_context.auth, e2e_context.bucket_id, file_id)
+    assert downloaded_http == payload_v2
+
+    downloaded_s3 = await client.download_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+    )
+    assert downloaded_s3 == payload_v2
+
+
+async def test_http_upload_works(client, e2e_context):
+    filename = f"e2e-http-{uuid4().hex[:8]}.txt"
+    payload = b"s3aas e2e http payload"
+
+    uploaded = await client.upload_file_http(e2e_context.auth, e2e_context.bucket_id, filename, payload)
+    downloaded = await client.download_file_http(e2e_context.auth, e2e_context.bucket_id, uploaded["id"])
+    assert downloaded == payload

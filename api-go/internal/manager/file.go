@@ -38,3 +38,25 @@ func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *re
 	}
 	return nil
 }
+
+func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository, chunks []repository.FileChunk) error {
+	clients := make(map[primitive.ObjectID]*gdrive.Client)
+	for _, ch := range chunks {
+		cli, ok := clients[ch.SourceID]
+		if !ok {
+			src, err := srcRepo.GetByID(ctx, ch.SourceID)
+			if err != nil {
+				return err
+			}
+			cli, err = gdrive.NewClient(ctx, []byte(src.Key))
+			if err != nil {
+				return err
+			}
+			clients[ch.SourceID] = cli
+		}
+		if err := cli.Delete(ctx, ch.Name); err != nil {
+			return err
+		}
+	}
+	return nil
+}

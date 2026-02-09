@@ -586,29 +586,10 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			return
 		}
 		ctx := c.Request.Context()
-		clients := make(map[primitive.ObjectID]*gdrive.Client)
-		for _, ch := range fileDoc.Chunks {
-			cli, ok := clients[ch.SourceID]
-			if !ok {
-				src, err := sourceRepo.GetByID(ctx, ch.SourceID)
-				if err != nil {
-					log.Printf("delete file: get source: %v", err)
-					c.Status(http.StatusInternalServerError)
-					return
-				}
-				cli, err = gdrive.NewClient(ctx, []byte(src.Key))
-				if err != nil {
-					log.Printf("delete file: create client: %v", err)
-					c.Status(http.StatusInternalServerError)
-					return
-				}
-				clients[ch.SourceID] = cli
-			}
-			if err := cli.Delete(ctx, ch.Name); err != nil {
-				log.Printf("delete file: delete chunk: %v", err)
-				c.Status(http.StatusInternalServerError)
-				return
-			}
+		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
+			log.Printf("delete file: delete chunk: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
 		}
 		if err := fileRepo.Delete(ctx, fileID); err != nil {
 			log.Printf("delete file: delete metadata: %v", err)
