@@ -128,3 +128,15 @@ class S3AASClient:
         ) as s3_client:
             response = await s3_client.get_object(Bucket=bucket_key, Key=object_key)
             return await response["Body"].read()
+
+    async def list_objects_s3(self, access_key: str, access_secret: str, bucket_key: str) -> list[dict[str, Any]]:
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            region_name="us-east-1",
+            endpoint_url=self.config.s3_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=access_secret,
+        ) as s3_client:
+            response = await s3_client.list_objects_v2(Bucket=bucket_key)
+            return response.get("Contents", [])
