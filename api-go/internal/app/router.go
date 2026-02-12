@@ -82,6 +82,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 			chunkSize = cfg.Upload.ChunkSize
 		}
 		router.GET("/api/s3/:bucket/*object", handlers.AWS4Auth(bucketRepo, secretKey), handlers.GetObject(bucketRepo, sourceRepo, fileRepo))
+		router.GET("/api/s3/:bucket", handlers.AWS4Auth(bucketRepo, secretKey), handlers.ListObjects(bucketRepo, fileRepo))
 		router.PUT("/api/s3/:bucket/*object", handlers.AWS4Auth(bucketRepo, secretKey), handlers.PutObject(bucketRepo, sourceRepo, fileRepo, chunkSize))
 	}
 	return router

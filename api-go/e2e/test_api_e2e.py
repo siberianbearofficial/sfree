@@ -81,3 +81,35 @@ async def test_http_upload_works(client, e2e_context):
     uploaded = await client.upload_file_http(e2e_context.auth, e2e_context.bucket_id, filename, payload)
     downloaded = await client.download_file_http(e2e_context.auth, e2e_context.bucket_id, uploaded["id"])
     assert downloaded == payload
+
+
+async def test_s3_list_objects_v2_returns_uploaded_files(client, e2e_context):
+    name_1 = f"e2e-list-{uuid4().hex[:8]}-1.txt"
+    name_2 = f"e2e-list-{uuid4().hex[:8]}-2.txt"
+
+    await client.upload_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=name_1,
+        content=b"one",
+    )
+    await client.upload_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=name_2,
+        content=b"two-two",
+    )
+
+    objects = await client.list_objects_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+    )
+
+    by_key = {item["Key"]: item for item in objects}
+    assert name_1 in by_key
+    assert name_2 in by_key
+    assert by_key[name_1]["Size"] == 3
+    assert by_key[name_2]["Size"] == 7

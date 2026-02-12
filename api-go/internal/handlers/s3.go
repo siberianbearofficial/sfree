@@ -20,8 +20,93 @@ type s3Error struct {
 	Message string   `xml:"Message"`
 }
 
+type listBucketResult struct {
+	XMLName      xml.Name          `xml:"ListBucketResult"`
+	Xmlns        string            `xml:"xmlns,attr"`
+	Name         string            `xml:"Name"`
+	Prefix       string            `xml:"Prefix"`
+	MaxKeys      int               `xml:"MaxKeys"`
+	IsTruncated  bool              `xml:"IsTruncated"`
+	Contents     []listBucketEntry `xml:"Contents"`
+	KeyCount     int               `xml:"KeyCount"`
+	Continuation string            `xml:"ContinuationToken,omitempty"`
+}
+
+type listBucketEntry struct {
+	Key          string `xml:"Key"`
+	LastModified string `xml:"LastModified"`
+	ETag         string `xml:"ETag"`
+	Size         int64  `xml:"Size"`
+	StorageClass string `xml:"StorageClass"`
+}
+
 func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
+}
+
+// ListObjects godoc
+// @Summary List objects
+// @Tags s3
+// @Produce xml
+// @Param bucket path string true "Bucket key"
+// @Success 200 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Router /api/s3/{bucket} [get]
+func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if bucketRepo == nil || fileRepo == nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		bucketKey := c.Param("bucket")
+		ctx := c.Request.Context()
+		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+				return
+			}
+			log.Printf("list objects: get bucket: %v", err)
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		accessKey := c.GetString("accessKey")
+		if accessKey == "" || bucketDoc.AccessKey != accessKey {
+			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+			return
+		}
+		files, err := fileRepo.ListByBucket(ctx, bucketDoc.ID)
+		if err != nil {
+			log.Printf("list objects: list files: %v", err)
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		entries := make([]listBucketEntry, 0, len(files))
+		for _, file := range files {
+			var size int64
+			for _, chunk := range file.Chunks {
+				size += chunk.Size
+			}
+			entries = append(entries, listBucketEntry{
+				Key:          file.Name,
+				LastModified: file.CreatedAt.UTC().Format(time.RFC3339),
+				ETag:         "\"" + file.ID.Hex() + "\"",
+				Size:         size,
+				StorageClass: "STANDARD",
+			})
+		}
+		result := listBucketResult{
+			Xmlns:       "http://s3.amazonaws.com/doc/2006-03-01/",
+			Name:        bucketKey,
+			Prefix:      "",
+			MaxKeys:     1000,
+			IsTruncated: false,
+			Contents:    entries,
+			KeyCount:    len(entries),
+		}
+		c.XML(http.StatusOK, result)
+	}
 }
 
 // GetObject godoc
