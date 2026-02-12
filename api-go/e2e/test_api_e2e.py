@@ -49,6 +49,13 @@ async def test_s3_put_overwrites_existing_object(client, e2e_context):
         object_key=filename,
         content=payload_v1,
     )
+    first_list = await client.list_objects_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+    )
+    etag_before = next(item for item in first_list if item["Key"] == filename)["ETag"]
+
     await client.upload_file_s3(
         access_key=e2e_context.access_key,
         access_secret=e2e_context.access_secret,
@@ -56,6 +63,13 @@ async def test_s3_put_overwrites_existing_object(client, e2e_context):
         object_key=filename,
         content=payload_v2,
     )
+    second_list = await client.list_objects_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+    )
+    etag_after = next(item for item in second_list if item["Key"] == filename)["ETag"]
+    assert etag_after != etag_before
 
     files = await client.list_files(e2e_context.auth, e2e_context.bucket_id)
     matched = [item for item in files if item["name"] == filename]

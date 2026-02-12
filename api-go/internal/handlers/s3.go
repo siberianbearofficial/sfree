@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"log"
 	"net/http"
@@ -42,6 +44,20 @@ type listBucketEntry struct {
 
 func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
+}
+
+func objectETag(file repository.File) string {
+	h := sha256.New()
+	_, _ = h.Write([]byte(file.Name))
+	_, _ = h.Write([]byte(file.CreatedAt.UTC().Format(time.RFC3339Nano)))
+	for _, chunk := range file.Chunks {
+		_, _ = h.Write([]byte(chunk.SourceID.Hex()))
+		_, _ = h.Write([]byte(chunk.Name))
+		_, _ = h.Write([]byte(strconv.Itoa(chunk.Order)))
+		_, _ = h.Write([]byte(":"))
+		_, _ = h.Write([]byte(strconv.FormatInt(chunk.Size, 10)))
+	}
+	return "\"" + hex.EncodeToString(h.Sum(nil)) + "\""
 }
 
 // ListObjects godoc
@@ -91,7 +107,7 @@ func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.F
 			entries = append(entries, listBucketEntry{
 				Key:          file.Name,
 				LastModified: file.CreatedAt.UTC().Format(time.RFC3339),
-				ETag:         "\"" + file.ID.Hex() + "\"",
+				ETag:         objectETag(file),
 				Size:         size,
 				StorageClass: "STANDARD",
 			})
