@@ -8,6 +8,7 @@ import (
 
 	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/s3aas/api-go/internal/telegram"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -19,20 +20,43 @@ type sourceClient interface {
 	Delete(ctx context.Context, name string) error
 }
 
-func newSourceClient(ctx context.Context, src *repository.Source) (sourceClient, error) {
+type SourceClientFactory func(ctx context.Context, src *repository.Source) (sourceClient, error)
+
+type SourceSelector interface {
+	NextSource(sources []repository.Source) (int, repository.Source, error)
+}
+
+type RoundRobinSelector struct {
+	next int
+}
+
+func (s *RoundRobinSelector) NextSource(sources []repository.Source) (int, repository.Source, error) {
+	if len(sources) == 0 {
+		return 0, repository.Source{}, errors.New("no sources")
+	}
+	idx := s.next % len(sources)
+	s.next = (s.next + 1) % len(sources)
+	return idx, sources[idx], nil
+}
+
+func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient, error) {
 	if src == nil {
 		return nil, errors.New("nil source")
 	}
 	switch src.Type {
 	case repository.SourceTypeGDrive:
 		return gdrive.NewClient(ctx, []byte(src.Key))
+	case repository.SourceTypeTelegram:
+		cfg, err := telegram.ParseConfig(src.Key)
+		if err != nil {
+			return nil, err
+		}
+		return telegram.NewClient(cfg)
 	default:
 		return nil, ErrUnsupportedSourceType
 	}
 }
 
-// StreamFile downloads file chunks from sources and writes them to w.
-// It returns an error if any chunk cannot be downloaded or written.
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {
 	clients := make(map[primitive.ObjectID]sourceClient)
 	for _, ch := range f.Chunks {
@@ -42,7 +66,7 @@ func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *re
 			if err != nil {
 				return err
 			}
-			cli, err = newSourceClient(ctx, src)
+			cli, err = NewSourceClient(ctx, src)
 			if err != nil {
 				return err
 			}
@@ -70,7 +94,7 @@ func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository,
 			if err != nil {
 				return err
 			}
-			cli, err = newSourceClient(ctx, src)
+			cli, err = NewSourceClient(ctx, src)
 			if err != nil {
 				return err
 			}
@@ -84,13 +108,23 @@ func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository,
 }
 
 func UploadFileChunks(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int) ([]repository.FileChunk, error) {
+	return UploadFileChunksWithStrategy(ctx, r, sources, chunkSize, NewSourceClient, &RoundRobinSelector{})
+}
+
+func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, factory SourceClientFactory, selector SourceSelector) ([]repository.FileChunk, error) {
 	if len(sources) == 0 {
 		return nil, errors.New("no sources")
+	}
+	if factory == nil {
+		factory = NewSourceClient
+	}
+	if selector == nil {
+		selector = &RoundRobinSelector{}
 	}
 	if chunkSize <= 0 {
 		chunkSize = 5 * 1024 * 1024
 	}
-	clients := make([]sourceClient, len(sources))
+	clients := make(map[primitive.ObjectID]sourceClient)
 	chunks := make([]repository.FileChunk, 0)
 	buf := make([]byte, chunkSize)
 	idx := 0
@@ -102,16 +136,20 @@ func UploadFileChunks(ctx context.Context, r io.Reader, sources []repository.Sou
 		if n == 0 {
 			break
 		}
-		src := sources[idx%len(sources)]
-		if clients[idx%len(sources)] == nil {
-			cli, err := newSourceClient(ctx, &src)
+		_, src, err := selector.NextSource(sources)
+		if err != nil {
+			return nil, err
+		}
+		cli, ok := clients[src.ID]
+		if !ok {
+			cli, err = factory(ctx, &src)
 			if err != nil {
 				return nil, err
 			}
-			clients[idx%len(sources)] = cli
+			clients[src.ID] = cli
 		}
 		driveName := primitive.NewObjectID().Hex()
-		chunkName, err := clients[idx%len(sources)].Upload(ctx, driveName, bytes.NewReader(buf[:n]))
+		chunkName, err := cli.Upload(ctx, driveName, bytes.NewReader(buf[:n]))
 		if err != nil {
 			return nil, err
 		}

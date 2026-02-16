@@ -7,7 +7,7 @@ async def test_sources_lifecycle(client, e2e_context):
 
     source_info = await client.get_source_info(e2e_context.auth, e2e_context.source_id)
     assert source_info["id"] == e2e_context.source_id
-    assert source_info["type"] == "gdrive"
+    assert source_info["type"] == e2e_context.source_type
 
 
 async def test_upload_download_via_s3_and_http(client, e2e_context):

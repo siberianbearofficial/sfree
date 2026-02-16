@@ -9,7 +9,10 @@ from aiohttp import BasicAuth, ClientSession, FormData
 @dataclass(slots=True)
 class E2EConfig:
     base_api_url: str
+    source_type: str
     gdrive_key: str
+    telegram_token: str
+    telegram_chat_id: str
 
     @property
     def users_url(self) -> str:
@@ -26,6 +29,10 @@ class E2EConfig:
     @property
     def gdrive_sources_url(self) -> str:
         return f"{self.sources_url}/gdrive"
+
+    @property
+    def telegram_sources_url(self) -> str:
+        return f"{self.sources_url}/telegram"
 
     @property
     def s3_url(self) -> str:
@@ -71,9 +78,25 @@ class S3AASClient:
         async with self._http.delete(f"{self.config.buckets_url}/{bucket_id}", auth=auth):
             return
 
+    async def create_source(self, auth: BasicAuth, name: str) -> dict[str, Any]:
+        if self.config.source_type == "gdrive":
+            return await self.create_gdrive_source(auth, name)
+        if self.config.source_type == "telegram":
+            return await self.create_telegram_source(auth, name)
+        raise ValueError(f"Unsupported source type: {self.config.source_type}")
+
     async def create_gdrive_source(self, auth: BasicAuth, name: str) -> dict[str, Any]:
         payload = {"name": name, "key": self.config.gdrive_key}
         async with self._http.post(self.config.gdrive_sources_url, auth=auth, json=payload) as response:
+            return await response.json()
+
+    async def create_telegram_source(self, auth: BasicAuth, name: str) -> dict[str, Any]:
+        payload = {
+            "name": name,
+            "token": self.config.telegram_token,
+            "chat_id": self.config.telegram_chat_id,
+        }
+        async with self._http.post(self.config.telegram_sources_url, auth=auth, json=payload) as response:
             return await response.json()
 
     async def list_sources(self, auth: BasicAuth) -> list[dict[str, Any]]:
