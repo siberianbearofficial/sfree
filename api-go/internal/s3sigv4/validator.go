@@ -664,7 +664,7 @@ func normalizeAndValidateSignedHeaders(s string) ([]string, error) {
 		}
 		for i := 0; i < len(h); i++ {
 			c := h[i]
-			if !(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') && c != '-' {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
 				return nil, fmt.Errorf("%w: invalid header name %q", ErrInvalidSignedHeaders, h)
 			}
 		}
