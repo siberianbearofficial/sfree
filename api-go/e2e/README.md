@@ -51,13 +51,10 @@ make test-e2e-python
 
 ## CI (Woodpecker)
 
-Pipeline `.woodpecker/api-go.yml` запускает `docker-compose.e2e.yml` через DinD.
+Pipeline `.woodpecker/api-go.yml` запускает `docker-compose.e2e.yml` через DinD дважды: сначала для `gdrive`, затем для `telegram`.
 
-Для Telegram-режима нужны секреты:
-
-- `E2E_TELEGRAM_TOKEN` — токен Telegram-бота.
-- `E2E_TELEGRAM_CHAT_ID` — id чата для отправки чанков.
-
-Опционально для Google Drive режима:
+Нужны секреты:
 
 - `E2E_GDRIVE_KEY` — ключ для Google Drive source.
+- `E2E_TELEGRAM_TOKEN` — токен Telegram-бота.
+- `E2E_TELEGRAM_CHAT_ID` — id чата для отправки чанков.
