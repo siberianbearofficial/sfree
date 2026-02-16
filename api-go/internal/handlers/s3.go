@@ -290,11 +290,6 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			return
 		}
 		bucketKey := c.Param("bucket")
-		name := strings.TrimPrefix(c.Param("object"), "/")
-		if name == "" {
-			c.Status(http.StatusNoContent)
-			return
-		}
 		ctx := c.Request.Context()
 		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
 		if err != nil {
@@ -311,6 +306,11 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
 			return
 		}
+		name := strings.TrimPrefix(c.Param("object"), "/")
+		if name == "" {
+			c.Status(http.StatusNoContent)
+			return
+		}
 		fileDoc, err := fileRepo.GetByName(ctx, bucketDoc.ID, name)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
@@ -318,11 +318,6 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 				return
 			}
 			log.Printf("delete object: get file: %v", err)
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
-			log.Printf("delete object: delete chunks: %v", err)
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -334,6 +329,9 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			log.Printf("delete object: delete file: %v", err)
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
+		}
+		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
+			log.Printf("delete object: delete chunks: %v", err)
 		}
 		c.Status(http.StatusNoContent)
 	}
