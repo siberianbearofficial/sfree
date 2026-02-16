@@ -12,7 +12,8 @@ import (
 type SourceType string
 
 const (
-	SourceTypeGDrive SourceType = "gdrive"
+	SourceTypeGDrive   SourceType = "gdrive"
+	SourceTypeTelegram SourceType = "telegram"
 )
 
 type Source struct {

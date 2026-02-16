@@ -65,6 +65,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 
 	if auth != nil && sourceRepo != nil {
 		router.POST("/api/v1/sources/gdrive", auth, handlers.CreateGDriveSource(sourceRepo))
+		router.POST("/api/v1/sources/telegram", auth, handlers.CreateTelegramSource(sourceRepo))
 		router.GET("/api/v1/sources", auth, handlers.ListSources(sourceRepo))
 		router.GET("/api/v1/sources/:id/info", auth, handlers.GetSourceInfo(sourceRepo))
 		router.DELETE("/api/v1/sources/:id", auth, handlers.DeleteSource(sourceRepo))

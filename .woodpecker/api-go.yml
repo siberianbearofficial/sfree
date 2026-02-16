@@ -18,8 +18,11 @@ steps:
     environment:
       DOCKER_HOST: tcp://docker:2375
       DOCKER_TLS_CERTDIR: ""
-      E2E_GDRIVE_KEY:
-        from_secret: E2E_GDRIVE_KEY
+      E2E_SOURCE_TYPE: telegram
+      E2E_TELEGRAM_TOKEN:
+        from_secret: E2E_TELEGRAM_TOKEN
+      E2E_TELEGRAM_CHAT_ID:
+        from_secret: E2E_TELEGRAM_CHAT_ID
     commands:
       - echo "Waiting for Docker daemon..."
       - for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; echo "still waiting ($i)"; sleep 1; done

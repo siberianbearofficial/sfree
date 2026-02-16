@@ -7,6 +7,7 @@ import (
 
 	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/s3aas/api-go/internal/telegram"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -15,6 +16,12 @@ import (
 type createGDriveSourceRequest struct {
 	Name string `json:"name" binding:"required"`
 	Key  string `json:"key" binding:"required"`
+}
+
+type createTelegramSourceRequest struct {
+	Name   string `json:"name" binding:"required"`
+	Token  string `json:"token" binding:"required"`
+	ChatID string `json:"chat_id" binding:"required"`
 }
 
 type createSourceResponse struct {
@@ -61,42 +68,75 @@ func CreateGDriveSource(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if repo == nil {
-			log.Print("create gdrive source: repository is nil")
-			c.Status(http.StatusServiceUnavailable)
+		saveSource(c, repo, repository.SourceTypeGDrive, req.Name, req.Key)
+	}
+}
+
+// CreateTelegramSource godoc
+// @Summary Create telegram source
+// @Tags sources
+// @Accept json
+// @Produce json
+// @Param source body createTelegramSourceRequest true "Source to create"
+// @Success 200 {object} createSourceResponse
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources/telegram [post]
+func CreateTelegramSource(repo *repository.SourceRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req createTelegramSourceRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Printf("create telegram source: invalid request: %v", err)
+			c.Status(http.StatusBadRequest)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		key, err := telegram.EncodeConfig(telegram.Config{Token: req.Token, ChatID: req.ChatID})
 		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		source := repository.Source{
-			UserID:    userID,
-			Type:      repository.SourceTypeGDrive,
-			Name:      req.Name,
-			Key:       req.Key,
-			CreatedAt: time.Now().UTC(),
-		}
-		created, err := repo.Create(c.Request.Context(), source)
-		if err != nil {
-			log.Printf("create gdrive source: failed to create: %v", err)
+			log.Printf("create telegram source: encode key: %v", err)
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		c.JSON(http.StatusOK, createSourceResponse{
-			ID:        created.ID.Hex(),
-			Name:      created.Name,
-			Type:      string(created.Type),
-			Key:       created.Key,
-			CreatedAt: created.CreatedAt,
-		})
+		saveSource(c, repo, repository.SourceTypeTelegram, req.Name, key)
 	}
+}
+
+func saveSource(c *gin.Context, repo *repository.SourceRepository, sourceType repository.SourceType, name, key string) {
+	if repo == nil {
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+	userIDHex := c.GetString("userID")
+	if userIDHex == "" {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	userID, err := primitive.ObjectIDFromHex(userIDHex)
+	if err != nil {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	source := repository.Source{
+		UserID:    userID,
+		Type:      sourceType,
+		Name:      name,
+		Key:       key,
+		CreatedAt: time.Now().UTC(),
+	}
+	created, err := repo.Create(c.Request.Context(), source)
+	if err != nil {
+		log.Printf("create source: failed to create: %v", err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, createSourceResponse{
+		ID:        created.ID.Hex(),
+		Name:      created.Name,
+		Type:      string(created.Type),
+		Key:       created.Key,
+		CreatedAt: created.CreatedAt,
+	})
 }
 
 // ListSources godoc
@@ -260,21 +300,31 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 				c.Status(http.StatusInternalServerError)
 				return
 			}
-			resp := sourceInfoResponse{
+			respFiles := make([]sourceInfoFile, 0, len(files))
+			for _, f := range files {
+				respFiles = append(respFiles, sourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size})
+			}
+			c.JSON(http.StatusOK, sourceInfoResponse{
 				ID:           src.ID.Hex(),
 				Name:         src.Name,
 				Type:         string(src.Type),
-				Files:        make([]sourceInfoFile, len(files)),
+				Files:        respFiles,
 				StorageTotal: total,
 				StorageUsed:  used,
 				StorageFree:  free,
-			}
-			for i, f := range files {
-				resp.Files[i] = sourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size}
-			}
-			c.JSON(http.StatusOK, resp)
+			})
+		case repository.SourceTypeTelegram:
+			c.JSON(http.StatusOK, sourceInfoResponse{
+				ID:           src.ID.Hex(),
+				Name:         src.Name,
+				Type:         string(src.Type),
+				Files:        []sourceInfoFile{},
+				StorageTotal: 0,
+				StorageUsed:  0,
+				StorageFree:  0,
+			})
 		default:
-			c.Status(http.StatusNotImplemented)
+			c.Status(http.StatusBadRequest)
 		}
 	}
 }
