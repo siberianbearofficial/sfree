@@ -273,3 +273,66 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		c.Status(http.StatusOK)
 	}
 }
+
+// DeleteObject godoc
+// @Summary Delete object
+// @Tags s3
+// @Param bucket path string true "Bucket key"
+// @Param object path string true "Object key"
+// @Success 204 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Router /api/s3/{bucket}/{object} [delete]
+func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		bucketKey := c.Param("bucket")
+		ctx := c.Request.Context()
+		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+				return
+			}
+			log.Printf("delete object: get bucket: %v", err)
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		accessKey := c.GetString("accessKey")
+		if accessKey == "" || bucketDoc.AccessKey != accessKey {
+			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+			return
+		}
+		name := strings.TrimPrefix(c.Param("object"), "/")
+		if name == "" {
+			c.Status(http.StatusNoContent)
+			return
+		}
+		fileDoc, err := fileRepo.GetByName(ctx, bucketDoc.ID, name)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNoContent)
+				return
+			}
+			log.Printf("delete object: get file: %v", err)
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		if err := fileRepo.Delete(ctx, fileDoc.ID); err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNoContent)
+				return
+			}
+			log.Printf("delete object: delete file: %v", err)
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
+			log.Printf("delete object: delete chunks: %v", err)
+		}
+		c.Status(http.StatusNoContent)
+	}
+}

@@ -127,3 +127,40 @@ async def test_s3_list_objects_v2_returns_uploaded_files(client, e2e_context):
     assert name_2 in by_key
     assert by_key[name_1]["Size"] == 3
     assert by_key[name_2]["Size"] == 7
+
+
+async def test_s3_delete_object_removes_file_metadata_and_content(client, e2e_context):
+    filename = f"e2e-delete-{uuid4().hex[:8]}.txt"
+    payload = b"to-be-deleted"
+
+    await client.upload_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+        content=payload,
+    )
+
+    await client.delete_object_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+    )
+
+    objects = await client.list_objects_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+    )
+    assert all(item["Key"] != filename for item in objects)
+
+    files = await client.list_files(e2e_context.auth, e2e_context.bucket_id)
+    assert all(item["name"] != filename for item in files)
+
+    await client.delete_object_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+    )
