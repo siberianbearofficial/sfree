@@ -698,6 +698,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/sources/s3": {
+            "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Create s3 source",
+                "parameters": [
+                    {
+                        "description": "Source to create",
+                        "name": "source",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.createS3SourceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.createSourceResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/sources/telegram": {
             "post": {
                 "security": [
@@ -1035,6 +1091,39 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.createS3SourceRequest": {
+            "type": "object",
+            "required": [
+                "access_key_id",
+                "bucket",
+                "endpoint",
+                "name",
+                "secret_access_key"
+            ],
+            "properties": {
+                "access_key_id": {
+                    "type": "string"
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path_style": {
+                    "type": "boolean"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "secret_access_key": {
                     "type": "string"
                 }
             }

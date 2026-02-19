@@ -14,6 +14,7 @@ type SourceType string
 const (
 	SourceTypeGDrive   SourceType = "gdrive"
 	SourceTypeTelegram SourceType = "telegram"
+	SourceTypeS3       SourceType = "s3"
 )
 
 type Source struct {

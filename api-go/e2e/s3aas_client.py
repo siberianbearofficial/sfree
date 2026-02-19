@@ -13,6 +13,12 @@ class E2EConfig:
     gdrive_key: str
     telegram_token: str
     telegram_chat_id: str
+    s3_endpoint: str
+    s3_bucket: str
+    s3_access_key_id: str
+    s3_secret_access_key: str
+    s3_region: str
+    s3_path_style: bool
 
     @property
     def users_url(self) -> str:
@@ -33,6 +39,10 @@ class E2EConfig:
     @property
     def telegram_sources_url(self) -> str:
         return f"{self.sources_url}/telegram"
+
+    @property
+    def s3_sources_url(self) -> str:
+        return f"{self.sources_url}/s3"
 
     @property
     def s3_url(self) -> str:
@@ -62,6 +72,32 @@ class S3AASClient:
             raise TimeoutError("API is not ready") from last_err
         raise TimeoutError("API is not ready")
 
+
+    async def ensure_s3_source_bucket(self, timeout_s: int = 60) -> None:
+        session = get_session()
+        deadline = asyncio.get_event_loop().time() + timeout_s
+        while True:
+            try:
+                async with session.create_client(
+                    "s3",
+                    region_name=self.config.s3_region,
+                    endpoint_url=self.config.s3_endpoint,
+                    aws_access_key_id=self.config.s3_access_key_id,
+                    aws_secret_access_key=self.config.s3_secret_access_key,
+                ) as s3_client:
+                    try:
+                        await s3_client.head_bucket(Bucket=self.config.s3_bucket)
+                    except Exception:  # noqa: BLE001
+                        create_payload: dict[str, Any] = {"Bucket": self.config.s3_bucket}
+                        if self.config.s3_region != "us-east-1":
+                            create_payload["CreateBucketConfiguration"] = {"LocationConstraint": self.config.s3_region}
+                        await s3_client.create_bucket(**create_payload)
+                    return
+            except Exception:  # noqa: BLE001
+                if asyncio.get_event_loop().time() >= deadline:
+                    raise
+                await asyncio.sleep(1)
+
     async def create_user(self, username: str) -> dict[str, Any]:
         async with self._http.post(self.config.users_url, json={"username": username}) as response:
             return await response.json()
@@ -83,6 +119,8 @@ class S3AASClient:
             return await self.create_gdrive_source(auth, name)
         if self.config.source_type == "telegram":
             return await self.create_telegram_source(auth, name)
+        if self.config.source_type == "s3":
+            return await self.create_s3_source(auth, name)
         raise ValueError(f"Unsupported source type: {self.config.source_type}")
 
     async def create_gdrive_source(self, auth: BasicAuth, name: str) -> dict[str, Any]:
@@ -97,6 +135,20 @@ class S3AASClient:
             "chat_id": self.config.telegram_chat_id,
         }
         async with self._http.post(self.config.telegram_sources_url, auth=auth, json=payload) as response:
+            return await response.json()
+
+
+    async def create_s3_source(self, auth: BasicAuth, name: str) -> dict[str, Any]:
+        payload = {
+            "name": name,
+            "endpoint": self.config.s3_endpoint,
+            "bucket": self.config.s3_bucket,
+            "access_key_id": self.config.s3_access_key_id,
+            "secret_access_key": self.config.s3_secret_access_key,
+            "region": self.config.s3_region,
+            "path_style": self.config.s3_path_style,
+        }
+        async with self._http.post(self.config.s3_sources_url, auth=auth, json=payload) as response:
             return await response.json()
 
     async def list_sources(self, auth: BasicAuth) -> list[dict[str, Any]]:

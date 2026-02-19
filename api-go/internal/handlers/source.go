@@ -7,6 +7,7 @@ import (
 
 	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/s3aas/api-go/internal/s3compat"
 	"github.com/example/s3aas/api-go/internal/telegram"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -22,6 +23,16 @@ type createTelegramSourceRequest struct {
 	Name   string `json:"name" binding:"required"`
 	Token  string `json:"token" binding:"required"`
 	ChatID string `json:"chat_id" binding:"required"`
+}
+
+type createS3SourceRequest struct {
+	Name            string `json:"name" binding:"required"`
+	Endpoint        string `json:"endpoint" binding:"required"`
+	Bucket          string `json:"bucket" binding:"required"`
+	AccessKeyID     string `json:"access_key_id" binding:"required"`
+	SecretAccessKey string `json:"secret_access_key" binding:"required"`
+	Region          string `json:"region"`
+	PathStyle       bool   `json:"path_style"`
 }
 
 type createSourceResponse struct {
@@ -99,6 +110,43 @@ func CreateTelegramSource(repo *repository.SourceRepository) gin.HandlerFunc {
 			return
 		}
 		saveSource(c, repo, repository.SourceTypeTelegram, req.Name, key)
+	}
+}
+
+// CreateS3Source godoc
+// @Summary Create s3 source
+// @Tags sources
+// @Accept json
+// @Produce json
+// @Param source body createS3SourceRequest true "Source to create"
+// @Success 200 {object} createSourceResponse
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources/s3 [post]
+func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req createS3SourceRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			log.Printf("create s3 source: invalid request: %v", err)
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		key, err := s3compat.EncodeConfig(s3compat.Config{
+			Endpoint:     req.Endpoint,
+			Region:       req.Region,
+			Bucket:       req.Bucket,
+			AccessKeyID:  req.AccessKeyID,
+			SecretAccess: req.SecretAccessKey,
+			PathStyle:    req.PathStyle,
+		})
+		if err != nil {
+			log.Printf("create s3 source: encode key: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		saveSource(c, repo, repository.SourceTypeS3, req.Name, key)
 	}
 }
 
@@ -321,6 +369,38 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 				Files:        []sourceInfoFile{},
 				StorageTotal: 0,
 				StorageUsed:  0,
+				StorageFree:  0,
+			})
+		case repository.SourceTypeS3:
+			cfg, err := s3compat.ParseConfig(src.Key)
+			if err != nil {
+				log.Printf("get source info: parse s3 source config: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			cli, err := s3compat.NewClient(c.Request.Context(), cfg)
+			if err != nil {
+				log.Printf("get source info: create s3 client: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			files, used, err := cli.ListObjects(c.Request.Context())
+			if err != nil {
+				log.Printf("get source info: list s3 objects: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			respFiles := make([]sourceInfoFile, 0, len(files))
+			for _, f := range files {
+				respFiles = append(respFiles, sourceInfoFile{ID: f.Key, Name: f.Key, Size: f.Size})
+			}
+			c.JSON(http.StatusOK, sourceInfoResponse{
+				ID:           src.ID.Hex(),
+				Name:         src.Name,
+				Type:         string(src.Type),
+				Files:        respFiles,
+				StorageTotal: 0,
+				StorageUsed:  used,
 				StorageFree:  0,
 			})
 		default:

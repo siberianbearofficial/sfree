@@ -8,6 +8,7 @@ import (
 
 	"github.com/example/s3aas/api-go/internal/gdrive"
 	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/s3aas/api-go/internal/s3compat"
 	"github.com/example/s3aas/api-go/internal/telegram"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -52,6 +53,12 @@ func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient,
 			return nil, err
 		}
 		return telegram.NewClient(cfg)
+	case repository.SourceTypeS3:
+		cfg, err := s3compat.ParseConfig(src.Key)
+		if err != nil {
+			return nil, err
+		}
+		return s3compat.NewClient(ctx, cfg)
 	default:
 		return nil, ErrUnsupportedSourceType
 	}
