@@ -27,8 +27,9 @@ type ObjectInfo struct {
 }
 
 type Client struct {
-	cfg Config
-	s3  *s3.Client
+	cfg           Config
+	s3            *s3.Client
+	listObjectsV2 func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
 }
 
 func EncodeConfig(cfg Config) (string, error) {
@@ -75,7 +76,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		opts.BaseEndpoint = aws.String(cfg.Endpoint)
 		opts.UsePathStyle = cfg.PathStyle
 	})
-	return &Client{cfg: cfg, s3: s3Client}, nil
+	return &Client{cfg: cfg, s3: s3Client, listObjectsV2: s3Client.ListObjectsV2}, nil
 }
 
 func (c *Client) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
@@ -100,19 +101,30 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 }
 
 func (c *Client) ListObjects(ctx context.Context) ([]ObjectInfo, int64, error) {
-	resp, err := c.s3.ListObjectsV2(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(c.cfg.Bucket)})
-	if err != nil {
-		return nil, 0, err
+	listFn := c.listObjectsV2
+	if listFn == nil {
+		listFn = c.s3.ListObjectsV2
 	}
-	objects := make([]ObjectInfo, 0, len(resp.Contents))
+	objects := make([]ObjectInfo, 0)
 	var total int64
-	for _, obj := range resp.Contents {
-		if obj.Key == nil {
-			continue
+	var token *string
+	for {
+		resp, err := listFn(ctx, &s3.ListObjectsV2Input{Bucket: aws.String(c.cfg.Bucket), ContinuationToken: token})
+		if err != nil {
+			return nil, 0, err
 		}
-		sz := aws.ToInt64(obj.Size)
-		objects = append(objects, ObjectInfo{Key: *obj.Key, Size: sz})
-		total += sz
+		for _, obj := range resp.Contents {
+			if obj.Key == nil {
+				continue
+			}
+			sz := aws.ToInt64(obj.Size)
+			objects = append(objects, ObjectInfo{Key: *obj.Key, Size: sz})
+			total += sz
+		}
+		if !aws.ToBool(resp.IsTruncated) || resp.NextContinuationToken == nil {
+			break
+		}
+		token = resp.NextContinuationToken
 	}
 	return objects, total, nil
 }
