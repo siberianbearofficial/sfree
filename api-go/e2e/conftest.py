@@ -109,5 +109,5 @@ async def e2e_context(client: S3AASClient) -> E2EContext:
         files = await client.list_files(auth, bucket_id)
         for file_doc in files:
             await client.delete_file(auth, bucket_id, file_doc["id"])
-        await client.delete_source(auth, source["id"])
         await client.delete_bucket(auth, bucket_id)
+        await client.delete_source(auth, source["id"])

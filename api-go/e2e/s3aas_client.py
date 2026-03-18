@@ -164,6 +164,14 @@ class S3AASClient:
         async with self._http.delete(f"{self.config.sources_url}/{source_id}", auth=auth):
             return
 
+    async def delete_source_status(self, auth: BasicAuth, source_id: str) -> int:
+        async with self._http.delete(
+            f"{self.config.sources_url}/{source_id}",
+            auth=auth,
+            raise_for_status=False,
+        ) as response:
+            return response.status
+
     async def upload_file_http(self, auth: BasicAuth, bucket_id: str, filename: str, content: bytes) -> dict[str, Any]:
         form = FormData()
         form.add_field("file", content, filename=filename, content_type="application/octet-stream")
