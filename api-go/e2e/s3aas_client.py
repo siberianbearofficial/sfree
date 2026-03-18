@@ -102,8 +102,9 @@ class S3AASClient:
         async with self._http.post(self.config.users_url, json={"username": username}) as response:
             return await response.json()
 
-    async def create_bucket(self, auth: BasicAuth, key: str) -> dict[str, Any]:
-        async with self._http.post(self.config.buckets_url, auth=auth, json={"key": key}) as response:
+    async def create_bucket(self, auth: BasicAuth, key: str, source_ids: list[str]) -> dict[str, Any]:
+        payload = {"key": key, "source_ids": source_ids}
+        async with self._http.post(self.config.buckets_url, auth=auth, json=payload) as response:
             return await response.json()
 
     async def list_buckets(self, auth: BasicAuth) -> list[dict[str, Any]]:

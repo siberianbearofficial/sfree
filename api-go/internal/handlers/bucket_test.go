@@ -33,7 +33,7 @@ func TestCreateBucket(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte("pass"), bcrypt.DefaultCost)
-	_, err = userRepo.Create(context.Background(), repository.User{
+	user, err := userRepo.Create(context.Background(), repository.User{
 		Username:     "tester",
 		PasswordHash: string(hash),
 		CreatedAt:    time.Now().UTC(),
@@ -45,10 +45,24 @@ func TestCreateBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceRepo, err := repository.NewSourceRepository(mongoConn.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := sourceRepo.Create(context.Background(), repository.Source{
+		UserID:    user.ID,
+		Type:      repository.SourceTypeGDrive,
+		Name:      "src-test",
+		Key:       "{}",
+		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	router := gin.New()
 	auth := BasicAuth(userRepo)
-	router.POST("/api/v1/buckets", auth, CreateBucket(repo, "testkey"))
-	body, _ := json.Marshal(map[string]string{"key": "bucket-test"})
+	router.POST("/api/v1/buckets", auth, CreateBucket(repo, sourceRepo, "testkey"))
+	body, _ := json.Marshal(map[string]any{"key": "bucket-test", "source_ids": []string{source.ID.Hex()}})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/buckets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth("tester", "pass")
