@@ -62,6 +62,37 @@ func (r *SourceRepository) GetByID(ctx context.Context, id primitive.ObjectID) (
 	return &s, nil
 }
 
+func (r *SourceRepository) ListByIDs(ctx context.Context, ids []primitive.ObjectID) ([]Source, error) {
+	if len(ids) == 0 {
+		return []Source{}, nil
+	}
+	cursor, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	byID := make(map[primitive.ObjectID]Source, len(ids))
+	for cursor.Next(ctx) {
+		var src Source
+		if err := cursor.Decode(&src); err != nil {
+			return nil, err
+		}
+		byID[src.ID] = src
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	sources := make([]Source, 0, len(ids))
+	for _, id := range ids {
+		source, ok := byID[id]
+		if !ok {
+			continue
+		}
+		sources = append(sources, source)
+	}
+	return sources, nil
+}
+
 func (r *SourceRepository) ListByUser(ctx context.Context, userID primitive.ObjectID) ([]Source, error) {
 	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID})
 	if err != nil {

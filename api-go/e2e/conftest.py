@@ -87,14 +87,13 @@ async def e2e_context(client: S3AASClient) -> E2EContext:
     user = await client.create_user(username)
     auth = BasicAuth(login=username, password=user["password"])
 
-    bucket = await client.create_bucket(auth=auth, key=bucket_key)
-    buckets = await client.list_buckets(auth)
-    bucket_id = next(item["id"] for item in buckets if item["key"] == bucket_key)
-
     if client.config.source_type == "s3":
         await client.ensure_s3_source_bucket()
 
     source = await client.create_source(auth, source_name)
+    bucket = await client.create_bucket(auth=auth, key=bucket_key, source_ids=[source["id"]])
+    buckets = await client.list_buckets(auth)
+    bucket_id = next(item["id"] for item in buckets if item["key"] == bucket_key)
 
     try:
         yield E2EContext(

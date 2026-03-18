@@ -241,12 +241,13 @@ func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
 // @Failure 404 {string} string ""
+// @Failure 409 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/sources/{id} [delete]
-func DeleteSource(repo *repository.SourceRepository) gin.HandlerFunc {
+func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.BucketRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if repo == nil {
+		if repo == nil || bucketRepo == nil {
 			log.Print("delete source: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
@@ -265,6 +266,16 @@ func DeleteSource(repo *repository.SourceRepository) gin.HandlerFunc {
 		id, err := primitive.ObjectIDFromHex(idHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
+			return
+		}
+		inUse, err := bucketRepo.HasSourceReference(c.Request.Context(), userID, id)
+		if err != nil {
+			log.Printf("delete source: check buckets: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if inUse {
+			c.Status(http.StatusConflict)
 			return
 		}
 		if err := repo.Delete(c.Request.Context(), id, userID); err != nil {

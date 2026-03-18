@@ -11,12 +11,13 @@ import (
 )
 
 type Bucket struct {
-	ID              primitive.ObjectID `bson:"_id,omitempty"`
-	UserID          primitive.ObjectID `bson:"user_id"`
-	Key             string             `bson:"key"`
-	AccessKey       string             `bson:"access_key"`
-	AccessSecretEnc string             `bson:"access_secret"`
-	CreatedAt       time.Time          `bson:"created_at"`
+	ID              primitive.ObjectID   `bson:"_id,omitempty"`
+	UserID          primitive.ObjectID   `bson:"user_id"`
+	Key             string               `bson:"key"`
+	AccessKey       string               `bson:"access_key"`
+	AccessSecretEnc string               `bson:"access_secret"`
+	SourceIDs       []primitive.ObjectID `bson:"source_ids"`
+	CreatedAt       time.Time            `bson:"created_at"`
 }
 
 type BucketRepository struct {
@@ -101,6 +102,14 @@ func (r *BucketRepository) ListByUser(ctx context.Context, userID primitive.Obje
 		return nil, err
 	}
 	return buckets, nil
+}
+
+func (r *BucketRepository) HasSourceReference(ctx context.Context, userID, sourceID primitive.ObjectID) (bool, error) {
+	count, err := r.coll.CountDocuments(ctx, bson.M{"user_id": userID, "source_ids": sourceID})
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *BucketRepository) Delete(ctx context.Context, id, userID primitive.ObjectID) error {
