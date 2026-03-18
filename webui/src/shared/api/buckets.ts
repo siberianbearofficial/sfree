@@ -27,7 +27,7 @@ export async function listBuckets(): Promise<Bucket[]> {
   return res.json();
 }
 
-export async function createBucket(key: string): Promise<{
+export async function createBucket(key: string, sourceIds: string[]): Promise<{
   key: string;
   access_key: string;
   access_secret: string;
@@ -39,7 +39,7 @@ export async function createBucket(key: string): Promise<{
       "Content-Type": "application/json",
       ...authHeader(),
     },
-    body: JSON.stringify({ key }),
+    body: JSON.stringify({key, source_ids: sourceIds}),
   });
   if (!res.ok) throw new Error("failed to create bucket");
   return res.json();

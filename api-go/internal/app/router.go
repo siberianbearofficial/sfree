@@ -48,7 +48,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		if cfg != nil {
 			secretKey = cfg.AccessSecretKey
 		}
-		router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo, secretKey))
+		router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo, sourceRepo, secretKey))
 		router.GET("/api/v1/buckets", auth, handlers.ListBuckets(bucketRepo))
 		router.DELETE("/api/v1/buckets/:id", auth, handlers.DeleteBucket(bucketRepo))
 		if sourceRepo != nil && fileRepo != nil {
@@ -69,7 +69,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		router.POST("/api/v1/sources/s3", auth, handlers.CreateS3Source(sourceRepo))
 		router.GET("/api/v1/sources", auth, handlers.ListSources(sourceRepo))
 		router.GET("/api/v1/sources/:id/info", auth, handlers.GetSourceInfo(sourceRepo))
-		router.DELETE("/api/v1/sources/:id", auth, handlers.DeleteSource(sourceRepo))
+		router.DELETE("/api/v1/sources/:id", auth, handlers.DeleteSource(sourceRepo, bucketRepo))
 	}
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

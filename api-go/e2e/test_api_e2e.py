@@ -164,3 +164,8 @@ async def test_s3_delete_object_removes_file_metadata_and_content(client, e2e_co
         bucket_key=e2e_context.bucket_key,
         object_key=filename,
     )
+
+
+async def test_delete_source_returns_conflict_while_bucket_uses_it(client, e2e_context):
+    status = await client.delete_source_status(e2e_context.auth, e2e_context.source_id)
+    assert status == 409

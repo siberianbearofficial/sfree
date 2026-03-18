@@ -222,7 +222,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
 			return
 		}
-		sources, err := sourceRepo.ListByUser(ctx, bucketDoc.UserID)
+		sources, err := sourceRepo.ListByIDs(ctx, bucketDoc.SourceIDs)
 		if err != nil {
 			log.Printf("put object: list sources: %v", err)
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")

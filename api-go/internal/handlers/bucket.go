@@ -16,7 +16,8 @@ import (
 )
 
 type createBucketRequest struct {
-	Key string `json:"key" binding:"required"`
+	Key       string   `json:"key" binding:"required"`
+	SourceIDs []string `json:"source_ids" binding:"required,min=1"`
 }
 
 type createBucketResponse struct {
@@ -52,7 +53,7 @@ type fileResponse struct {
 // @Failure 409 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets [post]
-func CreateBucket(repo *repository.BucketRepository, secretKey string) gin.HandlerFunc {
+func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, secretKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createBucketRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -60,7 +61,7 @@ func CreateBucket(repo *repository.BucketRepository, secretKey string) gin.Handl
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if repo == nil {
+		if repo == nil || sourceRepo == nil {
 			log.Print("create bucket: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
@@ -93,11 +94,35 @@ func CreateBucket(repo *repository.BucketRepository, secretKey string) gin.Handl
 			c.Status(http.StatusInternalServerError)
 			return
 		}
+		sourceIDs := make([]primitive.ObjectID, 0, len(req.SourceIDs))
+		for _, sourceIDHex := range req.SourceIDs {
+			sourceID, err := primitive.ObjectIDFromHex(sourceIDHex)
+			if err != nil {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+			sourceDoc, err := sourceRepo.GetByID(c.Request.Context(), sourceID)
+			if err != nil {
+				if err == mongo.ErrNoDocuments {
+					c.Status(http.StatusBadRequest)
+					return
+				}
+				log.Printf("create bucket: get source: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			if sourceDoc.UserID != userID {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+			sourceIDs = append(sourceIDs, sourceID)
+		}
 		bucket := repository.Bucket{
 			UserID:          userID,
 			Key:             req.Key,
 			AccessKey:       accessKey,
 			AccessSecretEnc: encrypted,
+			SourceIDs:       sourceIDs,
 			CreatedAt:       time.Now().UTC(),
 		}
 		created, err := repo.Create(c.Request.Context(), bucket)
@@ -269,7 +294,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusNotFound)
 			return
 		}
-		sources, err := sourceRepo.ListByUser(c.Request.Context(), userID)
+		sources, err := sourceRepo.ListByIDs(c.Request.Context(), bucketDoc.SourceIDs)
 		if err != nil {
 			log.Printf("upload file: list sources: %v", err)
 			c.Status(http.StatusInternalServerError)
