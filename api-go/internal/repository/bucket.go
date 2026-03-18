@@ -11,12 +11,13 @@ import (
 )
 
 type Bucket struct {
-	ID              primitive.ObjectID `bson:"_id,omitempty"`
-	UserID          primitive.ObjectID `bson:"user_id"`
-	Key             string             `bson:"key"`
-	AccessKey       string             `bson:"access_key"`
-	AccessSecretEnc string             `bson:"access_secret"`
-	CreatedAt       time.Time          `bson:"created_at"`
+	ID              primitive.ObjectID   `bson:"_id,omitempty"`
+	UserID          primitive.ObjectID   `bson:"user_id"`
+	Key             string               `bson:"key"`
+	AccessKey       string               `bson:"access_key"`
+	AccessSecretEnc string               `bson:"access_secret"`
+	SourceIDs       []primitive.ObjectID `bson:"source_ids"`
+	CreatedAt       time.Time            `bson:"created_at"`
 }
 
 type BucketRepository struct {

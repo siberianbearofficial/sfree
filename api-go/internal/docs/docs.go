@@ -1055,11 +1055,19 @@ const docTemplate = `{
         "handlers.createBucketRequest": {
             "type": "object",
             "required": [
-                "key"
+                "key",
+                "source_ids"
             ],
             "properties": {
                 "key": {
                     "type": "string"
+                },
+                "source_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
