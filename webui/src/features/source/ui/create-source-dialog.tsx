@@ -24,6 +24,13 @@ export function CreateSourceDialog({isOpen, onOpenChange, onCreated}: Props) {
 
   const [isLoading, setIsLoading] = useState(false);
 
+  const isValid = (() => {
+    if (!name.trim()) return false;
+    if (sourceType === "gdrive") return !!key.trim();
+    if (sourceType === "telegram") return !!token.trim() && !!chatId.trim();
+    return !!endpoint.trim() && !!bucket.trim() && !!accessKeyId.trim() && !!secretAccessKey.trim();
+  })();
+
   function reset() {
     setSourceType("gdrive");
     setName("");
@@ -80,29 +87,29 @@ export function CreateSourceDialog({isOpen, onOpenChange, onCreated}: Props) {
                 <SelectItem key="telegram">Telegram</SelectItem>
                 <SelectItem key="s3">S3-Compatible</SelectItem>
               </Select>
-              <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input label="Name" isRequired value={name} onChange={(e) => setName(e.target.value)} />
               {sourceType === "gdrive" && (
-                <Textarea label="Service Account Key (JSON)" value={key} onChange={(e) => setKey(e.target.value)} />
+                <Textarea label="Service Account Key (JSON)" isRequired value={key} onChange={(e) => setKey(e.target.value)} />
               )}
               {sourceType === "telegram" && (
                 <>
-                  <Input label="Bot Token" value={token} onChange={(e) => setToken(e.target.value)} />
-                  <Input label="Chat ID" value={chatId} onChange={(e) => setChatId(e.target.value)} />
+                  <Input label="Bot Token" isRequired value={token} onChange={(e) => setToken(e.target.value)} />
+                  <Input label="Chat ID" isRequired value={chatId} onChange={(e) => setChatId(e.target.value)} />
                 </>
               )}
               {sourceType === "s3" && (
                 <>
-                  <Input label="Endpoint" placeholder="https://s3.amazonaws.com" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} />
-                  <Input label="Bucket" value={bucket} onChange={(e) => setBucket(e.target.value)} />
-                  <Input label="Access Key ID" value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} />
-                  <Input label="Secret Access Key" type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} />
+                  <Input label="Endpoint" isRequired placeholder="https://s3.amazonaws.com" value={endpoint} onChange={(e) => setEndpoint(e.target.value)} />
+                  <Input label="Bucket" isRequired value={bucket} onChange={(e) => setBucket(e.target.value)} />
+                  <Input label="Access Key ID" isRequired value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} />
+                  <Input label="Secret Access Key" isRequired type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} />
                   <Input label="Region" placeholder="us-east-1 (optional)" value={region} onChange={(e) => setRegion(e.target.value)} />
                   <Checkbox isSelected={pathStyle} onValueChange={setPathStyle}>Path-style access</Checkbox>
                 </>
               )}
             </ModalBody>
             <ModalFooter>
-              <Button color="primary" isLoading={isLoading} onPress={() => handleCreate(onClose)}>
+              <Button color="primary" isDisabled={!isValid} isLoading={isLoading} onPress={() => handleCreate(onClose)}>
                 Create
               </Button>
             </ModalFooter>
