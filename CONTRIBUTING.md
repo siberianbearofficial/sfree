@@ -1,0 +1,121 @@
+# Contributing to SFree
+
+Thanks for contributing. Keep changes small, explicit, and aligned with the
+current launch boundaries documented in [README.md](README.md) and
+[docs/architecture.md](docs/architecture.md).
+
+## Start With A Tracked Issue
+
+- Prefer working from an existing GitHub issue so the scope is clear enough for
+  outside contributors to pick up.
+- If your change is not already tracked, open or refine an issue before making a
+  large implementation pass.
+
+## Repository Ground Rules
+
+- `api-go/` is the primary backend. New backend features belong there.
+- `api/` is deprecated. Do not add new behavior there unless an issue explicitly
+  asks for legacy Python API work.
+- Woodpecker self-hosted is the only supported CI/CD path for this repository.
+  Do not add GitHub Actions workflows. Pipeline triggers, required secrets, and
+  published image targets are documented in [docs/ci.md](docs/ci.md).
+- Preserve the current public caveats:
+  - backend-supported sources are Google Drive, Telegram, and S3-compatible
+    storage
+  - the browser UI only creates Google Drive sources today
+  - uploads are split into chunks and distributed across sources without
+    redundancy guarantees
+  - auth and credential handling are functional but not production-hardened,
+    and source create/list responses currently echo stored credential payloads
+
+## Local Setup
+
+### Backend
+
+Prerequisites:
+
+- Go 1.24+
+- Docker, or another reachable MongoDB instance
+- `golangci-lint` for the standard lint pass
+
+Start local MongoDB:
+
+```bash
+cd api-go
+docker compose up -d
+```
+
+Run the API:
+
+```bash
+cd api-go
+ENV=local go run ./cmd/server
+```
+
+Swagger is served from `http://localhost:8080/swagger/index.html`.
+
+### Frontend
+
+Prerequisites:
+
+- A recent Node.js release with npm
+
+Install dependencies and start Vite:
+
+```bash
+cd webui
+npm install
+npm run dev
+```
+
+The checked-in frontend currently hardcodes
+`https://s3aas-api.dev.nachert.art/api/v1` in `webui/src/shared/api/users.ts`,
+`webui/src/shared/api/buckets.ts`, and `webui/src/shared/api/sources.ts`.
+Adjust those modules before expecting a fully local browser workflow.
+
+## Validation
+
+Run the checks that match the area you changed before opening a PR.
+
+Backend:
+
+```bash
+cd api-go
+golangci-lint run
+go test ./...
+```
+
+Frontend:
+
+```bash
+cd webui
+npm run lint
+npm run build
+```
+
+Optional E2E coverage:
+
+```bash
+cd api-go
+make test-e2e-local
+```
+
+`make test-e2e-local` uses `docker-compose.e2e.yml`. The `s3` E2E flow works
+with the bundled MinIO service. The Google Drive and Telegram flows require
+their corresponding credentials.
+
+## API Changes
+
+When you add, remove, or change API endpoints in `api-go/`:
+
+- update the Swagger comments in Go source
+- regenerate `api-go/internal/docs/docs.go`
+- avoid committing generated artifacts such as `swagger.json` or `swagger.yaml`
+
+## Pull Requests
+
+- Explain the behavior change and any remaining caveats in the PR description.
+- Reference the issue that motivated the change.
+- Expect the relevant Woodpecker checks to pass before review or merge.
+- If you change contributor-facing behavior, update the relevant docs in the
+  same PR.
