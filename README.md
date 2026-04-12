@@ -63,38 +63,101 @@ read and write objects directly.
 
 ### Prerequisites
 
+- Docker and Docker Compose
+
+### 1. Start the full stack
+
+```bash
+git clone https://github.com/siberianbearofficial/sfree.git
+cd sfree
+docker compose up --build
+```
+
+This starts MongoDB, the Go API, a React frontend (with nginx), and a MinIO
+instance for local S3-compatible source testing.
+
+| Service  | URL                          |
+| -------- | ---------------------------- |
+| Frontend | http://localhost:3000        |
+| API      | http://localhost:8080        |
+| Swagger  | http://localhost:8080/swagger/index.html |
+| MinIO Console | http://localhost:9001   |
+
+### 2. Try it out
+
+1. Open http://localhost:3000 and sign up.
+2. Create an S3-compatible source via the API (using the bundled MinIO):
+   ```bash
+   # Create user first, note the password from the response
+   curl -X POST http://localhost:8080/api/v1/users \
+     -H 'Content-Type: application/json' \
+     -d '{"username": "demo"}'
+
+   # Use the returned password for Basic Auth (base64 of demo:PASSWORD)
+   # Create an S3-compatible source backed by MinIO
+   curl -X POST http://localhost:8080/api/v1/sources/s3 \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Basic BASE64_CREDENTIALS' \
+     -d '{
+       "name": "local-minio",
+       "endpoint": "http://minio:9000",
+       "bucket": "sfree-data",
+       "access_key_id": "minioadmin",
+       "secret_access_key": "minioadmin",
+       "region": "us-east-1",
+       "path_style": true
+     }'
+   ```
+3. Create a bucket in the UI (select the MinIO source).
+4. Upload a file through the UI.
+5. Download the same file via aws-cli using the bucket's S3 credentials:
+   ```bash
+   aws s3 ls s3://BUCKET_KEY/ \
+     --endpoint-url http://localhost:8080/api/s3
+
+   aws s3 cp s3://BUCKET_KEY/OBJECT_KEY ./local-copy \
+     --endpoint-url http://localhost:8080/api/s3
+   ```
+
+### Manual dev setup (without Docker Compose)
+
+<details>
+<summary>Click to expand</summary>
+
+#### Prerequisites
+
 - Go 1.24+
 - Docker (for MongoDB)
 - Node.js with npm (for the browser UI)
 
-### 1. Start MongoDB
+#### 1. Start MongoDB
 
 ```bash
 cd api-go
 docker compose up -d
 ```
 
-### 2. Run the Go API
+#### 2. Run the Go API
 
 ```bash
 cd api-go
 ENV=local go run ./cmd/server
 ```
 
-The API listens on `http://localhost:8080`. Swagger docs are at
-`http://localhost:8080/swagger/index.html`.
+The API listens on `http://localhost:8080`.
 
-### 3. Run the browser UI (optional)
+#### 3. Run the browser UI
 
 ```bash
 cd webui
-npm install
-npm run dev
+VITE_API_BASE=http://localhost:8080/api/v1 npm run dev
 ```
 
-> **Note:** The checked-in frontend points at a hosted dev API URL in
-> `webui/src/shared/api/*.ts`. Update those modules to `http://localhost:8080`
-> for a fully local workflow.
+Set `VITE_API_BASE` to point the frontend at your local API. Without it, the
+frontend defaults to a relative `/api/v1` path (designed for the Docker Compose
+setup where nginx proxies to the API).
+
+</details>
 
 ## Repository Layout
 
