@@ -1,11 +1,31 @@
 when:
-  - event: push
+  - event: pull_request
     path:
-      include: [ '.woodpecker/webui.yml', 'webui/**' ]
+      include:
+        - .woodpecker/webui.yml
+        - webui/**
+
+  - event: push
+    branch: main
+    path:
+      include:
+        - .woodpecker/webui.yml
+        - webui/**
 
 steps:
+  - name: validate
+    image: node:20
+    commands:
+      - cd webui
+      - npm ci --include=dev
+      - npm run lint
+      - npm run build
+
   - name: build and push
     image: woodpeckerci/plugin-docker-buildx
+    when:
+      - event: push
+        branch: main
     settings:
       repo: ghcr.io/siberianbearofficial/s3aas-webui
       registry: ghcr.io
