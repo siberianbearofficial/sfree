@@ -97,8 +97,7 @@ copy:
   `webui/src/shared/api/*.ts`, so a fully local browser loop still requires a
   small manual config edit.
 
-## Naming Note
+## Naming
 
-The repository is published as `sfree`, but some internal module and image names
-still use the historical `s3aas` identifier. Treat that as legacy technical
-naming until a coordinated rename lands.
+All internal module paths, image names, database names, and user-facing strings
+use the `sfree` identifier consistently.

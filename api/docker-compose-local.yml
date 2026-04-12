@@ -1,7 +1,7 @@
 services:
-  s3aas-postgres-dc:
+  sfree-postgres-dc:
     image: postgres:16
-    container_name: s3aas-postgres-dc-local
+    container_name: sfree-postgres-dc-local
     restart: always
     expose:
       - 5432
@@ -12,8 +12,8 @@ services:
       - POSTGRES_PASSWORD=${DB_PASS}
       - POSTGRES_DB=${DB_NAME}
     networks:
-      - s3aas_net
+      - sfree_net
 
 networks:
-  s3aas_net:
+  sfree_net:
     driver: bridge

@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/s3aas/api-go/internal/config"
-	"github.com/example/s3aas/api-go/internal/db"
-	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/config"
+	"github.com/example/sfree/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 )

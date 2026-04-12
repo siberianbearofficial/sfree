@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/repository"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 

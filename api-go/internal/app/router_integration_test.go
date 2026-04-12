@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/example/s3aas/api-go/internal/config"
-	"github.com/example/s3aas/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/config"
+	"github.com/example/sfree/api-go/internal/db"
 )
 
 func TestRouterWithDB(t *testing.T) {

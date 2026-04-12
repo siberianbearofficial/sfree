@@ -27,11 +27,8 @@ executes the real multi-source end-to-end flow.
 
 Pushes to `main` publish these images to GitHub Container Registry:
 
-- `ghcr.io/siberianbearofficial/s3aas-api-go:main`
-- `ghcr.io/siberianbearofficial/s3aas-webui:main`
-
-The image names still use the historical `s3aas` identifier. Keep that legacy
-naming until the registry rename is handled explicitly.
+- `ghcr.io/siberianbearofficial/sfree-api-go:main`
+- `ghcr.io/siberianbearofficial/sfree-webui:main`
 
 ## Deployment Expectations
 

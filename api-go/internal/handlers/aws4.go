@@ -4,9 +4,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/example/s3aas/api-go/internal/cryptoutil"
-	"github.com/example/s3aas/api-go/internal/repository"
-	"github.com/example/s3aas/api-go/internal/s3sigv4"
+	"github.com/example/sfree/api-go/internal/cryptoutil"
+	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/s3sigv4"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 )

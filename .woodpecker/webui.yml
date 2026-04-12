@@ -27,7 +27,7 @@ steps:
       - event: push
         branch: main
     settings:
-      repo: ghcr.io/siberianbearofficial/s3aas-webui
+      repo: ghcr.io/siberianbearofficial/sfree-webui
       registry: ghcr.io
       username: siberianbearofficial
       password:

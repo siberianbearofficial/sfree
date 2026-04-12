@@ -3,7 +3,7 @@ mongo:
   port: 27017
   user: root
   password: example
-  database: s3aas
+  database: sfree
 upload:
   chunk_size: 5242880
 access_secret_key: examplesecret

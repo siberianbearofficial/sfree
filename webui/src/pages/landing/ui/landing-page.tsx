@@ -6,7 +6,7 @@ export function LandingPage() {
   const register = useDisclosure();
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-      <h1 className="text-4xl font-bold">S3aaS</h1>
+      <h1 className="text-4xl font-bold">SFree</h1>
       <p>Simple storage as a service.</p>
       <div className="flex gap-4">
         <Button color="primary" onPress={register.onOpen}>Sign Up</Button>

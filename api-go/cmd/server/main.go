@@ -1,6 +1,6 @@
 // Package main implements the HTTP server.
 //
-// @title S3aaS API
+// @title SFree API
 // @version 1.0
 // @BasePath /
 // @securityDefinitions.basic BasicAuth
@@ -10,10 +10,10 @@ import (
 	"context"
 	"log"
 
-	"github.com/example/s3aas/api-go/internal/app"
-	"github.com/example/s3aas/api-go/internal/config"
-	"github.com/example/s3aas/api-go/internal/db"
-	_ "github.com/example/s3aas/api-go/internal/docs"
+	"github.com/example/sfree/api-go/internal/app"
+	"github.com/example/sfree/api-go/internal/config"
+	"github.com/example/sfree/api-go/internal/db"
+	_ "github.com/example/sfree/api-go/internal/docs"
 )
 
 func main() {

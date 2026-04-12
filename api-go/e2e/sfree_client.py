@@ -49,7 +49,7 @@ class E2EConfig:
         return f"{self.base_api_url}/api/s3"
 
 
-class S3AASClient:
+class SFreeClient:
     def __init__(self, config: E2EConfig) -> None:
         self.config = config
         self._http = ClientSession(raise_for_status=True)

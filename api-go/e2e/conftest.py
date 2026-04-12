@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 from aiohttp import BasicAuth
 
-from e2e.s3aas_client import E2EConfig, S3AASClient
+from e2e.sfree_client import E2EConfig, SFreeClient
 
 
 @pytest.fixture(scope="session")
@@ -17,7 +17,7 @@ def e2e_config() -> E2EConfig:
     telegram_token = os.getenv("E2E_TELEGRAM_TOKEN", "")
     telegram_chat_id = os.getenv("E2E_TELEGRAM_CHAT_ID", "")
     s3_endpoint = os.getenv("E2E_S3_ENDPOINT", "http://minio:9000")
-    s3_bucket = os.getenv("E2E_S3_BUCKET", "s3aas-e2e-source")
+    s3_bucket = os.getenv("E2E_S3_BUCKET", "sfree-e2e-source")
     s3_access_key_id = os.getenv("E2E_S3_ACCESS_KEY_ID", "minioadmin")
     s3_secret_access_key = os.getenv("E2E_S3_SECRET_ACCESS_KEY", "minioadmin")
     s3_region = os.getenv("E2E_S3_REGION", "us-east-1")
@@ -58,8 +58,8 @@ def e2e_config() -> E2EConfig:
 
 
 @pytest_asyncio.fixture
-async def client(e2e_config: E2EConfig) -> S3AASClient:
-    client = S3AASClient(e2e_config)
+async def client(e2e_config: E2EConfig) -> SFreeClient:
+    client = SFreeClient(e2e_config)
     await client.wait_ready()
     try:
         yield client
@@ -79,7 +79,7 @@ class E2EContext:
 
 
 @pytest_asyncio.fixture
-async def e2e_context(client: S3AASClient) -> E2EContext:
+async def e2e_context(client: SFreeClient) -> E2EContext:
     username = f"e2e-user-{uuid4().hex[:10]}"
     bucket_key = f"e2e-bucket-{uuid4().hex[:10]}"
     source_name = f"e2e-source-{uuid4().hex[:10]}"

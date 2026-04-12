@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/s3aas/api-go/internal/manager"
-	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/manager"
+	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 )

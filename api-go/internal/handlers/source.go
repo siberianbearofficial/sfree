@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/example/s3aas/api-go/internal/gdrive"
-	"github.com/example/s3aas/api-go/internal/repository"
-	"github.com/example/s3aas/api-go/internal/s3compat"
-	"github.com/example/s3aas/api-go/internal/telegram"
+	"github.com/example/sfree/api-go/internal/gdrive"
+	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/s3compat"
+	"github.com/example/sfree/api-go/internal/telegram"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -35,11 +35,10 @@ type createS3SourceRequest struct {
 	PathStyle       bool   `json:"path_style"`
 }
 
-type createSourceResponse struct {
+type sourceResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Type      string    `json:"type"`
-	Key       string    `json:"key"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -65,7 +64,7 @@ type sourceInfoResponse struct {
 // @Accept json
 // @Produce json
 // @Param source body createGDriveSourceRequest true "Source to create"
-// @Success 200 {object} createSourceResponse
+// @Success 200 {object} sourceResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
 // @Failure 500 {string} string ""
@@ -89,7 +88,7 @@ func CreateGDriveSource(repo *repository.SourceRepository) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param source body createTelegramSourceRequest true "Source to create"
-// @Success 200 {object} createSourceResponse
+// @Success 200 {object} sourceResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
 // @Failure 500 {string} string ""
@@ -119,7 +118,7 @@ func CreateTelegramSource(repo *repository.SourceRepository) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param source body createS3SourceRequest true "Source to create"
-// @Success 200 {object} createSourceResponse
+// @Success 200 {object} sourceResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
 // @Failure 500 {string} string ""
@@ -178,11 +177,10 @@ func saveSource(c *gin.Context, repo *repository.SourceRepository, sourceType re
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	c.JSON(http.StatusOK, createSourceResponse{
+	c.JSON(http.StatusOK, sourceResponse{
 		ID:        created.ID.Hex(),
 		Name:      created.Name,
 		Type:      string(created.Type),
-		Key:       created.Key,
 		CreatedAt: created.CreatedAt,
 	})
 }
@@ -191,7 +189,7 @@ func saveSource(c *gin.Context, repo *repository.SourceRepository, sourceType re
 // @Summary List sources
 // @Tags sources
 // @Produce json
-// @Success 200 {array} createSourceResponse
+// @Success 200 {array} sourceResponse
 // @Failure 401 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
@@ -219,13 +217,12 @@ func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		resp := make([]createSourceResponse, 0, len(sources))
+		resp := make([]sourceResponse, 0, len(sources))
 		for _, s := range sources {
-			resp = append(resp, createSourceResponse{
+			resp = append(resp, sourceResponse{
 				ID:        s.ID.Hex(),
 				Name:      s.Name,
 				Type:      string(s.Type),
-				Key:       s.Key,
 				CreatedAt: s.CreatedAt,
 			})
 		}

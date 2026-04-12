@@ -12,7 +12,7 @@ async def test_sources_lifecycle(client, e2e_context):
 
 async def test_upload_download_via_s3_and_http(client, e2e_context):
     filename = f"e2e-object-{uuid4().hex[:8]}.txt"
-    payload = b"s3aas e2e payload"
+    payload = b"sfree e2e payload"
 
     await client.upload_file_s3(
         access_key=e2e_context.access_key,
@@ -90,7 +90,7 @@ async def test_s3_put_overwrites_existing_object(client, e2e_context):
 
 async def test_http_upload_works(client, e2e_context):
     filename = f"e2e-http-{uuid4().hex[:8]}.txt"
-    payload = b"s3aas e2e http payload"
+    payload = b"sfree e2e http payload"
 
     uploaded = await client.upload_file_http(e2e_context.auth, e2e_context.bucket_id, filename, payload)
     downloaded = await client.download_file_http(e2e_context.auth, e2e_context.bucket_id, uploaded["id"])

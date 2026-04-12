@@ -1,6 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
-export type Source = {id: string; name: string; type: string; key: string; created_at: string};
+export type Source = {id: string; name: string; type: string; created_at: string};
 
 export type SourceFile = {id: string; name: string; size: number};
 
@@ -27,14 +27,41 @@ export async function listSources(): Promise<Source[]> {
   return res.json();
 }
 
-export async function createSource(name: string, key: string): Promise<Source> {
+export async function createGDriveSource(name: string, key: string): Promise<Source> {
   const res = await fetch(`${API_BASE}/sources/gdrive`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader(),
-    },
+    headers: {"Content-Type": "application/json", ...authHeader()},
     body: JSON.stringify({name, key}),
+  });
+  if (!res.ok) throw new Error("failed to create source");
+  return res.json();
+}
+
+export async function createTelegramSource(name: string, token: string, chatId: string): Promise<Source> {
+  const res = await fetch(`${API_BASE}/sources/telegram`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", ...authHeader()},
+    body: JSON.stringify({name, token, chat_id: chatId}),
+  });
+  if (!res.ok) throw new Error("failed to create source");
+  return res.json();
+}
+
+export type CreateS3SourceParams = {
+  name: string;
+  endpoint: string;
+  bucket: string;
+  access_key_id: string;
+  secret_access_key: string;
+  region?: string;
+  path_style?: boolean;
+};
+
+export async function createS3Source(params: CreateS3SourceParams): Promise<Source> {
+  const res = await fetch(`${API_BASE}/sources/s3`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json", ...authHeader()},
+    body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error("failed to create source");
   return res.json();

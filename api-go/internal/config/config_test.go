@@ -25,7 +25,7 @@ func TestLoadTestEnv(t *testing.T) {
 	if cfg.Mongo.Host != "mongo" {
 		t.Fatalf("unexpected host %s", cfg.Mongo.Host)
 	}
-	if cfg.Mongo.Database != "s3aas_test" {
+	if cfg.Mongo.Database != "sfree_test" {
 		t.Fatalf("unexpected db %s", cfg.Mongo.Database)
 	}
 }

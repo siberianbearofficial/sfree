@@ -9,16 +9,16 @@ from src.setup.router import router as setup_router
 from src.utils.exceptions import endpoints_exception_handler
 
 DESCRIPTION = """
-S3aaS has **S3-complatible routes** to store/retrieve/remove data and **REST API** for administrating purposes.
+SFree has **S3-compatible routes** to store/retrieve/remove data and **REST API** for administrating purposes.
 
-You can create **multiple sources** to allow S3aaS to distribute chunks of data into them under the hood.
+You can create **multiple sources** to allow SFree to distribute chunks of data into them under the hood.
 
 If you don't have enough space in any of added sources but still have enough space in all of them together,
 there is no problem to the system to handle file division and **use all available space in all sources**.
 """
 
 app = fastapi.FastAPI(
-    title="S3aaS",
+    title="SFree",
     summary="S3-compatible API that stores data in various storage systems.",
     description=DESCRIPTION,
     contact={

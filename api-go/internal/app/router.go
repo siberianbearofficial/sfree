@@ -1,10 +1,10 @@
 package app
 
 import (
-	"github.com/example/s3aas/api-go/internal/config"
-	"github.com/example/s3aas/api-go/internal/db"
-	"github.com/example/s3aas/api-go/internal/handlers"
-	"github.com/example/s3aas/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/config"
+	"github.com/example/sfree/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/handlers"
+	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

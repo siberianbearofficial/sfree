@@ -1,7 +1,7 @@
 mongo:
-  host: s3aas-mongo
+  host: sfree-mongo
   port: 27017
   user: root
-  database: s3aas
+  database: sfree
 upload:
   chunk_size: 5242880

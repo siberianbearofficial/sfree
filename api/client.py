@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    base_api_url: str = "https://s3aas-api.dev.nachert.art"
+    base_api_url: str = "https://sfree-api.dev.nachert.art"
     gdrive_key: str  # Секретный ключ для Google Drive
     username: str = "testuser4"
     bucket_key: str = "test-bucket2"
