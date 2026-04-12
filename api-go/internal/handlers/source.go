@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -416,6 +418,113 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 			})
 		default:
 			c.Status(http.StatusBadRequest)
+		}
+	}
+}
+
+// DownloadSourceFile godoc
+// @Summary Download a file from a source
+// @Tags sources
+// @Produce octet-stream
+// @Param id path string true "Source ID"
+// @Param file_id path string true "File ID (GDrive file ID or S3 object key)"
+// @Success 200 {file} file
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources/{id}/files/{file_id}/download [get]
+func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if sourceRepo == nil {
+			log.Print("download source file: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		idHex := c.Param("id")
+		id, err := primitive.ObjectIDFromHex(idHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		fileID := c.Param("file_id")
+		if fileID == "" {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		src, err := sourceRepo.GetByID(c.Request.Context(), id)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("download source file: get source: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if src.UserID != userID {
+			c.Status(http.StatusNotFound)
+			return
+		}
+
+		var body io.ReadCloser
+		filename := fileID
+
+		switch src.Type {
+		case repository.SourceTypeGDrive:
+			cli, err := gdrive.NewClient(c.Request.Context(), []byte(src.Key))
+			if err != nil {
+				log.Printf("download source file: create gdrive client: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			body, err = cli.Download(c.Request.Context(), fileID)
+			if err != nil {
+				log.Printf("download source file: gdrive download: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+		case repository.SourceTypeS3:
+			cfg, err := s3compat.ParseConfig(src.Key)
+			if err != nil {
+				log.Printf("download source file: parse s3 config: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			cli, err := s3compat.NewClient(c.Request.Context(), cfg)
+			if err != nil {
+				log.Printf("download source file: create s3 client: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			body, err = cli.Download(c.Request.Context(), fileID)
+			if err != nil {
+				log.Printf("download source file: s3 download: %v", err)
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": "download not supported for this source type"})
+			return
+		}
+		defer func() { _ = body.Close() }()
+
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+		c.Header("Content-Type", "application/octet-stream")
+		c.Status(http.StatusOK)
+		if _, err := io.Copy(c.Writer, body); err != nil {
+			log.Printf("download source file: stream: %v", err)
 		}
 	}
 }
