@@ -1,6 +1,7 @@
-import { Button, useDisclosure } from "@heroui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {Button, Spinner, useDisclosure} from "@heroui/react";
+import {addToast} from "@heroui/toast";
+import {useCallback, useEffect, useRef, useState} from "react";
+import {useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
   downloadFile,
@@ -8,20 +9,21 @@ import {
   listFiles,
   uploadFile,
 } from "../../../shared/api/buckets";
-import type { Bucket, FileInfo } from "../../../shared/api/buckets";
-import { DownloadIcon } from "../../../shared/icons";
-import { DeleteIcon } from "@heroui/shared-icons";
-import { ConfirmDialog } from "../../../shared/ui";
-import { ArrowLeftIcon } from "@heroui/shared-icons";
-import { FilePreviewModal } from "../../../features/bucket/ui/file-preview-modal";
-import { formatSize } from "../../../shared/lib/format";
+import type {Bucket, FileInfo} from "../../../shared/api/buckets";
+import {DownloadIcon} from "../../../shared/icons";
+import {DeleteIcon, ArrowLeftIcon} from "@heroui/shared-icons";
+import {ConfirmDialog, EmptyState} from "../../../shared/ui";
+import {FilePreviewModal} from "../../../features/bucket/ui/file-preview-modal";
+import {formatSize} from "../../../shared/lib/format";
+import {showErrorToast} from "../../../shared/api/error";
 
 export function BucketPage() {
-  const { id } = useParams<{ id: string }>();
+  const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const confirm = useDisclosure();
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -31,10 +33,13 @@ export function BucketPage() {
   const load = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
+    setError(null);
     try {
       const [buckets, fs] = await Promise.all([listBuckets(), listFiles(id)]);
       setBucket(buckets.find((b) => b.id === id) || null);
       setFiles(fs);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load bucket");
     } finally {
       setIsLoading(false);
     }
@@ -46,8 +51,13 @@ export function BucketPage() {
 
   async function handleUpload(file: File) {
     if (!id) return;
-    await uploadFile(id, file);
-    await load();
+    try {
+      await uploadFile(id, file);
+      addToast({title: "File uploaded", description: `${file.name} added to bucket`, color: "success", timeout: 4000});
+      await load();
+    } catch (err) {
+      showErrorToast(err);
+    }
   }
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -66,15 +76,56 @@ export function BucketPage() {
     setIsDeleting(true);
     try {
       await deleteFile(id, deleteId);
+      addToast({title: "File deleted", color: "success", timeout: 4000});
       await load();
+    } catch (err) {
+      showErrorToast(err);
     } finally {
       setIsDeleting(false);
       confirm.onClose();
     }
   }
 
-  if (isLoading) return <div className="p-8">Loading...</div>;
-  if (!bucket) return <div className="p-8">Bucket not found</div>;
+  if (isLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[200px]">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
+          <ArrowLeftIcon className="w-5 h-5" />
+        </Button>
+        <EmptyState
+          title="Failed to load bucket"
+          description={error}
+          ctaLabel="Retry"
+          onCtaPress={load}
+          variant="danger"
+        />
+      </div>
+    );
+  }
+
+  if (!bucket) {
+    return (
+      <div className="p-8">
+        <Button isIconOnly variant="light" onPress={() => navigate("/buckets")}>
+          <ArrowLeftIcon className="w-5 h-5" />
+        </Button>
+        <EmptyState
+          title="Bucket not found"
+          description="This bucket may have been deleted."
+          ctaLabel="Back to Buckets"
+          onCtaPress={() => navigate("/buckets")}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 flex flex-col gap-6">
@@ -104,7 +155,12 @@ export function BucketPage() {
         onDrop={onDrop}
       >
         {files.length === 0 ? (
-          <p>No files</p>
+          <EmptyState
+            title="No files yet"
+            description="Drag and drop a file here, or use the Upload button."
+            ctaLabel="Upload File"
+            onCtaPress={() => fileInput.current?.click()}
+          />
         ) : (
           <table className="w-full text-left">
             <thead>

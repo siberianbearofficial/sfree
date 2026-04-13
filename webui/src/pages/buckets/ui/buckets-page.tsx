@@ -1,15 +1,18 @@
-import {Button, Card, CardBody, CardHeader, useDisclosure} from "@heroui/react";
+import {Button, Card, CardBody, CardHeader, Spinner, useDisclosure} from "@heroui/react";
+import {addToast} from "@heroui/toast";
 import {useEffect, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import {CreateBucketDialog} from "../../../features/bucket";
 import {deleteBucket, listBuckets} from "../../../shared/api/buckets";
 import type {Bucket} from "../../../shared/api/buckets";
 import {DeleteIcon} from "@heroui/shared-icons";
-import {ConfirmDialog} from "../../../shared/ui";
+import {ConfirmDialog, EmptyState} from "../../../shared/ui";
+import {showErrorToast} from "../../../shared/api/error";
 
 export function BucketsPage() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const create = useDisclosure();
   const confirm = useDisclosure();
@@ -21,7 +24,10 @@ export function BucketsPage() {
     setIsDeleting(true);
     try {
       await deleteBucket(deleteId);
+      addToast({title: "Bucket deleted", color: "success", timeout: 4000});
       await load();
+    } catch (err) {
+      showErrorToast(err);
     } finally {
       setIsDeleting(false);
       confirm.onClose();
@@ -30,8 +36,11 @@ export function BucketsPage() {
 
   async function load() {
     setIsLoading(true);
+    setError(null);
     try {
       setBuckets(await listBuckets());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load buckets");
     } finally {
       setIsLoading(false);
     }
@@ -49,10 +58,25 @@ export function BucketsPage() {
           Add Bucket
         </Button>
       </div>
-      {isLoading && buckets.length === 0 ? (
-        <p>Loading...</p>
+      {isLoading ? (
+        <div className="flex items-center justify-center min-h-[200px]">
+          <Spinner size="lg" label="Loading buckets..." />
+        </div>
+      ) : error ? (
+        <EmptyState
+          title="Failed to load buckets"
+          description={error}
+          ctaLabel="Retry"
+          onCtaPress={load}
+          variant="danger"
+        />
       ) : buckets.length === 0 ? (
-        <p>No buckets yet</p>
+        <EmptyState
+          title="No buckets yet"
+          description="Buckets give you S3-compatible access to your files. Create one to get started."
+          ctaLabel="Add Bucket"
+          onCtaPress={create.onOpen}
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {buckets.map((b) => (

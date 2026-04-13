@@ -1,3 +1,5 @@
+import {throwIfNotOk} from "./error";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
 export type Source = {id: string; name: string; type: string; created_at: string};
@@ -24,8 +26,8 @@ export async function listSources(): Promise<Source[]> {
   const res = await fetch(`${API_BASE}/sources`, {
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to list sources");
-  return res.json();
+  await throwIfNotOk(res, "Failed to list sources");
+  return res.json() as Promise<Source[]>;
 }
 
 export async function createGDriveSource(name: string, key: string): Promise<Source> {
@@ -34,7 +36,7 @@ export async function createGDriveSource(name: string, key: string): Promise<Sou
     headers: {"Content-Type": "application/json", ...authHeader()},
     body: JSON.stringify({name, key}),
   });
-  if (!res.ok) throw new Error("failed to create source");
+  await throwIfNotOk(res, "Failed to create source");
   return res.json();
 }
 
@@ -44,7 +46,7 @@ export async function createTelegramSource(name: string, token: string, chatId: 
     headers: {"Content-Type": "application/json", ...authHeader()},
     body: JSON.stringify({name, token, chat_id: chatId}),
   });
-  if (!res.ok) throw new Error("failed to create source");
+  await throwIfNotOk(res, "Failed to create source");
   return res.json();
 }
 
@@ -64,7 +66,7 @@ export async function createS3Source(params: CreateS3SourceParams): Promise<Sour
     headers: {"Content-Type": "application/json", ...authHeader()},
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error("failed to create source");
+  await throwIfNotOk(res, "Failed to create source");
   return res.json();
 }
 
@@ -72,7 +74,7 @@ export async function getSourceInfo(id: string): Promise<SourceInfo> {
   const res = await fetch(`${API_BASE}/sources/${id}/info`, {
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to get source info");
+  await throwIfNotOk(res, "Failed to get source info");
   return res.json();
 }
 
@@ -81,14 +83,14 @@ export async function deleteSource(id: string): Promise<void> {
     method: "DELETE",
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to delete source");
+  await throwIfNotOk(res, "Failed to delete source");
 }
 
 export async function downloadFile(sourceId: string, file: SourceFile): Promise<void> {
   const res = await fetch(`${API_BASE}/sources/${sourceId}/files/${file.id}/download`, {
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to download file");
+  await throwIfNotOk(res, "Failed to download file");
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");

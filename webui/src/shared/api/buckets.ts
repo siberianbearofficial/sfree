@@ -1,3 +1,5 @@
+import {throwIfNotOk} from "./error";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
 export type Bucket = {
@@ -24,7 +26,7 @@ export async function listBuckets(): Promise<Bucket[]> {
   const res = await fetch(`${API_BASE}/buckets`, {
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to list buckets");
+  await throwIfNotOk(res, "Failed to list buckets");
   return res.json();
 }
 
@@ -42,7 +44,7 @@ export async function createBucket(key: string, sourceIds: string[]): Promise<{
     },
     body: JSON.stringify({key, source_ids: sourceIds}),
   });
-  if (!res.ok) throw new Error("failed to create bucket");
+  await throwIfNotOk(res, "Failed to create bucket");
   return res.json();
 }
 
@@ -50,7 +52,7 @@ export async function listFiles(bucketId: string): Promise<FileInfo[]> {
   const res = await fetch(`${API_BASE}/buckets/${bucketId}/files`, {
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to list files");
+  await throwIfNotOk(res, "Failed to list files");
   return res.json();
 }
 
@@ -65,7 +67,7 @@ export async function uploadFile(
     headers: authHeader(),
     body: form,
   });
-  if (!res.ok) throw new Error("failed to upload file");
+  await throwIfNotOk(res, "Failed to upload file");
   return res.json();
 }
 
@@ -74,7 +76,7 @@ export async function deleteBucket(id: string): Promise<void> {
     method: "DELETE",
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to delete bucket");
+  await throwIfNotOk(res, "Failed to delete bucket");
 }
 
 export async function downloadFile(
@@ -87,7 +89,7 @@ export async function downloadFile(
       headers: authHeader(),
     },
   );
-  if (!res.ok) throw new Error("failed to download file");
+  await throwIfNotOk(res, "Failed to download file");
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -119,5 +121,5 @@ export async function deleteFile(
     method: "DELETE",
     headers: authHeader(),
   });
-  if (!res.ok) throw new Error("failed to delete file");
+  await throwIfNotOk(res, "Failed to delete file");
 }

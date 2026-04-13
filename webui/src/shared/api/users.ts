@@ -1,3 +1,5 @@
+import {throwIfNotOk} from "./error";
+
 const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
 export async function createUser(username: string): Promise<{id: string; created_at: string; password: string}> {
@@ -6,6 +8,6 @@ export async function createUser(username: string): Promise<{id: string; created
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({username}),
   });
-  if (!res.ok) throw new Error("failed to create user");
+  await throwIfNotOk(res, "Failed to create user");
   return res.json();
 }

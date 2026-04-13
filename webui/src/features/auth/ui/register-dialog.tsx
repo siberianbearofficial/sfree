@@ -2,6 +2,7 @@ import {Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader,
 import {useState} from "react";
 import {createUser} from "../../../shared/api/users";
 import {saveAuth} from "../../../shared/lib/auth";
+import {showErrorToast} from "../../../shared/api/error";
 
 type Props = {isOpen: boolean; onOpenChange: (open: boolean) => void};
 
@@ -46,6 +47,8 @@ export function RegisterDialog({isOpen, onOpenChange}: Props) {
                       const {password} = await createUser(username);
                       saveAuth(username, password);
                       setPassword(password);
+                    } catch (err) {
+                      showErrorToast(err);
                     } finally {
                       setIsLoading(false);
                     }

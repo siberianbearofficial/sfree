@@ -1,6 +1,8 @@
 import {Button, Checkbox, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, Textarea} from "@heroui/react";
+import {addToast} from "@heroui/toast";
 import {useState} from "react";
 import {createGDriveSource, createTelegramSource, createS3Source} from "../../../shared/api/sources";
+import {showErrorToast} from "../../../shared/api/error";
 
 type SourceType = "gdrive" | "telegram" | "s3";
 
@@ -55,8 +57,11 @@ export function CreateSourceDialog({isOpen, onOpenChange, onCreated}: Props) {
       } else {
         await createS3Source({name, endpoint, bucket, access_key_id: accessKeyId, secret_access_key: secretAccessKey, region: region || undefined, path_style: pathStyle || undefined});
       }
+      addToast({title: "Source created", description: `${name} is ready`, color: "success", timeout: 4000});
       onCreated();
       onClose();
+    } catch (err) {
+      showErrorToast(err);
     } finally {
       setIsLoading(false);
     }
