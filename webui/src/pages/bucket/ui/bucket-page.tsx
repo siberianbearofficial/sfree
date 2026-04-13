@@ -188,15 +188,26 @@ export function BucketPage() {
   }
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
-        <ArrowLeftIcon className="w-5 h-5" />
-      </Button>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold">{bucket.key}</h1>
-        <p>ID: {bucket.id}</p>
-        <p>Access Key: {bucket.access_key}</p>
-        <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
+    <div className="p-8 flex flex-col gap-6 max-w-5xl mx-auto w-full">
+      <div className="flex items-center gap-3">
+        <Button isIconOnly variant="light" size="sm" onPress={() => navigate(-1)}>
+          <ArrowLeftIcon className="w-5 h-5" />
+        </Button>
+        <h1 className="text-2xl font-semibold">{bucket.key}</h1>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-6 text-sm">
+        <div>
+          <p className="text-default-500">ID</p>
+          <p className="font-mono text-xs break-all">{bucket.id}</p>
+        </div>
+        <div>
+          <p className="text-default-500">Access Key</p>
+          <p className="font-mono text-xs break-all">{bucket.access_key}</p>
+        </div>
+        <div>
+          <p className="text-default-500">Created</p>
+          <p>{new Date(bucket.created_at).toLocaleString()}</p>
+        </div>
       </div>
       <div className="flex justify-end">
         <input
@@ -210,7 +221,7 @@ export function BucketPage() {
         </Button>
       </div>
       <div
-        className="border-2 border-dashed rounded p-4"
+        className="border-2 border-dashed border-default-300 rounded-lg p-6"
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
       >
@@ -222,18 +233,18 @@ export function BucketPage() {
             onCtaPress={() => fileInput.current?.click()}
           />
         ) : (
-          <table className="w-full text-left">
+          <table className="w-full text-left text-sm">
             <thead>
               <tr>
-                <th className="pb-2">Name</th>
-                <th className="pb-2">Size</th>
-                <th className="pb-2">Created</th>
-                <th className="pb-2"></th>
+                <th className="pb-3 text-default-500 font-medium">Name</th>
+                <th className="pb-3 text-default-500 font-medium">Size</th>
+                <th className="pb-3 text-default-500 font-medium">Created</th>
+                <th className="pb-3"></th>
               </tr>
             </thead>
             <tbody>
               {files.map((f) => (
-                <tr key={f.id} className="border-t">
+                <tr key={f.id} className="border-t border-default-200 hover:bg-default-50 transition-colors">
                   <td className="py-2">
                     <button
                       type="button"
@@ -318,7 +329,7 @@ export function BucketPage() {
               <ModalHeader>Share: {shareFile?.name}</ModalHeader>
               <ModalBody>
                 {shareLinks.length === 0 ? (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-default-500">
                     No share links yet. Create one to share this file publicly.
                   </p>
                 ) : (
@@ -326,7 +337,7 @@ export function BucketPage() {
                     {shareLinks.map((link) => (
                       <div
                         key={link.id}
-                        className="flex items-center gap-2 border rounded p-2 text-sm"
+                        className="flex items-center gap-2 border border-default-200 rounded-lg p-3 text-sm"
                       >
                         <code className="flex-1 truncate">
                           {window.location.origin}{link.url}
@@ -347,7 +358,7 @@ export function BucketPage() {
                           Revoke
                         </Button>
                         {link.expires_at && (
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-default-400">
                             expires {new Date(link.expires_at).toLocaleString()}
                           </span>
                         )}

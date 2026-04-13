@@ -52,9 +52,9 @@ export function SourcesPage() {
   }, []);
 
   return (
-    <div className="p-8 flex flex-col gap-6">
+    <div className="p-8 flex flex-col gap-6 max-w-5xl mx-auto w-full">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Sources</h1>
+        <h1 className="text-2xl font-semibold">Sources</h1>
         <Button color="primary" onPress={create.onOpen}>
           Add Source
         </Button>
@@ -86,7 +86,7 @@ export function SourcesPage() {
               isPressable
               onPress={() => navigate(`/sources/${s.id}`)}
             >
-              <CardHeader className="flex justify-between items-center font-bold">
+              <CardHeader className="flex justify-between items-center font-semibold">
                 {s.name}
                 <Button
                   isIconOnly
@@ -101,9 +101,11 @@ export function SourcesPage() {
                   <DeleteIcon className="w-4 h-4" />
                 </Button>
               </CardHeader>
-              <CardBody className="flex justify-between items-center">
+              <CardBody className="flex justify-between items-center pt-0">
                 <SourceTypeChip type={s.type} />
-                {new Date(s.created_at).toLocaleString()}
+                <span className="text-default-500 text-sm">
+                  {new Date(s.created_at).toLocaleString()}
+                </span>
               </CardBody>
             </Card>
           ))}

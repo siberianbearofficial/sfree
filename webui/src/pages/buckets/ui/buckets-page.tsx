@@ -51,9 +51,9 @@ export function BucketsPage() {
   }, []);
 
   return (
-    <div className="p-8 flex flex-col gap-6">
+    <div className="p-8 flex flex-col gap-6 max-w-5xl mx-auto w-full">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Buckets</h1>
+        <h1 className="text-2xl font-semibold">Buckets</h1>
         <Button color="primary" onPress={create.onOpen}>
           Add Bucket
         </Button>
@@ -85,7 +85,7 @@ export function BucketsPage() {
               isPressable
               onPress={() => navigate(`/buckets/${b.id}`)}
             >
-              <CardHeader className="flex justify-between items-center font-bold">
+              <CardHeader className="flex justify-between items-center font-semibold">
                 {b.key}
                 <Button
                   isIconOnly
@@ -100,7 +100,7 @@ export function BucketsPage() {
                   <DeleteIcon className="w-4 h-4" />
                 </Button>
               </CardHeader>
-              <CardBody>{new Date(b.created_at).toLocaleString()}</CardBody>
+              <CardBody className="text-default-500 text-sm pt-0">{new Date(b.created_at).toLocaleString()}</CardBody>
             </Card>
           ))}
         </div>

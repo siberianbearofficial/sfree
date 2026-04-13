@@ -1,4 +1,4 @@
-import {Card, CardBody, CardHeader, Button, CircularProgress} from "@heroui/react";
+import {Card, CardBody, CardHeader, Button, CircularProgress, Spinner} from "@heroui/react";
 import {useEffect, useState} from "react";
 import {Link, useNavigate} from "react-router-dom";
 import {listSources, getSourceInfo} from "../../../shared/api/sources";
@@ -64,16 +64,18 @@ export function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 flex flex-col gap-8">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-default-500">Loading...</p>
+      <div className="p-8 flex flex-col gap-8 max-w-5xl mx-auto w-full">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <div className="flex items-center justify-center min-h-[200px]">
+          <Spinner size="lg" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8 flex flex-col gap-8">
-      <h1 className="text-3xl font-bold">Dashboard</h1>
+    <div className="p-8 flex flex-col gap-8 max-w-5xl mx-auto w-full">
+      <h1 className="text-2xl font-semibold">Dashboard</h1>
 
       {/* Summary stat cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
