@@ -1,7 +1,10 @@
-.PHONY: build run test test-unit test-integration test-e2e lint docker-build test-e2e-local test-e2e-python
+.PHONY: build build-cli run test test-unit test-integration test-e2e lint docker-build test-e2e-local test-e2e-python
 
 build:
 	go build -o bin/server ./cmd/server
+
+build-cli:
+	go build -o bin/sfree ./cmd/sfree-cli
 
 run: build
 	./bin/server
