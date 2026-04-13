@@ -3,6 +3,8 @@ package manager
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +23,10 @@ import (
 )
 
 var ErrUnsupportedSourceType = errors.New("unsupported source type")
+
+// ErrChecksumMismatch is returned when a downloaded chunk's SHA-256 hash does
+// not match the value stored at upload time, indicating possible corruption.
+var ErrChecksumMismatch = errors.New("checksum mismatch")
 
 var tracer = telemetry.Tracer("sfree/manager")
 
@@ -137,6 +143,22 @@ func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient,
 }
 
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {
+	// Wrap the real source repo lookup in a SourceClientFactory so the core
+	// streaming logic can be tested without a live repository.
+	factory := func(ctx context.Context, src *repository.Source) (sourceClient, error) {
+		fullSrc, err := srcRepo.GetByID(ctx, src.ID)
+		if err != nil {
+			return nil, err
+		}
+		return NewSourceClient(ctx, fullSrc)
+	}
+	return streamFileWithFactory(ctx, f, w, factory)
+}
+
+// streamFileWithFactory is the testable core of StreamFile. The factory receives
+// a Source stub containing only the SourceID; it is responsible for resolving the
+// full source configuration and returning a ready client.
+func streamFileWithFactory(ctx context.Context, f *repository.File, w io.Writer, factory SourceClientFactory) error {
 	ctx, span := tracer.Start(ctx, "StreamFile",
 		trace.WithAttributes(
 			attribute.String("file.id", f.ID.Hex()),
@@ -149,13 +171,8 @@ func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *re
 	for i, ch := range f.Chunks {
 		cli, ok := clients[ch.SourceID]
 		if !ok {
-			src, err := srcRepo.GetByID(ctx, ch.SourceID)
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "source lookup failed")
-				return err
-			}
-			cli, err = NewSourceClient(ctx, src)
+			var err error
+			cli, err = factory(ctx, &repository.Source{ID: ch.SourceID})
 			if err != nil {
 				span.RecordError(err)
 				span.SetStatus(codes.Error, "client creation failed")
@@ -179,14 +196,34 @@ func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *re
 			span.SetStatus(codes.Error, "chunk download failed")
 			return err
 		}
-		_, err = io.Copy(w, rc)
+		chunkData, err := io.ReadAll(rc)
 		_ = rc.Close()
 		if err != nil {
 			chunkSpan.RecordError(err)
-			chunkSpan.SetStatus(codes.Error, "copy failed")
+			chunkSpan.SetStatus(codes.Error, "read failed")
 			chunkSpan.End()
 			span.RecordError(err)
-			span.SetStatus(codes.Error, "chunk copy failed")
+			span.SetStatus(codes.Error, "chunk read failed")
+			return err
+		}
+		if ch.Checksum != "" {
+			sum := sha256.Sum256(chunkData)
+			if hex.EncodeToString(sum[:]) != ch.Checksum {
+				err = fmt.Errorf("%w: chunk %d", ErrChecksumMismatch, i)
+				chunkSpan.RecordError(err)
+				chunkSpan.SetStatus(codes.Error, "checksum mismatch")
+				chunkSpan.End()
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "chunk checksum mismatch")
+				return err
+			}
+		}
+		if _, err = w.Write(chunkData); err != nil {
+			chunkSpan.RecordError(err)
+			chunkSpan.SetStatus(codes.Error, "write failed")
+			chunkSpan.End()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "chunk write failed")
 			return err
 		}
 		chunkSpan.End()
@@ -338,7 +375,14 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		}
 		chunkSpan.End()
 
-		chunks = append(chunks, repository.FileChunk{SourceID: src.ID, Name: chunkName, Order: idx, Size: int64(n)})
+		sum := sha256.Sum256(chunkData)
+		chunks = append(chunks, repository.FileChunk{
+			SourceID: src.ID,
+			Name:     chunkName,
+			Order:    idx,
+			Size:     int64(n),
+			Checksum: hex.EncodeToString(sum[:]),
+		})
 		idx++
 		if readErr == io.EOF {
 			break
