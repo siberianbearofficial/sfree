@@ -166,6 +166,51 @@ local API. Without it, the frontend defaults to a relative `/api/v1` path
 
 </details>
 
+### CLI
+
+Build the CLI from source:
+
+```bash
+cd api-go
+make build-cli
+# binary at bin/sfree
+```
+
+Configure credentials via flags or environment variables:
+
+```bash
+export SFREE_SERVER=http://localhost:8080
+export SFREE_USER=demo
+export SFREE_PASSWORD=your-password
+```
+
+Usage examples:
+
+```bash
+# List storage sources
+sfree sources list
+
+# List buckets
+sfree buckets list
+
+# Create a bucket (generates S3 access keys)
+sfree buckets create --key my-bucket --sources SOURCE_ID_1,SOURCE_ID_2
+
+# Upload a file
+sfree upload BUCKET_ID path/to/file.txt
+
+# List files in a bucket
+sfree files list BUCKET_ID
+
+# Download a file
+sfree download BUCKET_ID FILE_ID output.txt
+
+# Generate S3-compatible credentials
+sfree keys create --bucket my-s3-bucket --sources SOURCE_ID
+```
+
+Run `sfree --help` or `sfree <command> --help` for full usage details.
+
 ## Repository Layout
 
 | Directory | Purpose |
