@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+  <defs>
+    <filter id="shadow1" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="#000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Browser frame -->
+  <rect x="0" y="0" width="800" height="500" rx="8" fill="#f8f9fa" stroke="#e0e0e0" stroke-width="1"/>
+  <rect x="0" y="0" width="800" height="36" rx="8" fill="#f0f0f0"/>
+  <rect x="0" y="20" width="800" height="16" fill="#f0f0f0"/>
+  <circle cx="20" cy="18" r="5" fill="#ff5f57"/>
+  <circle cx="38" cy="18" r="5" fill="#ffbd2e"/>
+  <circle cx="56" cy="18" r="5" fill="#28c940"/>
+  <rect x="200" y="8" width="400" height="20" rx="10" fill="#fff" stroke="#ddd" stroke-width="1"/>
+  <text x="400" y="22" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#888" text-anchor="middle">localhost:3000/buckets/68f2a...</text>
+
+  <!-- Page content area -->
+  <rect x="0" y="36" width="800" height="464" fill="#ffffff"/>
+
+  <!-- Back button -->
+  <rect x="32" y="52" width="32" height="32" rx="8" fill="#f4f4f5"/>
+  <text x="48" y="73" font-family="system-ui, -apple-system, sans-serif" font-size="18" fill="#555" text-anchor="middle">&#x2190;</text>
+
+  <!-- Bucket title and details -->
+  <text x="40" y="116" font-family="system-ui, -apple-system, sans-serif" font-size="26" font-weight="bold" fill="#1a1a2e">my-files</text>
+  <text x="40" y="138" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#a0a0a0">ID: 68f2a9b1-c45d-4e8f-b1a2-3d4e5f6a7b8c</text>
+  <text x="40" y="156" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#a0a0a0">Access Key: sfree_ak_mYf1L3s...</text>
+  <text x="40" y="174" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#a0a0a0">Created: Apr 12, 2026, 10:30:00 AM</text>
+
+  <!-- Upload button -->
+  <rect x="640" y="108" width="120" height="36" rx="10" fill="#0070f3"/>
+  <text x="700" y="131" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="500" fill="#fff" text-anchor="middle">Upload File</text>
+
+  <!-- File table area with dashed border -->
+  <rect x="40" y="194" width="720" height="240" rx="8" fill="#fff" stroke="#d0d0d0" stroke-width="2" stroke-dasharray="8,4"/>
+
+  <!-- Table header -->
+  <text x="60" y="224" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#888">Name</text>
+  <text x="380" y="224" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#888">Size</text>
+  <text x="480" y="224" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#888">Created</text>
+  <text x="660" y="224" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#888">Actions</text>
+  <line x1="50" y1="234" x2="750" y2="234" stroke="#eee" stroke-width="1"/>
+
+  <!-- File row 1 -->
+  <text x="60" y="262" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#1a1a2e">project-backup.tar.gz</text>
+  <text x="380" y="262" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">245 MB</text>
+  <text x="480" y="262" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">Apr 12, 2026</text>
+  <!-- Share icon -->
+  <rect x="650" y="246" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <circle cx="657" cy="254" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="258" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="266" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="659" y1="255" x2="667" y2="257" stroke="#555" stroke-width="1"/>
+  <line x1="659" y1="263" x2="667" y2="265" stroke="#555" stroke-width="1"/>
+  <!-- Download icon -->
+  <rect x="684" y="246" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <line x1="698" y1="252" x2="698" y2="266" stroke="#555" stroke-width="1.5"/>
+  <polyline points="692,261 698,267 704,261" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="691" y1="269" x2="705" y2="269" stroke="#555" stroke-width="1.5"/>
+  <!-- Delete icon -->
+  <rect x="718" y="246" width="28" height="28" rx="6" fill="#fff0f0"/>
+  <text x="732" y="266" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#f31260" text-anchor="middle">&#x1f5d1;</text>
+  <line x1="50" y1="278" x2="750" y2="278" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- File row 2 -->
+  <text x="60" y="304" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#1a1a2e">photo-album.zip</text>
+  <text x="380" y="304" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">18.5 MB</text>
+  <text x="480" y="304" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">Apr 13, 2026</text>
+  <rect x="650" y="288" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <rect x="684" y="288" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <rect x="718" y="288" width="28" height="28" rx="6" fill="#fff0f0"/>
+  <line x1="50" y1="320" x2="750" y2="320" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- File row 3 -->
+  <text x="60" y="346" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#1a1a2e">meeting-notes.pdf</text>
+  <text x="380" y="346" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">1.2 MB</text>
+  <text x="480" y="346" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">Apr 13, 2026</text>
+  <rect x="650" y="330" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <rect x="684" y="330" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <rect x="718" y="330" width="28" height="28" rx="6" fill="#fff0f0"/>
+  <line x1="50" y1="362" x2="750" y2="362" stroke="#f0f0f0" stroke-width="1"/>
+
+  <!-- File row 4 -->
+  <text x="60" y="388" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#1a1a2e">readme.txt</text>
+  <text x="380" y="388" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">4.8 KB</text>
+  <text x="480" y="388" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">Apr 13, 2026</text>
+  <rect x="650" y="372" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <rect x="684" y="372" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <rect x="718" y="372" width="28" height="28" rx="6" fill="#fff0f0"/>
+
+  <!-- Annotation callout -->
+  <rect x="50" y="440" width="700" height="20" rx="0" fill="transparent"/>
+
+  <!-- Caption bar -->
+  <rect x="0" y="464" width="800" height="36" fill="#f8f9fa"/>
+  <text x="400" y="487" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666" text-anchor="middle" font-style="italic">Bucket file browser — upload, download, share, and manage files</text>
+</svg>
