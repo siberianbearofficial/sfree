@@ -9,6 +9,7 @@ import (
 
 	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/resilience"
 	"github.com/example/sfree/api-go/internal/s3compat"
 	"github.com/example/sfree/api-go/internal/telegram"
 	"github.com/example/sfree/api-go/internal/telemetry"
@@ -95,28 +96,43 @@ func SelectorForBucket(bucket *repository.Bucket, sources []repository.Source) S
 	}
 }
 
+// ResilienceConfig holds the timeout and circuit breaker settings applied
+// to every source client. Zero values use sensible defaults (30s timeout,
+// 5-failure threshold, 30s recovery).
+var ResilienceConfig = resilience.DefaultWrapperConfig()
+
 func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient, error) {
 	if src == nil {
 		return nil, errors.New("nil source")
 	}
+	var (
+		cli sourceClient
+		err error
+	)
 	switch src.Type {
 	case repository.SourceTypeGDrive:
-		return gdrive.NewClient(ctx, []byte(src.Key))
+		cli, err = gdrive.NewClient(ctx, []byte(src.Key))
 	case repository.SourceTypeTelegram:
-		cfg, err := telegram.ParseConfig(src.Key)
+		var tcfg telegram.Config
+		tcfg, err = telegram.ParseConfig(src.Key)
 		if err != nil {
 			return nil, err
 		}
-		return telegram.NewClient(cfg)
+		cli, err = telegram.NewClient(tcfg)
 	case repository.SourceTypeS3:
-		cfg, err := s3compat.ParseConfig(src.Key)
+		var scfg s3compat.Config
+		scfg, err = s3compat.ParseConfig(src.Key)
 		if err != nil {
 			return nil, err
 		}
-		return s3compat.NewClient(ctx, cfg)
+		cli, err = s3compat.NewClient(ctx, scfg)
 	default:
 		return nil, ErrUnsupportedSourceType
 	}
+	if err != nil {
+		return nil, err
+	}
+	return resilience.Wrap(cli, ResilienceConfig), nil
 }
 
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {

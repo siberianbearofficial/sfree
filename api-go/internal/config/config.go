@@ -33,14 +33,21 @@ type RateLimitConfig struct {
 	PerKey int `yaml:"per_key"` // requests per minute for authenticated (default 600)
 }
 
+type SourceClientConfig struct {
+	TimeoutSeconds   int `yaml:"timeout_seconds"`   // per-request timeout (default 30)
+	FailureThreshold int `yaml:"failure_threshold"`  // consecutive failures before circuit opens (default 5)
+	RecoverySeconds  int `yaml:"recovery_seconds"`   // seconds before half-open probe (default 30)
+}
+
 type Config struct {
-	Mongo           MongoConfig       `yaml:"mongo"`
-	Upload          UploadConfig      `yaml:"upload"`
-	RateLimit       RateLimitConfig   `yaml:"rate_limit"`
-	AccessSecretKey string            `yaml:"access_secret_key"`
-	JWTSecret       string            `yaml:"jwt_secret"`
-	GitHubOAuth     GitHubOAuthConfig `yaml:"github_oauth"`
-	FrontendURL     string            `yaml:"frontend_url"`
+	Mongo           MongoConfig        `yaml:"mongo"`
+	Upload          UploadConfig       `yaml:"upload"`
+	RateLimit       RateLimitConfig    `yaml:"rate_limit"`
+	SourceClient    SourceClientConfig `yaml:"source_client"`
+	AccessSecretKey string             `yaml:"access_secret_key"`
+	JWTSecret       string             `yaml:"jwt_secret"`
+	GitHubOAuth     GitHubOAuthConfig  `yaml:"github_oauth"`
+	FrontendURL     string             `yaml:"frontend_url"`
 }
 
 func Load() (*Config, error) {
@@ -112,6 +119,21 @@ func overrideEnv(cfg *Config) {
 	if v := os.Getenv("RATE_LIMIT_PER_KEY"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.RateLimit.PerKey = n
+		}
+	}
+	if v := os.Getenv("SOURCE_TIMEOUT_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.SourceClient.TimeoutSeconds = n
+		}
+	}
+	if v := os.Getenv("SOURCE_FAILURE_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.SourceClient.FailureThreshold = n
+		}
+	}
+	if v := os.Getenv("SOURCE_RECOVERY_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.SourceClient.RecoverySeconds = n
 		}
 	}
 }
