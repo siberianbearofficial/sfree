@@ -67,30 +67,76 @@
   <text x="60" y="304" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#1a1a2e">photo-album.zip</text>
   <text x="380" y="304" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">18.5 MB</text>
   <text x="480" y="304" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">Apr 13, 2026</text>
+  <!-- Share icon -->
   <rect x="650" y="288" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <circle cx="657" cy="296" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="300" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="308" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="659" y1="297" x2="667" y2="299" stroke="#555" stroke-width="1"/>
+  <line x1="659" y1="305" x2="667" y2="307" stroke="#555" stroke-width="1"/>
+  <!-- Download icon -->
   <rect x="684" y="288" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <line x1="698" y1="294" x2="698" y2="308" stroke="#555" stroke-width="1.5"/>
+  <polyline points="692,303 698,309 704,303" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="691" y1="311" x2="705" y2="311" stroke="#555" stroke-width="1.5"/>
+  <!-- Delete icon -->
   <rect x="718" y="288" width="28" height="28" rx="6" fill="#fff0f0"/>
+  <text x="732" y="308" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#f31260" text-anchor="middle">&#x1f5d1;</text>
   <line x1="50" y1="320" x2="750" y2="320" stroke="#f0f0f0" stroke-width="1"/>
 
   <!-- File row 3 -->
   <text x="60" y="346" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#1a1a2e">meeting-notes.pdf</text>
   <text x="380" y="346" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">1.2 MB</text>
   <text x="480" y="346" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">Apr 13, 2026</text>
+  <!-- Share icon -->
   <rect x="650" y="330" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <circle cx="657" cy="338" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="342" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="350" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="659" y1="339" x2="667" y2="341" stroke="#555" stroke-width="1"/>
+  <line x1="659" y1="347" x2="667" y2="349" stroke="#555" stroke-width="1"/>
+  <!-- Download icon -->
   <rect x="684" y="330" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <line x1="698" y1="336" x2="698" y2="350" stroke="#555" stroke-width="1.5"/>
+  <polyline points="692,345 698,351 704,345" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="691" y1="353" x2="705" y2="353" stroke="#555" stroke-width="1.5"/>
+  <!-- Delete icon -->
   <rect x="718" y="330" width="28" height="28" rx="6" fill="#fff0f0"/>
+  <text x="732" y="350" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#f31260" text-anchor="middle">&#x1f5d1;</text>
   <line x1="50" y1="362" x2="750" y2="362" stroke="#f0f0f0" stroke-width="1"/>
 
   <!-- File row 4 -->
   <text x="60" y="388" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#1a1a2e">readme.txt</text>
   <text x="380" y="388" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">4.8 KB</text>
   <text x="480" y="388" font-family="system-ui, -apple-system, sans-serif" font-size="13" fill="#666">Apr 13, 2026</text>
+  <!-- Share icon -->
   <rect x="650" y="372" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <circle cx="657" cy="380" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="384" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <circle cx="669" cy="392" r="2.5" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="659" y1="381" x2="667" y2="383" stroke="#555" stroke-width="1"/>
+  <line x1="659" y1="389" x2="667" y2="391" stroke="#555" stroke-width="1"/>
+  <!-- Download icon -->
   <rect x="684" y="372" width="28" height="28" rx="6" fill="#f4f4f5"/>
+  <line x1="698" y1="378" x2="698" y2="392" stroke="#555" stroke-width="1.5"/>
+  <polyline points="692,387 698,393 704,387" fill="none" stroke="#555" stroke-width="1.5"/>
+  <line x1="691" y1="395" x2="705" y2="395" stroke="#555" stroke-width="1.5"/>
+  <!-- Delete icon -->
   <rect x="718" y="372" width="28" height="28" rx="6" fill="#fff0f0"/>
+  <text x="732" y="392" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#f31260" text-anchor="middle">&#x1f5d1;</text>
 
-  <!-- Annotation callout -->
-  <rect x="50" y="440" width="700" height="20" rx="0" fill="transparent"/>
+  <!-- Annotation: upload callout -->
+  <rect x="454" y="108" width="172" height="32" rx="6" fill="#1a1a2e" opacity="0.92"/>
+  <text x="540" y="129" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500" fill="#fff" text-anchor="middle">Drag-and-drop or click</text>
+  <!-- Arrow to upload button -->
+  <line x1="626" y1="124" x2="636" y2="124" stroke="#1a1a2e" stroke-width="2" opacity="0.7"/>
+  <polygon points="636,120 646,124 636,128" fill="#1a1a2e" opacity="0.7"/>
+
+  <!-- Annotation: actions callout -->
+  <rect x="540" y="440" width="220" height="20" rx="6" fill="#1a1a2e" opacity="0.92"/>
+  <text x="650" y="454" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#fff" text-anchor="middle">Share  &middot;  Download  &middot;  Delete</text>
+  <!-- Arrow to action icons -->
+  <line x1="650" y1="440" x2="650" y2="410" stroke="#1a1a2e" stroke-width="1.5" opacity="0.5"/>
 
   <!-- Caption bar -->
   <rect x="0" y="464" width="800" height="36" fill="#f8f9fa"/>
