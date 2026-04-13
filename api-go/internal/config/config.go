@@ -28,13 +28,19 @@ type GitHubOAuthConfig struct {
 	RedirectURL  string `yaml:"redirect_url"`
 }
 
+type RateLimitConfig struct {
+	PerIP  int `yaml:"per_ip"`  // requests per minute for unauthenticated (default 60)
+	PerKey int `yaml:"per_key"` // requests per minute for authenticated (default 600)
+}
+
 type Config struct {
-	Mongo           MongoConfig      `yaml:"mongo"`
-	Upload          UploadConfig     `yaml:"upload"`
-	AccessSecretKey string           `yaml:"access_secret_key"`
-	JWTSecret       string           `yaml:"jwt_secret"`
+	Mongo           MongoConfig       `yaml:"mongo"`
+	Upload          UploadConfig      `yaml:"upload"`
+	RateLimit       RateLimitConfig   `yaml:"rate_limit"`
+	AccessSecretKey string            `yaml:"access_secret_key"`
+	JWTSecret       string            `yaml:"jwt_secret"`
 	GitHubOAuth     GitHubOAuthConfig `yaml:"github_oauth"`
-	FrontendURL     string           `yaml:"frontend_url"`
+	FrontendURL     string            `yaml:"frontend_url"`
 }
 
 func Load() (*Config, error) {
@@ -97,5 +103,15 @@ func overrideEnv(cfg *Config) {
 	}
 	if v := os.Getenv("FRONTEND_URL"); v != "" {
 		cfg.FrontendURL = v
+	}
+	if v := os.Getenv("RATE_LIMIT_PER_IP"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.RateLimit.PerIP = n
+		}
+	}
+	if v := os.Getenv("RATE_LIMIT_PER_KEY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.RateLimit.PerKey = n
+		}
 	}
 }
