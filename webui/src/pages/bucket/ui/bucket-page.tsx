@@ -1,4 +1,13 @@
-import {Button, Spinner, useDisclosure} from "@heroui/react";
+import {
+  Button,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  Spinner,
+  useDisclosure,
+} from "@heroui/react";
 import {addToast} from "@heroui/toast";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
@@ -10,7 +19,13 @@ import {
   uploadFile,
 } from "../../../shared/api/buckets";
 import type {Bucket, FileInfo} from "../../../shared/api/buckets";
-import {DownloadIcon} from "../../../shared/icons";
+import {
+  createShareLink,
+  deleteShareLink,
+  listShareLinks,
+} from "../../../shared/api/shares";
+import type {ShareLinkInfo} from "../../../shared/api/shares";
+import {DownloadIcon, ShareIcon} from "../../../shared/icons";
 import {DeleteIcon, ArrowLeftIcon} from "@heroui/shared-icons";
 import {ConfirmDialog, EmptyState} from "../../../shared/ui";
 import {FilePreviewModal} from "../../../features/bucket/ui/file-preview-modal";
@@ -29,6 +44,12 @@ export function BucketPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileInfo | null>(null);
+
+  const shareModal = useDisclosure();
+  const [shareFile, setShareFile] = useState<FileInfo | null>(null);
+  const [shareLinks, setShareLinks] = useState<ShareLinkInfo[]>([]);
+  const [isCreatingShare, setIsCreatingShare] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -84,6 +105,45 @@ export function BucketPage() {
       setIsDeleting(false);
       confirm.onClose();
     }
+  }
+
+  async function openShareModal(file: FileInfo) {
+    if (!id) return;
+    setShareFile(file);
+    shareModal.onOpen();
+    try {
+      const links = await listShareLinks(id, file.id);
+      setShareLinks(links);
+    } catch {
+      setShareLinks([]);
+    }
+  }
+
+  async function handleCreateShare() {
+    if (!id || !shareFile) return;
+    setIsCreatingShare(true);
+    try {
+      const link = await createShareLink(id, shareFile.id);
+      setShareLinks((prev) => [...prev, link]);
+    } finally {
+      setIsCreatingShare(false);
+    }
+  }
+
+  async function handleDeleteShare(shareId: string) {
+    try {
+      await deleteShareLink(shareId);
+      setShareLinks((prev) => prev.filter((l) => l.id !== shareId));
+    } catch {
+      // ignore
+    }
+  }
+
+  function copyShareUrl(link: ShareLinkInfo) {
+    const url = `${window.location.origin}${link.url}`;
+    navigator.clipboard.writeText(url);
+    setCopiedToken(link.token);
+    setTimeout(() => setCopiedToken(null), 2000);
   }
 
   if (isLoading) {
@@ -192,6 +252,13 @@ export function BucketPage() {
                       <Button
                         isIconOnly
                         variant="light"
+                        onPress={() => openShareModal(f)}
+                      >
+                        <ShareIcon className="w-5 h-5" />
+                      </Button>
+                      <Button
+                        isIconOnly
+                        variant="light"
                         onPress={() => downloadFile(id!, f)}
                       >
                         <DownloadIcon className="w-5 h-5" />
@@ -233,6 +300,78 @@ export function BucketPage() {
         file={previewFile}
         bucketId={id!}
       />
+      <Modal
+        isOpen={shareModal.isOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShareFile(null);
+            setShareLinks([]);
+            setCopiedToken(null);
+          }
+          shareModal.onOpenChange();
+        }}
+        size="lg"
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader>Share: {shareFile?.name}</ModalHeader>
+              <ModalBody>
+                {shareLinks.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    No share links yet. Create one to share this file publicly.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {shareLinks.map((link) => (
+                      <div
+                        key={link.id}
+                        className="flex items-center gap-2 border rounded p-2 text-sm"
+                      >
+                        <code className="flex-1 truncate">
+                          {window.location.origin}{link.url}
+                        </code>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          onPress={() => copyShareUrl(link)}
+                        >
+                          {copiedToken === link.token ? "Copied!" : "Copy"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          color="danger"
+                          onPress={() => handleDeleteShare(link.id)}
+                        >
+                          Revoke
+                        </Button>
+                        {link.expires_at && (
+                          <span className="text-xs text-gray-400">
+                            expires {new Date(link.expires_at).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="light" onPress={onClose}>
+                  Close
+                </Button>
+                <Button
+                  color="primary"
+                  isLoading={isCreatingShare}
+                  onPress={handleCreateShare}
+                >
+                  Create Share Link
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   );
 }

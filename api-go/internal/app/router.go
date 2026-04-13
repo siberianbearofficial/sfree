@@ -29,11 +29,12 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 	router.GET("/dbz", handlers.DBProbe(m))
 
 	var (
-		auth       gin.HandlerFunc
-		userRepo   *repository.UserRepository
-		bucketRepo *repository.BucketRepository
-		sourceRepo *repository.SourceRepository
-		fileRepo   *repository.FileRepository
+		auth          gin.HandlerFunc
+		userRepo      *repository.UserRepository
+		bucketRepo    *repository.BucketRepository
+		sourceRepo    *repository.SourceRepository
+		fileRepo      *repository.FileRepository
+		shareLinkRepo *repository.ShareLinkRepository
 	)
 
 	jwtSecret := ""
@@ -54,6 +55,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		bucketRepo, _ = repository.NewBucketRepository(m.DB)
 		sourceRepo, _ = repository.NewSourceRepository(m.DB)
 		fileRepo, _ = repository.NewFileRepository(m.DB)
+		shareLinkRepo, _ = repository.NewShareLinkRepository(m.DB)
 	}
 
 	// OAuth and auth utility routes.
@@ -84,6 +86,11 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 			router.GET("/api/v1/buckets/:id/files", auth, handlers.ListFiles(bucketRepo, fileRepo))
 			router.GET("/api/v1/buckets/:id/files/:file_id/download", auth, handlers.DownloadFile(bucketRepo, sourceRepo, fileRepo))
 			router.DELETE("/api/v1/buckets/:id/files/:file_id", auth, handlers.DeleteFile(bucketRepo, sourceRepo, fileRepo))
+			if shareLinkRepo != nil {
+				router.POST("/api/v1/buckets/:id/files/:file_id/share", auth, handlers.CreateShareLink(bucketRepo, fileRepo, shareLinkRepo))
+				router.GET("/api/v1/buckets/:id/files/:file_id/shares", auth, handlers.ListShareLinks(bucketRepo, fileRepo, shareLinkRepo))
+				router.DELETE("/api/v1/shares/:id", auth, handlers.DeleteShareLink(shareLinkRepo))
+			}
 		}
 	}
 
@@ -95,6 +102,11 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		router.GET("/api/v1/sources/:id/info", auth, handlers.GetSourceInfo(sourceRepo))
 		router.GET("/api/v1/sources/:id/files/:file_id/download", auth, handlers.DownloadSourceFile(sourceRepo))
 		router.DELETE("/api/v1/sources/:id", auth, handlers.DeleteSource(sourceRepo, bucketRepo))
+	}
+
+	// Public share link route (no auth required).
+	if shareLinkRepo != nil && bucketRepo != nil && sourceRepo != nil && fileRepo != nil {
+		router.GET("/share/:token", handlers.GetSharedFile(shareLinkRepo, bucketRepo, sourceRepo, fileRepo))
 	}
 
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
