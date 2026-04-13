@@ -34,6 +34,8 @@ type bucketResponse struct {
 	Key       string    `json:"key"`
 	AccessKey string    `json:"access_key"`
 	CreatedAt time.Time `json:"created_at"`
+	Role      string    `json:"role"`
+	Shared    bool      `json:"shared"`
 }
 
 type fileResponse struct {
@@ -167,7 +169,7 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets [get]
-func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
+func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if repo == nil {
@@ -185,7 +187,9 @@ func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
-		buckets, err := repo.ListByUser(c.Request.Context(), userID)
+
+		// Owned buckets.
+		buckets, err := repo.ListByUser(ctx, userID)
 		if err != nil {
 			slog.ErrorContext(ctx, "list buckets: failed to list buckets", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
@@ -198,8 +202,46 @@ func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 				Key:       b.Key,
 				AccessKey: b.AccessKey,
 				CreatedAt: b.CreatedAt,
+				Role:      string(repository.RoleOwner),
+				Shared:    false,
 			})
 		}
+
+		// Shared-with-me buckets.
+		if grantRepo != nil {
+			grants, err := grantRepo.ListByUser(ctx, userID)
+			if err != nil {
+				slog.ErrorContext(ctx, "list buckets: failed to list grants", slog.String("error", err.Error()))
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			if len(grants) > 0 {
+				bucketIDs := make([]primitive.ObjectID, 0, len(grants))
+				grantByBucket := make(map[primitive.ObjectID]repository.BucketGrant, len(grants))
+				for _, g := range grants {
+					bucketIDs = append(bucketIDs, g.BucketID)
+					grantByBucket[g.BucketID] = g
+				}
+				sharedBuckets, err := repo.ListByIDs(ctx, bucketIDs)
+				if err != nil {
+					slog.ErrorContext(ctx, "list buckets: failed to fetch shared buckets", slog.String("error", err.Error()))
+					c.Status(http.StatusInternalServerError)
+					return
+				}
+				for _, b := range sharedBuckets {
+					g := grantByBucket[b.ID]
+					resp = append(resp, bucketResponse{
+						ID:        b.ID.Hex(),
+						Key:       b.Key,
+						AccessKey: b.AccessKey,
+						CreatedAt: b.CreatedAt,
+						Role:      string(g.Role),
+						Shared:    true,
+					})
+				}
+			}
+		}
+
 		c.JSON(http.StatusOK, resp)
 	}
 }
@@ -215,7 +257,7 @@ func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id} [delete]
-func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
+func DeleteBucket(repo *repository.BucketRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if repo == nil {
@@ -223,23 +265,13 @@ func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
+
+		acc := requireBucketAccess(c, repo, grantRepo, repository.RoleOwner)
+		if acc == nil {
 			return
 		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		idHex := c.Param("id")
-		id, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
-			return
-		}
-		if err := repo.Delete(c.Request.Context(), id, userID); err != nil {
+
+		if err := repo.Delete(ctx, acc.Bucket.ID, acc.Bucket.UserID); err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
@@ -247,6 +279,10 @@ func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 			slog.ErrorContext(ctx, "delete bucket: failed to delete", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
+		}
+		// Clean up all grants for this bucket.
+		if grantRepo != nil {
+			_ = grantRepo.DeleteByBucket(ctx, acc.Bucket.ID)
 		}
 		c.Status(http.StatusOK)
 	}
@@ -270,7 +306,7 @@ type updateDistributionRequest struct {
 // @Failure 404 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/distribution [patch]
-func UpdateBucketDistribution(repo *repository.BucketRepository) gin.HandlerFunc {
+func UpdateBucketDistribution(repo *repository.BucketRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if repo == nil {
 			c.Status(http.StatusServiceUnavailable)
@@ -286,23 +322,13 @@ func UpdateBucketDistribution(repo *repository.BucketRepository) gin.HandlerFunc
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid distribution_strategy"})
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
+
+		acc := requireBucketAccess(c, repo, grantRepo, repository.RoleOwner)
+		if acc == nil {
 			return
 		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		idHex := c.Param("id")
-		id, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
-			return
-		}
-		if err := repo.UpdateDistribution(c.Request.Context(), id, userID, strategy, req.SourceWeights); err != nil {
+
+		if err := repo.UpdateDistribution(c.Request.Context(), acc.Bucket.ID, acc.Bucket.UserID, strategy, req.SourceWeights); err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
@@ -335,7 +361,7 @@ type uploadFileResponse struct {
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/upload [post]
-func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int) gin.HandlerFunc {
+func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, chunkSize int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -343,36 +369,12 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		idHex := c.Param("id")
-		bucketID, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+
+		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleEditor)
+		if acc == nil {
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "upload file: get bucket", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if bucketDoc.UserID != userID {
-			c.Status(http.StatusNotFound)
-			return
-		}
+		bucketDoc := acc.Bucket
 		sources, err := sourceRepo.ListByIDs(c.Request.Context(), bucketDoc.SourceIDs)
 		if err != nil {
 			slog.ErrorContext(ctx, "upload file: list sources", slog.String("error", err.Error()))
@@ -406,7 +408,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 
 		fileDoc := repository.File{
-			BucketID:  bucketID,
+			BucketID:  bucketDoc.ID,
 			Name:      fh.Filename,
 			CreatedAt: time.Now().UTC(),
 			Chunks:    chunks,
@@ -438,7 +440,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files [get]
-func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || fileRepo == nil {
@@ -446,36 +448,12 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		idHex := c.Param("id")
-		bucketID, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+
+		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleViewer)
+		if acc == nil {
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "list files: get bucket", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if bucketDoc.UserID != userID {
-			c.Status(http.StatusNotFound)
-			return
-		}
+		bucketID := acc.Bucket.ID
 		files, err := fileRepo.ListByBucket(c.Request.Context(), bucketID)
 		if err != nil {
 			slog.ErrorContext(ctx, "list files: list files", slog.String("error", err.Error()))
@@ -512,7 +490,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id}/download [get]
-func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -520,40 +498,17 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		idHex := c.Param("id")
-		fileHex := c.Param("file_id")
-		bucketID, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+
+		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleViewer)
+		if acc == nil {
 			return
 		}
+		bucketID := acc.Bucket.ID
+
+		fileHex := c.Param("file_id")
 		fileID, err := primitive.ObjectIDFromHex(fileHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
-			return
-		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "download file: get bucket", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if bucketDoc.UserID != userID {
-			c.Status(http.StatusNotFound)
 			return
 		}
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
@@ -596,7 +551,7 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id} [delete]
-func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -604,40 +559,17 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		idHex := c.Param("id")
-		fileHex := c.Param("file_id")
-		bucketID, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+
+		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleEditor)
+		if acc == nil {
 			return
 		}
+		bucketID := acc.Bucket.ID
+
+		fileHex := c.Param("file_id")
 		fileID, err := primitive.ObjectIDFromHex(fileHex)
 		if err != nil {
 			c.Status(http.StatusBadRequest)
-			return
-		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "delete file: get bucket", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if bucketDoc.UserID != userID {
-			c.Status(http.StatusNotFound)
 			return
 		}
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)

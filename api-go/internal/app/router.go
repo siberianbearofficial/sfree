@@ -58,6 +58,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		fileRepo      *repository.FileRepository
 		shareLinkRepo *repository.ShareLinkRepository
 		mpRepo        *repository.MultipartUploadRepository
+		grantRepo     *repository.BucketGrantRepository
 	)
 
 	jwtSecret := ""
@@ -84,6 +85,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		fileRepo, _ = repository.NewFileRepository(m.DB)
 		mpRepo, _ = repository.NewMultipartUploadRepository(m.DB)
 		shareLinkRepo, _ = repository.NewShareLinkRepository(m.DB)
+		grantRepo, _ = repository.NewBucketGrantRepository(m.DB)
 	}
 
 	// OAuth and auth utility routes.
@@ -102,21 +104,30 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 			secretKey = cfg.AccessSecretKey
 		}
 		router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo, sourceRepo, secretKey))
-		router.GET("/api/v1/buckets", auth, handlers.ListBuckets(bucketRepo))
-		router.DELETE("/api/v1/buckets/:id", auth, handlers.DeleteBucket(bucketRepo))
-		router.PATCH("/api/v1/buckets/:id/distribution", auth, handlers.UpdateBucketDistribution(bucketRepo))
+		router.GET("/api/v1/buckets", auth, handlers.ListBuckets(bucketRepo, grantRepo))
+		router.DELETE("/api/v1/buckets/:id", auth, handlers.DeleteBucket(bucketRepo, grantRepo))
+		router.PATCH("/api/v1/buckets/:id/distribution", auth, handlers.UpdateBucketDistribution(bucketRepo, grantRepo))
+
+		// Bucket grant (sharing) routes.
+		if grantRepo != nil && userRepo != nil {
+			router.POST("/api/v1/buckets/:id/grants", auth, handlers.CreateGrant(bucketRepo, grantRepo, userRepo))
+			router.GET("/api/v1/buckets/:id/grants", auth, handlers.ListGrants(bucketRepo, grantRepo, userRepo))
+			router.PATCH("/api/v1/buckets/:id/grants/:grant_id", auth, handlers.UpdateGrant(bucketRepo, grantRepo))
+			router.DELETE("/api/v1/buckets/:id/grants/:grant_id", auth, handlers.DeleteGrant(bucketRepo, grantRepo))
+		}
+
 		if sourceRepo != nil && fileRepo != nil {
 			chunkSize := 0
 			if cfg != nil {
 				chunkSize = cfg.Upload.ChunkSize
 			}
-			router.POST("/api/v1/buckets/:id/upload", auth, handlers.UploadFile(bucketRepo, sourceRepo, fileRepo, chunkSize))
-			router.GET("/api/v1/buckets/:id/files", auth, handlers.ListFiles(bucketRepo, fileRepo))
-			router.GET("/api/v1/buckets/:id/files/:file_id/download", auth, handlers.DownloadFile(bucketRepo, sourceRepo, fileRepo))
-			router.DELETE("/api/v1/buckets/:id/files/:file_id", auth, handlers.DeleteFile(bucketRepo, sourceRepo, fileRepo))
+			router.POST("/api/v1/buckets/:id/upload", auth, handlers.UploadFile(bucketRepo, sourceRepo, fileRepo, grantRepo, chunkSize))
+			router.GET("/api/v1/buckets/:id/files", auth, handlers.ListFiles(bucketRepo, fileRepo, grantRepo))
+			router.GET("/api/v1/buckets/:id/files/:file_id/download", auth, handlers.DownloadFile(bucketRepo, sourceRepo, fileRepo, grantRepo))
+			router.DELETE("/api/v1/buckets/:id/files/:file_id", auth, handlers.DeleteFile(bucketRepo, sourceRepo, fileRepo, grantRepo))
 			if shareLinkRepo != nil {
-				router.POST("/api/v1/buckets/:id/files/:file_id/share", auth, handlers.CreateShareLink(bucketRepo, fileRepo, shareLinkRepo))
-				router.GET("/api/v1/buckets/:id/files/:file_id/shares", auth, handlers.ListShareLinks(bucketRepo, fileRepo, shareLinkRepo))
+				router.POST("/api/v1/buckets/:id/files/:file_id/share", auth, handlers.CreateShareLink(bucketRepo, fileRepo, shareLinkRepo, grantRepo))
+				router.GET("/api/v1/buckets/:id/files/:file_id/shares", auth, handlers.ListShareLinks(bucketRepo, fileRepo, shareLinkRepo, grantRepo))
 				router.DELETE("/api/v1/shares/:id", auth, handlers.DeleteShareLink(shareLinkRepo))
 			}
 		}

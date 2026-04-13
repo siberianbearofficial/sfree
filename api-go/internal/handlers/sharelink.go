@@ -46,49 +46,27 @@ type shareLinkResponse struct {
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id}/share [post]
-func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository) gin.HandlerFunc {
+func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || fileRepo == nil || shareLinkRepo == nil {
 			log.Print("create share link: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketID, err := primitive.ObjectIDFromHex(c.Param("id"))
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+
+		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleEditor)
+		if acc == nil {
 			return
 		}
+		bucketID := acc.Bucket.ID
+
 		fileID, err := primitive.ObjectIDFromHex(c.Param("file_id"))
 		if err != nil {
 			c.Status(http.StatusBadRequest)
 			return
 		}
 		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-
-		// Verify bucket ownership.
-		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			log.Printf("create share link: get bucket: %v", err)
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if bucketDoc.UserID != userID {
-			c.Status(http.StatusNotFound)
-			return
-		}
+		userID, _ := primitive.ObjectIDFromHex(userIDHex)
 
 		// Verify file exists in bucket.
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
@@ -227,46 +205,23 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id}/shares [get]
-func ListShareLinks(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository) gin.HandlerFunc {
+func ListShareLinks(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || fileRepo == nil || shareLinkRepo == nil {
 			log.Print("list share links: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketID, err := primitive.ObjectIDFromHex(c.Param("id"))
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+
+		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleEditor)
+		if acc == nil {
 			return
 		}
+		bucketID := acc.Bucket.ID
+
 		fileID, err := primitive.ObjectIDFromHex(c.Param("file_id"))
 		if err != nil {
 			c.Status(http.StatusBadRequest)
-			return
-		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-
-		bucketDoc, err := bucketRepo.GetByID(c.Request.Context(), bucketID)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			log.Printf("list share links: get bucket: %v", err)
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if bucketDoc.UserID != userID {
-			c.Status(http.StatusNotFound)
 			return
 		}
 

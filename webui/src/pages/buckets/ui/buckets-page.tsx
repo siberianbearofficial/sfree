@@ -1,4 +1,4 @@
-import {Button, Card, CardBody, CardHeader, Spinner, useDisclosure} from "@heroui/react";
+import {Button, Card, CardBody, CardHeader, Chip, Spinner, useDisclosure} from "@heroui/react";
 import {addToast} from "@heroui/toast";
 import {useEffect, useState} from "react";
 import {useNavigate} from "react-router-dom";
@@ -86,19 +86,28 @@ export function BucketsPage() {
               onPress={() => navigate(`/buckets/${b.id}`)}
             >
               <CardHeader className="flex justify-between items-center font-bold">
-                {b.key}
-                <Button
-                  isIconOnly
-                  variant="light"
-                  color="danger"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteId(b.id);
-                    confirm.onOpen();
-                  }}
-                >
-                  <DeleteIcon className="w-4 h-4" />
-                </Button>
+                <span className="flex items-center gap-2">
+                  {b.key}
+                  {b.shared && (
+                    <Chip size="sm" variant="flat" color="secondary">
+                      {b.role}
+                    </Chip>
+                  )}
+                </span>
+                {b.role === "owner" && (
+                  <Button
+                    isIconOnly
+                    variant="light"
+                    color="danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteId(b.id);
+                      confirm.onOpen();
+                    }}
+                  >
+                    <DeleteIcon className="w-4 h-4" />
+                  </Button>
+                )}
               </CardHeader>
               <CardBody>{new Date(b.created_at).toLocaleString()}</CardBody>
             </Card>
