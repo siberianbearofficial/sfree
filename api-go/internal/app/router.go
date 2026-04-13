@@ -69,6 +69,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		router.POST("/api/v1/sources/s3", auth, handlers.CreateS3Source(sourceRepo))
 		router.GET("/api/v1/sources", auth, handlers.ListSources(sourceRepo))
 		router.GET("/api/v1/sources/:id/info", auth, handlers.GetSourceInfo(sourceRepo))
+		router.GET("/api/v1/sources/:id/files/:file_id/download", auth, handlers.DownloadSourceFile(sourceRepo))
 		router.DELETE("/api/v1/sources/:id", auth, handlers.DeleteSource(sourceRepo, bucketRepo))
 	}
 

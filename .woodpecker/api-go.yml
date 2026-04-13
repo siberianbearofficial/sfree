@@ -13,6 +13,12 @@ when:
         - api-go/**
 
 steps:
+  - name: unit tests
+    image: golang:1.24
+    commands:
+      - cd api-go
+      - go test ./...
+
   - name: e2e tests
     image: docker:27-cli
     environment:
