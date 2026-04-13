@@ -6,6 +6,21 @@
 **One object store across Google Drive, Telegram, and any S3-compatible
 service — with a REST API, S3-compatible endpoint, and browser UI.**
 
+### Screenshots
+
+<p align="center">
+  <img src="docs/assets/screenshot-sources.svg" alt="Sources page — connect storage backends" width="720" />
+</p>
+<p align="center">
+  <img src="docs/assets/screenshot-create-bucket.svg" alt="Create a bucket backed by multiple sources" width="720" />
+</p>
+<p align="center">
+  <img src="docs/assets/screenshot-bucket-files.svg" alt="Browse, upload, download, and share files" width="720" />
+</p>
+<p align="center">
+  <img src="docs/assets/screenshot-share-link.svg" alt="Generate public share links for any file" width="720" />
+</p>
+
 ## Why SFree
 
 Cloud storage is cheap in pieces — a free Google Drive here, a Telegram bot
