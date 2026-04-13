@@ -31,18 +31,17 @@ At a high level:
 ### `webui/`
 
 - React 19 + Vite frontend.
-- Safe public claims today:
+- Current capabilities:
   - signup/login
-  - Google Drive source creation
-  - bucket creation and file operations
-- Not safe to imply today:
-  - Telegram source creation in the browser UI
-  - S3-compatible source creation in the browser UI
+  - source creation for Google Drive, Telegram, and S3-compatible backends
+  - bucket creation, listing, and deletion
+  - file upload, download, and deletion
 
-### `api/`
+### `api/` (deprecated)
 
-- Deprecated Python backend.
+- Deprecated Python backend — see [`api/README.md`](../api/README.md).
 - Kept in the repository for historical reference only.
+- Not part of the active CI/CD pipelines or Docker Compose stack.
 - Do not route new contributors there unless an issue explicitly targets it.
 
 ### `.woodpecker/`
@@ -59,8 +58,8 @@ At a high level:
 | Source type | Backend support | Browser UI creation | Notes |
 | --- | --- | --- | --- |
 | Google Drive | Yes | Yes | Richest source info and quota reporting. |
-| Telegram | Yes | No | Backend-supported, but UI creation is not implemented. |
-| S3-compatible | Yes | No | Backend-supported, but UI creation is not implemented. |
+| Telegram | Yes | Yes | Uses bot API for chunk storage. |
+| S3-compatible | Yes | Yes | Works with MinIO, Backblaze B2, Wasabi, etc. |
 
 ## Data Model And Storage Behavior
 
@@ -85,8 +84,6 @@ copy:
 - Do not imply identical observability across source types. Google Drive,
   Telegram, and S3-compatible sources return different levels of file/quota
   detail.
-- Do not say the browser UI supports all backend source types. It currently
-  creates Google Drive sources only.
 
 ## Local Development Notes
 

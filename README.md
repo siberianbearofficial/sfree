@@ -3,33 +3,35 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
 [![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8.svg)](https://go.dev/)
 
-**Store files across Google Drive, Telegram, and S3-compatible services — access
-them through one API or an S3-compatible interface.**
+**One object store across Google Drive, Telegram, and any S3-compatible
+service — with a REST API, S3-compatible endpoint, and browser UI.**
 
 ## Why SFree
 
 Cloud storage is cheap in pieces — a free Google Drive here, a Telegram bot
-there, a MinIO bucket on a spare VPS. But using them together is a manual mess.
+there, a MinIO bucket on a spare VPS. But stitching them together by hand is
+tedious and error-prone.
 
-SFree turns multiple storage services into a single object store. Upload a file
-and SFree splits it into chunks, distributes them across your configured
-sources, and reassembles them on download. You get one REST API, one
-S3-compatible endpoint, and one browser UI for everything.
+SFree unifies multiple storage backends behind a single interface. Upload a
+file and SFree splits it into chunks, distributes them across your configured
+sources in round-robin order, and reassembles them on download. You interact
+through one REST API, one S3-compatible endpoint, or one browser UI — your
+choice.
 
 **Who it's for:** Self-hosters, homelab enthusiasts, and developers who want to
-unify free-tier and personal storage backends behind a single interface.
+pool free-tier and personal storage services into one namespace.
 
-**What it is not:** SFree is an experimental prototype. It does not replicate
-chunks, provide erasure coding, or guarantee durability if an upstream source is
-lost. See [Launch Caveats](#launch-caveats) for the full picture.
+**What it is not:** SFree is an early-stage prototype. It does not replicate
+chunks, provide erasure coding, or guarantee durability if an upstream source
+disappears. See [Launch Caveats](#launch-caveats) for the full picture.
 
 ## Supported Storage Backends
 
-| Backend | API support | Browser UI support | Notes |
+| Backend | API | Browser UI | Notes |
 | --- | --- | --- | --- |
 | Google Drive | Yes | Yes | Richest quota and file metadata reporting |
-| Telegram | Yes | No (API-only) | Uses bot API for chunk storage |
-| S3-compatible | Yes | No (API-only) | Works with MinIO, Backblaze B2, Wasabi, etc. |
+| Telegram | Yes | Yes | Uses bot API for chunk storage |
+| S3-compatible | Yes | Yes | Works with MinIO, Backblaze B2, Wasabi, etc. |
 
 ## Architecture
 
@@ -131,7 +133,7 @@ instance for local S3-compatible source testing.
 
 - Go 1.24+
 - Docker (for MongoDB)
-- Node.js with npm (for the browser UI)
+- Node.js 20+ with npm (for the browser UI)
 
 #### 1. Start MongoDB
 
@@ -153,12 +155,14 @@ The API listens on `http://localhost:8080`.
 
 ```bash
 cd webui
+npm ci
 VITE_API_BASE=http://localhost:8080/api/v1 npm run dev
 ```
 
-Set `VITE_API_BASE` to point the frontend at your local API. Without it, the
-frontend defaults to a relative `/api/v1` path (designed for the Docker Compose
-setup where nginx proxies to the API).
+`npm ci` installs both production and dev dependencies (TypeScript, ESLint,
+etc.) from the lockfile. Set `VITE_API_BASE` to point the frontend at your
+local API. Without it, the frontend defaults to a relative `/api/v1` path
+(designed for the Docker Compose setup where nginx proxies to the API).
 
 </details>
 
@@ -166,11 +170,11 @@ setup where nginx proxies to the API).
 
 | Directory | Purpose |
 | --- | --- |
-| `api-go/` | Primary Go backend — HTTP API, S3-compatible routes, Swagger docs, MongoDB metadata |
-| `webui/` | React 19 + Vite frontend — signup, bucket management, file operations |
-| `api/` | Deprecated Python backend (historical reference only) |
+| `api-go/` | **Primary backend** — Go HTTP API, S3-compatible routes, Swagger docs, MongoDB metadata |
+| `webui/` | React 19 + Vite frontend — signup, source management, bucket operations, file upload/download |
+| `docs/` | Architecture notes, quickstart walkthrough, CI docs |
 | `.woodpecker/` | Self-hosted Woodpecker CI/CD pipelines |
-| `docs/` | Architecture notes, CI docs |
+| `api/` | **Deprecated** Python backend — kept for reference only, not part of the active stack (see [`api/README.md`](api/README.md)) |
 
 ## Launch Caveats
 
@@ -183,14 +187,18 @@ SFree is an early-stage project. These constraints are current and intentional:
   payloads.
 - **Uneven observability.** Google Drive sources expose the richest file and
   quota info. Telegram and S3-compatible sources return less metadata.
-- **Browser UI covers Google Drive only.** Telegram and S3-compatible source
-  creation requires the API directly.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and PR guidelines.
-Architecture details are in [docs/architecture.md](docs/architecture.md) and CI
-expectations in [docs/ci.md](docs/ci.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, validation, and PR
+guidelines. Further reading:
+
+- [docs/architecture.md](docs/architecture.md) — system design, data model, and
+  storage behavior
+- [docs/quickstart.md](docs/quickstart.md) — Docker Compose walkthrough with
+  expected output for every step
+- [docs/ci.md](docs/ci.md) — Woodpecker pipeline triggers, secrets, and
+  published images
 
 ## License
 
