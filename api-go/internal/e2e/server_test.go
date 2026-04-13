@@ -6,12 +6,12 @@ package e2e
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/example/sfree/api-go/internal/app"
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
-	"net/http/httptest"
 )
 
 func TestServerStartup(t *testing.T) {
@@ -23,7 +23,7 @@ func TestServerStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := app.SetupRouter(mongoConn)
+	router := app.SetupRouter(mongoConn, cfg)
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 

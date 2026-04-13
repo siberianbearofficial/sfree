@@ -1,0 +1,12 @@
+FROM golang:1.24
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ENV ENV=test
+
+CMD ["go", "test", "-v", "-tags=e2e", "-timeout=120s", "./internal/e2e/..."]
