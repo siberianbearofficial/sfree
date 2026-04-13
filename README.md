@@ -204,7 +204,7 @@ sudo mv sfree /usr/local/bin/
 **Or install with Go:**
 
 ```bash
-go install github.com/example/sfree/api-go/cmd/sfree-cli@latest
+go install github.com/siberianbearofficial/sfree/api-go/cmd/sfree-cli@latest
 ```
 
 **Or build from source:**
