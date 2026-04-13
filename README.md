@@ -6,6 +6,10 @@
 **One object store across Google Drive, Telegram, and any S3-compatible
 service — with a REST API, S3-compatible endpoint, and browser UI.**
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="SFree demo — create a source, upload a file, browse and download" width="720" />
+</p>
+
 ## Why SFree
 
 Cloud storage is cheap in pieces — a free Google Drive here, a Telegram bot
