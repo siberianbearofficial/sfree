@@ -125,6 +125,77 @@ func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.F
 	}
 }
 
+// lookupObject resolves the bucket and file from the request context.
+// Returns the file document and total size, or writes an S3 error and returns false.
+func lookupObject(c *gin.Context, bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) (*repository.File, int64, bool) {
+	ctx := c.Request.Context()
+	bucketKey := c.Param("bucket")
+	name := strings.TrimPrefix(c.Param("object"), "/")
+	bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+			return nil, 0, false
+		}
+		slog.ErrorContext(ctx, "lookup object: get bucket", slog.String("error", err.Error()))
+		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		return nil, 0, false
+	}
+	accessKey := c.GetString("accessKey")
+	if accessKey == "" || bucketDoc.AccessKey != accessKey {
+		writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+		return nil, 0, false
+	}
+	fileDoc, err := fileRepo.GetByName(ctx, bucketDoc.ID, name)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			writeS3Error(c, http.StatusNotFound, "NoSuchKey", "")
+			return nil, 0, false
+		}
+		slog.ErrorContext(ctx, "lookup object: get file", slog.String("error", err.Error()))
+		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		return nil, 0, false
+	}
+	var total int64
+	for _, ch := range fileDoc.Chunks {
+		total += ch.Size
+	}
+	return fileDoc, total, true
+}
+
+// setObjectHeaders writes standard S3 object headers (ETag, Last-Modified,
+// Content-Length, Content-Type).
+func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
+	c.Header("ETag", objectETag(*fileDoc))
+	c.Header("Last-Modified", fileDoc.CreatedAt.UTC().Format(http.TimeFormat))
+	c.Header("Content-Length", strconv.FormatInt(total, 10))
+	c.Header("Content-Type", "application/octet-stream")
+}
+
+// HeadObject godoc
+// @Summary Head object
+// @Tags s3
+// @Param bucket path string true "Bucket key"
+// @Param object path string true "Object key"
+// @Success 200 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Router /api/s3/{bucket}/{object} [head]
+func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if bucketRepo == nil || fileRepo == nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		fileDoc, total, ok := lookupObject(c, bucketRepo, fileRepo)
+		if !ok {
+			return
+		}
+		setObjectHeaders(c, fileDoc, total)
+		c.Status(http.StatusOK)
+	}
+}
+
 // GetObject godoc
 // @Summary Get object
 // @Tags s3
@@ -137,47 +208,18 @@ func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.F
 // @Router /api/s3/{bucket}/{object} [get]
 func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketKey := c.Param("bucket")
-		name := strings.TrimPrefix(c.Param("object"), "/")
-		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
-				return
-			}
-			slog.ErrorContext(ctx, "get object: get bucket", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		fileDoc, total, ok := lookupObject(c, bucketRepo, fileRepo)
+		if !ok {
 			return
 		}
-		accessKey := c.GetString("accessKey")
-		if accessKey == "" || bucketDoc.AccessKey != accessKey {
-			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
-			return
-		}
-		fileDoc, err := fileRepo.GetByName(ctx, bucketDoc.ID, name)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				writeS3Error(c, http.StatusNotFound, "NoSuchKey", "")
-				return
-			}
-			slog.ErrorContext(ctx, "get object: get file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		var total int64
-		for _, ch := range fileDoc.Chunks {
-			total += ch.Size
-		}
-		c.Header("Content-Type", "application/octet-stream")
-		c.Header("Content-Length", strconv.FormatInt(total, 10))
+		setObjectHeaders(c, fileDoc, total)
 		c.Status(http.StatusOK)
 		if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-			slog.ErrorContext(ctx, "get object: stream failed", slog.String("error", err.Error()))
+			slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
 		}
 	}
 }
