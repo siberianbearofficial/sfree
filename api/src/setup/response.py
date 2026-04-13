@@ -22,5 +22,5 @@ class GetReadyResponse(ApiResponse):
 
 
 class GetRootResponse(ApiResponse):
-    data: str = "S3aaS API"
+    data: str = "SFree API"
     detail: str = "Visit /docs or /redoc for the full documentation."

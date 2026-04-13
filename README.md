@@ -61,6 +61,9 @@ read and write objects directly.
 
 ## Quick Start
 
+> **Full walkthrough:** [Docker Compose Quickstart](docs/quickstart.md) — zero
+> to upload in under 5 minutes, with expected output for every step.
+
 ### Prerequisites
 
 - Docker and Docker Compose

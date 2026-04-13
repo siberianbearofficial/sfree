@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/example/s3aas/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/db"
 	"github.com/gin-gonic/gin"
 )
 

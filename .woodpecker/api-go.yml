@@ -48,7 +48,7 @@ steps:
       - event: push
         branch: main
     settings:
-      repo: ghcr.io/siberianbearofficial/s3aas-api-go
+      repo: ghcr.io/siberianbearofficial/sfree-api-go
       registry: ghcr.io
       username: siberianbearofficial
       password:

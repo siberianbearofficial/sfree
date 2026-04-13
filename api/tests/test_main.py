@@ -15,7 +15,7 @@ async def test_get_root_handler(transport):
         response = await client.get("/")
         assert response.status_code == 200
         assert response.json() == {
-            "data": "S3aaS API",
+            "data": "SFree API",
             "detail": "Visit /docs or /redoc for the full documentation.",
         }
 

@@ -6,10 +6,10 @@ import (
 	"errors"
 	"io"
 
-	"github.com/example/s3aas/api-go/internal/gdrive"
-	"github.com/example/s3aas/api-go/internal/repository"
-	"github.com/example/s3aas/api-go/internal/s3compat"
-	"github.com/example/s3aas/api-go/internal/telegram"
+	"github.com/example/sfree/api-go/internal/gdrive"
+	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/s3compat"
+	"github.com/example/sfree/api-go/internal/telegram"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 

@@ -22,11 +22,10 @@ current launch boundaries documented in [README.md](README.md) and
 - Preserve the current public caveats:
   - backend-supported sources are Google Drive, Telegram, and S3-compatible
     storage
-  - the browser UI only creates Google Drive sources today
+  - the browser UI supports Google Drive, Telegram, and S3-compatible sources
   - uploads are split into chunks and distributed across sources without
     redundancy guarantees
-  - auth and credential handling are functional but not production-hardened,
-    and source create/list responses currently echo stored credential payloads
+  - auth and credential handling are functional but not production-hardened
 
 ## Local Setup
 
@@ -68,10 +67,9 @@ npm install
 npm run dev
 ```
 
-The checked-in frontend currently hardcodes
-`https://s3aas-api.dev.nachert.art/api/v1` in `webui/src/shared/api/users.ts`,
-`webui/src/shared/api/buckets.ts`, and `webui/src/shared/api/sources.ts`.
-Adjust those modules before expecting a fully local browser workflow.
+The frontend reads `VITE_API_BASE` at build time (defaults to `/api/v1`).
+For local development against the Docker Compose stack no changes are needed;
+the webui container proxies API requests to the backend automatically.
 
 ## Validation
 

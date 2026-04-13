@@ -1,4 +1,4 @@
-module github.com/example/s3aas/api-go
+module github.com/example/sfree/api-go
 
 go 1.24.0
 
