@@ -5,6 +5,7 @@ import (
 	"github.com/example/sfree/api-go/internal/db"
 	"github.com/example/sfree/api-go/internal/handlers"
 	"github.com/example/sfree/api-go/internal/observability"
+	"github.com/example/sfree/api-go/internal/ratelimit"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,18 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 	router.Use(gin.Recovery())
 	router.Use(observability.Middleware())
 	router.Use(otelgin.Middleware("sfree-api"))
+
+	rlCfg := ratelimit.DefaultConfig()
+	if cfg != nil {
+		if cfg.RateLimit.PerIP > 0 {
+			rlCfg.PerIPReqsPerMin = cfg.RateLimit.PerIP
+		}
+		if cfg.RateLimit.PerKey > 0 {
+			rlCfg.PerKeyReqsPerMin = cfg.RateLimit.PerKey
+		}
+	}
+	router.Use(ratelimit.Middleware(rlCfg))
+
 	router.GET("/readyz", handlers.Readyz)
 	router.GET("/healthz", handlers.Healthz)
 	router.GET("/publication/ready", handlers.PublicationReady)
