@@ -39,7 +39,7 @@ func GitHubLogin(cfg *config.Config) gin.HandlerFunc {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		c.SetCookie("oauth_state", state, 600, "/", "", false, true)
+		c.SetCookie("oauth_state", state, 600, "/", "", true, true)
 		c.Redirect(http.StatusTemporaryRedirect, oauthCfg.AuthCodeURL(state))
 	}
 }
@@ -58,6 +58,8 @@ func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid oauth state"})
 			return
 		}
+		// Clear the state cookie immediately to prevent replay attacks.
+		c.SetCookie("oauth_state", "", -1, "/", "", true, true)
 
 		oauthCfg := newGitHubOAuthConfig(cfg)
 		token, err := oauthCfg.Exchange(c.Request.Context(), c.Query("code"))
