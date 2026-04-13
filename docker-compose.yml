@@ -30,7 +30,7 @@ services:
       "
 
   api:
-    image: ghcr.io/siberianbearofficial/sfree-api:latest
+    image: ghcr.io/siberianbearofficial/sfree-api:${SFREE_VERSION:-latest}
     build:
       context: ./api-go
       dockerfile: Dockerfile
@@ -63,7 +63,7 @@ services:
       - tracing
 
   webui:
-    image: ghcr.io/siberianbearofficial/sfree-webui:latest
+    image: ghcr.io/siberianbearofficial/sfree-webui:${SFREE_VERSION:-latest}
     build:
       context: ./webui
       dockerfile: Dockerfile
