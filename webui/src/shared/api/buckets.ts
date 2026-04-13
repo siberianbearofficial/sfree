@@ -7,6 +7,8 @@ export type Bucket = {
   key: string;
   access_key: string;
   created_at: string;
+  role: "owner" | "editor" | "viewer";
+  shared: boolean;
 };
 
 export type FileInfo = {

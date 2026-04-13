@@ -29,6 +29,7 @@ import {DownloadIcon, ShareIcon} from "../../../shared/icons";
 import {DeleteIcon, ArrowLeftIcon} from "@heroui/shared-icons";
 import {ConfirmDialog, EmptyState} from "../../../shared/ui";
 import {FilePreviewModal} from "../../../features/bucket/ui/file-preview-modal";
+import {ShareBucketDialog} from "../../../features/bucket/ui/share-bucket-dialog";
 import {formatSize} from "../../../shared/lib/format";
 import {showErrorToast} from "../../../shared/api/error";
 
@@ -45,6 +46,7 @@ export function BucketPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileInfo | null>(null);
 
+  const shareBucket = useDisclosure();
   const shareModal = useDisclosure();
   const [shareFile, setShareFile] = useState<FileInfo | null>(null);
   const [shareLinks, setShareLinks] = useState<ShareLinkInfo[]>([]);
@@ -198,16 +200,25 @@ export function BucketPage() {
         <p>Access Key: {bucket.access_key}</p>
         <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
       </div>
-      <div className="flex justify-end">
-        <input
-          type="file"
-          ref={fileInput}
-          className="hidden"
-          onChange={onFileChange}
-        />
-        <Button color="primary" onPress={() => fileInput.current?.click()}>
-          Upload File
-        </Button>
+      <div className="flex justify-end gap-2">
+        {bucket.role === "owner" && (
+          <Button variant="flat" onPress={shareBucket.onOpen}>
+            Share Bucket
+          </Button>
+        )}
+        {(bucket.role === "owner" || bucket.role === "editor") && (
+          <>
+            <input
+              type="file"
+              ref={fileInput}
+              className="hidden"
+              onChange={onFileChange}
+            />
+            <Button color="primary" onPress={() => fileInput.current?.click()}>
+              Upload File
+            </Button>
+          </>
+        )}
       </div>
       <div
         className="border-2 border-dashed rounded p-4"
@@ -249,13 +260,15 @@ export function BucketPage() {
                   </td>
                   <td className="py-2">
                     <div className="flex gap-2">
-                      <Button
-                        isIconOnly
-                        variant="light"
-                        onPress={() => openShareModal(f)}
-                      >
-                        <ShareIcon className="w-5 h-5" />
-                      </Button>
+                      {(bucket.role === "owner" || bucket.role === "editor") && (
+                        <Button
+                          isIconOnly
+                          variant="light"
+                          onPress={() => openShareModal(f)}
+                        >
+                          <ShareIcon className="w-5 h-5" />
+                        </Button>
+                      )}
                       <Button
                         isIconOnly
                         variant="light"
@@ -263,17 +276,19 @@ export function BucketPage() {
                       >
                         <DownloadIcon className="w-5 h-5" />
                       </Button>
-                      <Button
-                        isIconOnly
-                        variant="light"
-                        color="danger"
-                        onPress={() => {
-                          setDeleteId(f.id);
-                          confirm.onOpen();
-                        }}
-                      >
-                        <DeleteIcon className="w-5 h-5" />
-                      </Button>
+                      {(bucket.role === "owner" || bucket.role === "editor") && (
+                        <Button
+                          isIconOnly
+                          variant="light"
+                          color="danger"
+                          onPress={() => {
+                            setDeleteId(f.id);
+                            confirm.onOpen();
+                          }}
+                        >
+                          <DeleteIcon className="w-5 h-5" />
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -372,6 +387,11 @@ export function BucketPage() {
           )}
         </ModalContent>
       </Modal>
+      <ShareBucketDialog
+        isOpen={shareBucket.isOpen}
+        onOpenChange={shareBucket.onOpenChange}
+        bucketId={id!}
+      />
     </div>
   );
 }

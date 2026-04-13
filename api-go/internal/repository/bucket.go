@@ -113,6 +113,26 @@ func (r *BucketRepository) ListByUser(ctx context.Context, userID primitive.Obje
 	return buckets, nil
 }
 
+func (r *BucketRepository) ListByIDs(ctx context.Context, ids []primitive.ObjectID) ([]Bucket, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	cursor, err := r.coll.Find(ctx, bson.M{"_id": bson.M{"$in": ids}})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var buckets []Bucket
+	for cursor.Next(ctx) {
+		var b Bucket
+		if err := cursor.Decode(&b); err != nil {
+			return nil, err
+		}
+		buckets = append(buckets, b)
+	}
+	return buckets, cursor.Err()
+}
+
 func (r *BucketRepository) HasSourceReference(ctx context.Context, userID, sourceID primitive.ObjectID) (bool, error) {
 	count, err := r.coll.CountDocuments(ctx, bson.M{"user_id": userID, "source_ids": sourceID})
 	if err != nil {
