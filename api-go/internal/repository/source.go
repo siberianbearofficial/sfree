@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/cryptoutil"
@@ -54,16 +55,15 @@ func (r *SourceRepository) encryptKey(plain string) (string, error) {
 	return cryptoutil.Encrypt(plain, r.secretKey)
 }
 
-func (r *SourceRepository) decryptKey(cipher string) string {
+func (r *SourceRepository) decryptKey(cipher string) (string, error) {
 	if r.secretKey == "" || cipher == "" {
-		return cipher
+		return cipher, nil
 	}
 	plain, err := cryptoutil.Decrypt(cipher, r.secretKey)
 	if err != nil {
-		// Not encrypted (pre-migration data) — return as-is.
-		return cipher
+		return "", fmt.Errorf("decrypt source key: %w", err)
 	}
-	return plain
+	return plain, nil
 }
 
 func (r *SourceRepository) Create(ctx context.Context, s Source) (*Source, error) {
@@ -91,7 +91,10 @@ func (r *SourceRepository) GetByID(ctx context.Context, id primitive.ObjectID) (
 	if err != nil {
 		return nil, err
 	}
-	s.Key = r.decryptKey(s.Key)
+	s.Key, err = r.decryptKey(s.Key)
+	if err != nil {
+		return nil, err
+	}
 	return &s, nil
 }
 
@@ -110,7 +113,10 @@ func (r *SourceRepository) ListByIDs(ctx context.Context, ids []primitive.Object
 		if err := cursor.Decode(&src); err != nil {
 			return nil, err
 		}
-		src.Key = r.decryptKey(src.Key)
+		src.Key, err = r.decryptKey(src.Key)
+		if err != nil {
+			return nil, err
+		}
 		byID[src.ID] = src
 	}
 	if err := cursor.Err(); err != nil {
@@ -139,7 +145,10 @@ func (r *SourceRepository) ListByUser(ctx context.Context, userID primitive.Obje
 		if err := cursor.Decode(&s); err != nil {
 			return nil, err
 		}
-		s.Key = r.decryptKey(s.Key)
+		s.Key, err = r.decryptKey(s.Key)
+		if err != nil {
+			return nil, err
+		}
 		sources = append(sources, s)
 	}
 	if err := cursor.Err(); err != nil {
