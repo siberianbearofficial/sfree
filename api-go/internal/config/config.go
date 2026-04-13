@@ -22,10 +22,19 @@ type UploadConfig struct {
 	ChunkSize int `yaml:"chunk_size"`
 }
 
+type GitHubOAuthConfig struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	RedirectURL  string `yaml:"redirect_url"`
+}
+
 type Config struct {
-	Mongo           MongoConfig  `yaml:"mongo"`
-	Upload          UploadConfig `yaml:"upload"`
-	AccessSecretKey string       `yaml:"access_secret_key"`
+	Mongo           MongoConfig      `yaml:"mongo"`
+	Upload          UploadConfig     `yaml:"upload"`
+	AccessSecretKey string           `yaml:"access_secret_key"`
+	JWTSecret       string           `yaml:"jwt_secret"`
+	GitHubOAuth     GitHubOAuthConfig `yaml:"github_oauth"`
+	FrontendURL     string           `yaml:"frontend_url"`
 }
 
 func Load() (*Config, error) {
@@ -73,5 +82,20 @@ func overrideEnv(cfg *Config) {
 	}
 	if v := os.Getenv("ACCESS_SECRET_KEY"); v != "" {
 		cfg.AccessSecretKey = v
+	}
+	if v := os.Getenv("JWT_SECRET"); v != "" {
+		cfg.JWTSecret = v
+	}
+	if v := os.Getenv("GITHUB_CLIENT_ID"); v != "" {
+		cfg.GitHubOAuth.ClientID = v
+	}
+	if v := os.Getenv("GITHUB_CLIENT_SECRET"); v != "" {
+		cfg.GitHubOAuth.ClientSecret = v
+	}
+	if v := os.Getenv("GITHUB_REDIRECT_URL"); v != "" {
+		cfg.GitHubOAuth.RedirectURL = v
+	}
+	if v := os.Getenv("FRONTEND_URL"); v != "" {
+		cfg.FrontendURL = v
 	}
 }

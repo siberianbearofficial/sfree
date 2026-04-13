@@ -28,19 +28,40 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 
 	var (
 		auth       gin.HandlerFunc
+		userRepo   *repository.UserRepository
 		bucketRepo *repository.BucketRepository
 		sourceRepo *repository.SourceRepository
 		fileRepo   *repository.FileRepository
 	)
 
+	jwtSecret := ""
+	if cfg != nil {
+		jwtSecret = cfg.JWTSecret
+		if jwtSecret == "" {
+			jwtSecret = cfg.AccessSecretKey
+		}
+	}
+
 	if m != nil {
-		if userRepo, err := repository.NewUserRepository(m.DB); err == nil {
-			auth = handlers.BasicAuth(userRepo)
+		var err error
+		userRepo, err = repository.NewUserRepository(m.DB)
+		if err == nil {
+			auth = handlers.Auth(userRepo, jwtSecret)
 			router.POST("/api/v1/users", handlers.CreateUser(userRepo))
 		}
 		bucketRepo, _ = repository.NewBucketRepository(m.DB)
 		sourceRepo, _ = repository.NewSourceRepository(m.DB)
 		fileRepo, _ = repository.NewFileRepository(m.DB)
+	}
+
+	// OAuth and auth utility routes.
+	if cfg != nil && userRepo != nil {
+		router.GET("/api/v1/auth/github", handlers.GitHubLogin(cfg))
+		router.GET("/api/v1/auth/github/callback", handlers.GitHubCallback(cfg, userRepo))
+		if auth != nil {
+			router.GET("/api/v1/auth/me", auth, handlers.GetCurrentUser(userRepo))
+			router.POST("/api/v1/auth/token", auth, handlers.TokenLogin(cfg, userRepo))
+		}
 	}
 
 	if auth != nil && bucketRepo != nil {

@@ -56,8 +56,17 @@ export function LandingPage() {
           object store. Upload once — SFree splits, distributes, and reassembles.
         </p>
         <div className="flex flex-wrap gap-4 mt-10 justify-center">
-          <Button color="primary" size="lg" onPress={register.onOpen}>
-            Get Started
+          <Button
+            color="primary"
+            size="lg"
+            as="a"
+            href={(import.meta.env.VITE_API_BASE || "/api/v1") + "/auth/github"}
+            startContent={<GitHubIcon className="w-5 h-5 fill-current" />}
+          >
+            Sign in with GitHub
+          </Button>
+          <Button color="primary" size="lg" variant="bordered" onPress={register.onOpen}>
+            Sign Up
           </Button>
           <Button
             variant="bordered"
@@ -134,7 +143,16 @@ export function LandingPage() {
       <section className="flex flex-col items-center px-6 pt-16 pb-24 text-center gap-6">
         <h2 className="text-2xl font-bold">Ready to unify your storage?</h2>
         <div className="flex flex-wrap gap-4 justify-center">
-          <Button color="primary" size="lg" onPress={register.onOpen}>
+          <Button
+            color="primary"
+            size="lg"
+            as="a"
+            href={(import.meta.env.VITE_API_BASE || "/api/v1") + "/auth/github"}
+            startContent={<GitHubIcon className="w-5 h-5 fill-current" />}
+          >
+            Sign in with GitHub
+          </Button>
+          <Button color="primary" size="lg" variant="bordered" onPress={register.onOpen}>
             Sign Up
           </Button>
           <Button variant="bordered" size="lg" onPress={login.onOpen}>

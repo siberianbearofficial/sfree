@@ -8,11 +8,46 @@ import (
 	"github.com/example/sfree/api-go/internal/cryptoutil"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const passwordLength = 12
+
+type currentUserResponse struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	GitHubID  int64  `json:"github_id,omitempty"`
+}
+
+// GetCurrentUser returns the profile of the authenticated user.
+func GetCurrentUser(repo *repository.UserRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		oid, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		user, err := repo.GetByID(c.Request.Context(), oid)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		c.JSON(http.StatusOK, currentUserResponse{
+			ID:        user.ID.Hex(),
+			Username:  user.Username,
+			AvatarURL: user.AvatarURL,
+			GitHubID:  user.GitHubID,
+		})
+	}
+}
 
 func generatePassword() (string, error) {
 	return cryptoutil.RandomString(passwordLength)
