@@ -8,26 +8,34 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/example/sfree/api-go/internal/app"
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
 	_ "github.com/example/sfree/api-go/internal/docs"
+	"github.com/example/sfree/api-go/internal/observability"
 )
 
 func main() {
+	observability.SetupLogger()
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		slog.Error("failed to load config", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	ctx := context.Background()
 	mongoConn, err := db.Connect(ctx, cfg.Mongo)
 	if err != nil {
-		log.Fatalf("failed to connect mongo: %v", err)
+		slog.Error("failed to connect mongo", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	router := app.SetupRouter(mongoConn, cfg)
+	slog.Info("starting server")
 	if err := router.Run(); err != nil {
-		log.Fatalf("failed to run server: %v", err)
+		slog.Error("failed to run server", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 }

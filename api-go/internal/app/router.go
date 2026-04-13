@@ -4,6 +4,7 @@ import (
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
 	"github.com/example/sfree/api-go/internal/handlers"
+	"github.com/example/sfree/api-go/internal/observability"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		AllowCredentials: true,
 	}))
 	router.Use(gin.Recovery())
+	router.Use(observability.Middleware())
 	router.GET("/readyz", handlers.Readyz)
 	router.GET("/healthz", handlers.Healthz)
 	router.GET("/publication/ready", handlers.PublicationReady)

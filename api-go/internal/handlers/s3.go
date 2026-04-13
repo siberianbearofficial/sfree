@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -71,19 +71,19 @@ func objectETag(file repository.File) string {
 // @Router /api/s3/{bucket} [get]
 func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
 		bucketKey := c.Param("bucket")
-		ctx := c.Request.Context()
 		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
 				return
 			}
-			log.Printf("list objects: get bucket: %v", err)
+			slog.ErrorContext(ctx, "list objects: get bucket", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -94,7 +94,7 @@ func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.F
 		}
 		files, err := fileRepo.ListByBucket(ctx, bucketDoc.ID)
 		if err != nil {
-			log.Printf("list objects: list files: %v", err)
+			slog.ErrorContext(ctx, "list objects: list files", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -137,20 +137,20 @@ func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.F
 // @Router /api/s3/{bucket}/{object} [get]
 func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
 		bucketKey := c.Param("bucket")
 		name := strings.TrimPrefix(c.Param("object"), "/")
-		ctx := c.Request.Context()
 		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
 				return
 			}
-			log.Printf("get object: get bucket: %v", err)
+			slog.ErrorContext(ctx, "get object: get bucket", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -165,7 +165,7 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 				writeS3Error(c, http.StatusNotFound, "NoSuchKey", "")
 				return
 			}
-			log.Printf("get object: get file: %v", err)
+			slog.ErrorContext(ctx, "get object: get file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -177,7 +177,7 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		c.Header("Content-Length", strconv.FormatInt(total, 10))
 		c.Status(http.StatusOK)
 		if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-			log.Printf("get object: %v", err)
+			slog.ErrorContext(ctx, "get object: stream failed", slog.String("error", err.Error()))
 		}
 	}
 }
@@ -196,6 +196,7 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 // @Router /api/s3/{bucket}/{object} [put]
 func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
@@ -206,14 +207,13 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 			return
 		}
-		ctx := c.Request.Context()
 		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
 				return
 			}
-			log.Printf("put object: get bucket: %v", err)
+			slog.ErrorContext(ctx, "put object: get bucket", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -224,7 +224,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		}
 		sources, err := sourceRepo.ListByIDs(ctx, bucketDoc.SourceIDs)
 		if err != nil {
-			log.Printf("put object: list sources: %v", err)
+			slog.ErrorContext(ctx, "put object: list sources", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -235,7 +235,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		var existingFile *repository.File
 		existingFile, err = fileRepo.GetByName(ctx, bucketDoc.ID, name)
 		if err != nil && err != mongo.ErrNoDocuments {
-			log.Printf("put object: get existing file: %v", err)
+			slog.ErrorContext(ctx, "put object: get existing file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -244,7 +244,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		}
 		chunks, err := manager.UploadFileChunks(ctx, c.Request.Body, sources, chunkSize)
 		if err != nil {
-			log.Printf("put object: upload chunks: %v", err)
+			slog.ErrorContext(ctx, "put object: upload chunks", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -253,7 +253,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		if existingFile == nil {
 			if _, err := fileRepo.Create(ctx, fileDoc); err != nil {
 				_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-				log.Printf("put object: save file: %v", err)
+				slog.ErrorContext(ctx, "put object: save file", slog.String("error", err.Error()))
 				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 				return
 			}
@@ -263,12 +263,12 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		fileDoc.ID = existingFile.ID
 		if _, err := fileRepo.UpdateByID(ctx, fileDoc); err != nil {
 			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-			log.Printf("put object: update file: %v", err)
+			slog.ErrorContext(ctx, "put object: update file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
 		if err := manager.DeleteFileChunks(ctx, sourceRepo, existingFile.Chunks); err != nil {
-			log.Printf("put object: delete old chunks: %v", err)
+			slog.WarnContext(ctx, "put object: delete old chunks", slog.String("error", err.Error()))
 		}
 		c.Status(http.StatusOK)
 	}
@@ -285,19 +285,19 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 // @Router /api/s3/{bucket}/{object} [delete]
 func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
 		bucketKey := c.Param("bucket")
-		ctx := c.Request.Context()
 		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
 				return
 			}
-			log.Printf("delete object: get bucket: %v", err)
+			slog.ErrorContext(ctx, "delete object: get bucket", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -317,7 +317,7 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 				c.Status(http.StatusNoContent)
 				return
 			}
-			log.Printf("delete object: get file: %v", err)
+			slog.ErrorContext(ctx, "delete object: get file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
@@ -326,12 +326,12 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 				c.Status(http.StatusNoContent)
 				return
 			}
-			log.Printf("delete object: delete file: %v", err)
+			slog.ErrorContext(ctx, "delete object: delete file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
 		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
-			log.Printf("delete object: delete chunks: %v", err)
+			slog.WarnContext(ctx, "delete object: delete chunks", slog.String("error", err.Error()))
 		}
 		c.Status(http.StatusNoContent)
 	}
