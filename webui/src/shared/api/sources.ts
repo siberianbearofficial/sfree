@@ -16,15 +16,20 @@ export type SourceInfo = {
   storage_free: number;
 };
 
-import { getAuthHeader } from "../lib/auth";
+import { getAuthHeader, getCredentialsOption } from "../lib/auth";
 
 function authHeader(): Record<string, string> {
   return getAuthHeader();
 }
 
+function credentials(): RequestCredentials | undefined {
+  return getCredentialsOption();
+}
+
 export async function listSources(): Promise<Source[]> {
   const res = await fetch(`${API_BASE}/sources`, {
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to list sources");
   return res.json() as Promise<Source[]>;
@@ -34,6 +39,7 @@ export async function createGDriveSource(name: string, key: string): Promise<Sou
   const res = await fetch(`${API_BASE}/sources/gdrive`, {
     method: "POST",
     headers: {"Content-Type": "application/json", ...authHeader()},
+    credentials: credentials(),
     body: JSON.stringify({name, key}),
   });
   await throwIfNotOk(res, "Failed to create source");
@@ -44,6 +50,7 @@ export async function createTelegramSource(name: string, token: string, chatId: 
   const res = await fetch(`${API_BASE}/sources/telegram`, {
     method: "POST",
     headers: {"Content-Type": "application/json", ...authHeader()},
+    credentials: credentials(),
     body: JSON.stringify({name, token, chat_id: chatId}),
   });
   await throwIfNotOk(res, "Failed to create source");
@@ -64,6 +71,7 @@ export async function createS3Source(params: CreateS3SourceParams): Promise<Sour
   const res = await fetch(`${API_BASE}/sources/s3`, {
     method: "POST",
     headers: {"Content-Type": "application/json", ...authHeader()},
+    credentials: credentials(),
     body: JSON.stringify(params),
   });
   await throwIfNotOk(res, "Failed to create source");
@@ -73,6 +81,7 @@ export async function createS3Source(params: CreateS3SourceParams): Promise<Sour
 export async function getSourceInfo(id: string): Promise<SourceInfo> {
   const res = await fetch(`${API_BASE}/sources/${id}/info`, {
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to get source info");
   return res.json();
@@ -82,6 +91,7 @@ export async function deleteSource(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/sources/${id}`, {
     method: "DELETE",
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to delete source");
 }
@@ -89,6 +99,7 @@ export async function deleteSource(id: string): Promise<void> {
 export async function downloadFile(sourceId: string, file: SourceFile): Promise<void> {
   const res = await fetch(`${API_BASE}/sources/${sourceId}/files/${file.id}/download`, {
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to download file");
   const blob = await res.blob();

@@ -1,9 +1,13 @@
 const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
-import { getAuthHeader } from "../lib/auth";
+import { getAuthHeader, getCredentialsOption } from "../lib/auth";
 
 function authHeader(): Record<string, string> {
   return getAuthHeader();
+}
+
+function credentials(): RequestCredentials | undefined {
+  return getCredentialsOption();
 }
 
 export type ShareLinkInfo = {
@@ -29,6 +33,7 @@ export async function createShareLink(
         "Content-Type": "application/json",
         ...authHeader(),
       },
+      credentials: credentials(),
       body: JSON.stringify(expiresIn ? { expires_in: expiresIn } : {}),
     },
   );
@@ -44,6 +49,7 @@ export async function listShareLinks(
     `${API_BASE}/buckets/${bucketId}/files/${fileId}/shares`,
     {
       headers: authHeader(),
+      credentials: credentials(),
     },
   );
   if (!res.ok) throw new Error("failed to list share links");
@@ -54,6 +60,7 @@ export async function deleteShareLink(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/shares/${id}`, {
     method: "DELETE",
     headers: authHeader(),
+    credentials: credentials(),
   });
   if (!res.ok) throw new Error("failed to delete share link");
 }

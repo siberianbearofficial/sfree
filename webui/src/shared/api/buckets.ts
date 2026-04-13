@@ -16,15 +16,20 @@ export type FileInfo = {
   size: number;
 };
 
-import { getAuthHeader } from "../lib/auth";
+import { getAuthHeader, getCredentialsOption } from "../lib/auth";
 
 function authHeader(): Record<string, string> {
   return getAuthHeader();
 }
 
+function credentials(): RequestCredentials | undefined {
+  return getCredentialsOption();
+}
+
 export async function listBuckets(): Promise<Bucket[]> {
   const res = await fetch(`${API_BASE}/buckets`, {
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to list buckets");
   return res.json();
@@ -42,6 +47,7 @@ export async function createBucket(key: string, sourceIds: string[]): Promise<{
       "Content-Type": "application/json",
       ...authHeader(),
     },
+    credentials: credentials(),
     body: JSON.stringify({key, source_ids: sourceIds}),
   });
   await throwIfNotOk(res, "Failed to create bucket");
@@ -51,6 +57,7 @@ export async function createBucket(key: string, sourceIds: string[]): Promise<{
 export async function listFiles(bucketId: string): Promise<FileInfo[]> {
   const res = await fetch(`${API_BASE}/buckets/${bucketId}/files`, {
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to list files");
   return res.json();
@@ -65,6 +72,7 @@ export async function uploadFile(
   const res = await fetch(`${API_BASE}/buckets/${bucketId}/upload`, {
     method: "POST",
     headers: authHeader(),
+    credentials: credentials(),
     body: form,
   });
   await throwIfNotOk(res, "Failed to upload file");
@@ -75,6 +83,7 @@ export async function deleteBucket(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/buckets/${id}`, {
     method: "DELETE",
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to delete bucket");
 }
@@ -87,6 +96,7 @@ export async function downloadFile(
     `${API_BASE}/buckets/${bucketId}/files/${file.id}/download`,
     {
       headers: authHeader(),
+      credentials: credentials(),
     },
   );
   await throwIfNotOk(res, "Failed to download file");
@@ -107,6 +117,7 @@ export async function fetchFileBlob(
     `${API_BASE}/buckets/${bucketId}/files/${fileId}/download`,
     {
       headers: authHeader(),
+      credentials: credentials(),
     },
   );
   if (!res.ok) throw new Error("failed to fetch file");
@@ -120,6 +131,7 @@ export async function deleteFile(
   const res = await fetch(`${API_BASE}/buckets/${bucketId}/files/${fileId}`, {
     method: "DELETE",
     headers: authHeader(),
+    credentials: credentials(),
   });
   await throwIfNotOk(res, "Failed to delete file");
 }
