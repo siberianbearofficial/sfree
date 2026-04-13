@@ -1,8 +1,10 @@
 import {Button, Checkbox, CheckboxGroup, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Snippet} from "@heroui/react";
+import {addToast} from "@heroui/toast";
 import {useEffect, useMemo, useState} from "react";
 import {createBucket} from "../../../shared/api/buckets";
 import {listSources} from "../../../shared/api/sources";
 import type {Source} from "../../../shared/api/sources";
+import {showErrorToast} from "../../../shared/api/error";
 
 type Props = {isOpen: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void};
 
@@ -111,7 +113,10 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
                     try {
                       const res = await createBucket(key, selectedSourceIds);
                       setCreds({accessKey: res.access_key, accessSecret: res.access_secret});
+                      addToast({title: "Bucket created", description: `${key} is ready`, color: "success", timeout: 4000});
                       onCreated();
+                    } catch (err) {
+                      showErrorToast(err);
                     } finally {
                       setIsLoading(false);
                     }

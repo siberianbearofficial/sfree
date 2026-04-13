@@ -1,4 +1,4 @@
-import {Button, CircularProgress} from "@heroui/react";
+import {Button, CircularProgress, Spinner} from "@heroui/react";
 import {useEffect, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {downloadFile, getSourceInfo} from "../../../shared/api/sources";
@@ -6,23 +6,69 @@ import type {SourceInfo} from "../../../shared/api/sources";
 import {SourceTypeChip} from "../../../entities/source";
 import {DownloadIcon} from "../../../shared/icons";
 import {ArrowLeftIcon} from "@heroui/shared-icons";
+import {EmptyState} from "../../../shared/ui";
 
 export function SourcePage() {
   const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
   const [info, setInfo] = useState<SourceInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     if (!id) return;
     setIsLoading(true);
+    setError(null);
     getSourceInfo(id)
       .then(setInfo)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load source"))
       .finally(() => setIsLoading(false));
+  }
+
+  useEffect(() => {
+    load();
   }, [id]);
 
-  if (isLoading) return <div className="p-8">Loading...</div>;
-  if (!info) return <div className="p-8">Source not found</div>;
+  if (isLoading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[200px]">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
+          <ArrowLeftIcon className="w-5 h-5" />
+        </Button>
+        <EmptyState
+          title="Failed to load source"
+          description={error}
+          ctaLabel="Retry"
+          onCtaPress={load}
+          variant="danger"
+        />
+      </div>
+    );
+  }
+
+  if (!info) {
+    return (
+      <div className="p-8">
+        <Button isIconOnly variant="light" onPress={() => navigate("/sources")}>
+          <ArrowLeftIcon className="w-5 h-5" />
+        </Button>
+        <EmptyState
+          title="Source not found"
+          description="This source may have been deleted."
+          ctaLabel="Back to Sources"
+          onCtaPress={() => navigate("/sources")}
+        />
+      </div>
+    );
+  }
 
   const percent = info.storage_total
     ? (info.storage_used / info.storage_total) * 100
@@ -50,7 +96,10 @@ export function SourcePage() {
       </div>
       <div className="border-2 border-dashed rounded p-4">
         {info.files.length === 0 ? (
-          <p>No files</p>
+          <EmptyState
+            title="No files in this source"
+            description="Files will appear here once synced from the connected service."
+          />
         ) : (
           <table className="w-full text-left">
             <thead>
