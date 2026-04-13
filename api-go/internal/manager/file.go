@@ -40,6 +40,54 @@ func (s *RoundRobinSelector) NextSource(sources []repository.Source) (int, repos
 	return idx, sources[idx], nil
 }
 
+// WeightedSelector distributes chunks across sources proportionally to their
+// configured weights. It builds a repeating sequence where each source appears
+// a number of times equal to its weight, then cycles through that sequence.
+type WeightedSelector struct {
+	sequence []int
+	next     int
+}
+
+// NewWeightedSelector creates a selector that distributes chunks according to
+// per-source weights. The weights map uses source ID hex strings as keys.
+// Sources without an entry default to weight 1.
+func NewWeightedSelector(sources []repository.Source, weights map[string]int) *WeightedSelector {
+	seq := make([]int, 0)
+	for i, src := range sources {
+		w := weights[src.ID.Hex()]
+		if w <= 0 {
+			w = 1
+		}
+		for j := 0; j < w; j++ {
+			seq = append(seq, i)
+		}
+	}
+	return &WeightedSelector{sequence: seq}
+}
+
+func (s *WeightedSelector) NextSource(sources []repository.Source) (int, repository.Source, error) {
+	if len(sources) == 0 || len(s.sequence) == 0 {
+		return 0, repository.Source{}, errors.New("no sources")
+	}
+	idx := s.sequence[s.next%len(s.sequence)]
+	s.next = (s.next + 1) % len(s.sequence)
+	if idx >= len(sources) {
+		return 0, repository.Source{}, errors.New("source index out of range")
+	}
+	return idx, sources[idx], nil
+}
+
+// SelectorForBucket returns the appropriate SourceSelector based on the
+// bucket's configured distribution strategy.
+func SelectorForBucket(bucket *repository.Bucket, sources []repository.Source) SourceSelector {
+	switch bucket.DistributionStrategy {
+	case repository.StrategyWeighted:
+		return NewWeightedSelector(sources, bucket.SourceWeights)
+	default:
+		return &RoundRobinSelector{}
+	}
+}
+
 func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient, error) {
 	if src == nil {
 		return nil, errors.New("nil source")
