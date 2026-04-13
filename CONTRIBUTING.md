@@ -62,13 +62,11 @@ Prerequisites:
 
 - Node.js 20+ with npm
 
-Install **all** dependencies (including dev tools like TypeScript and ESLint)
-and start the dev server:
+Install **all** dependencies (including dev tools like TypeScript and ESLint):
 
 ```bash
 cd webui
 npm ci
-npm run dev
 ```
 
 > **Why `npm ci` instead of `npm install`?** `npm ci` installs from the
@@ -76,9 +74,18 @@ npm run dev
 > Avoid running with `NODE_ENV=production`, which omits `devDependencies` and
 > breaks `npm run lint` and `npm run build` (they need `tsc` and `eslint`).
 
-The frontend reads `VITE_API_BASE` at build time (defaults to `/api/v1`).
-For local development against the Docker Compose stack no changes are needed;
-the webui container proxies API requests to the backend automatically.
+Start the Vite dev server:
+
+```bash
+npm run dev
+```
+
+The dev server proxies `/api` requests to `http://localhost:8080` automatically
+(configurable via `VITE_API_URL`). Make sure the Go API is running locally
+before starting the frontend. See `webui/.env.example` for available env vars.
+
+For development against the Docker Compose stack, no extra config is needed —
+the webui container proxies API requests via nginx.
 
 For standalone dev against a local Go API:
 
