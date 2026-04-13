@@ -14,9 +14,8 @@ current launch boundaries documented in [README.md](README.md) and
 ## Repository Ground Rules
 
 - **`api-go/` is the primary backend.** New backend features belong there.
-- **`api/` is deprecated.** Do not add new behavior there unless an issue
-  explicitly asks for legacy Python API work. See [`api/README.md`](api/README.md)
-  for details.
+- **`api-python-archived/` is the archived Python backend** kept for historical
+  reference only. Do not modify it.
 - **Woodpecker self-hosted** is the only supported CI/CD path for this
   repository. Do not add GitHub Actions workflows. Pipeline triggers, required
   secrets, and published image targets are documented in

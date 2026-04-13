@@ -172,9 +172,9 @@ local API. Without it, the frontend defaults to a relative `/api/v1` path
 | --- | --- |
 | `api-go/` | **Primary backend** — Go HTTP API, S3-compatible routes, Swagger docs, MongoDB metadata |
 | `webui/` | React 19 + Vite frontend — signup, source management, bucket operations, file upload/download |
+| `api-python-archived/` | Archived Python backend (historical reference only — not maintained) |
 | `docs/` | Architecture notes, quickstart walkthrough, CI docs |
 | `.woodpecker/` | Self-hosted Woodpecker CI/CD pipelines |
-| `api/` | **Deprecated** Python backend — kept for reference only, not part of the active stack (see [`api/README.md`](api/README.md)) |
 
 ## Launch Caveats
 

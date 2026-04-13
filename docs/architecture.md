@@ -37,12 +37,11 @@ At a high level:
   - bucket creation, listing, and deletion
   - file upload, download, and deletion
 
-### `api/` (deprecated)
+### `api-python-archived/`
 
-- Deprecated Python backend — see [`api/README.md`](../api/README.md).
-- Kept in the repository for historical reference only.
+- Archived Python backend — kept for historical reference only.
 - Not part of the active CI/CD pipelines or Docker Compose stack.
-- Do not route new contributors there unless an issue explicitly targets it.
+- Do not modify or route new contributors there.
 
 ### `.woodpecker/`
 

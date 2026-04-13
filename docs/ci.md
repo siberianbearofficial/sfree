@@ -33,7 +33,6 @@ Pushes to `main` publish these images to GitHub Container Registry:
 ## Deployment Expectations
 
 - The repository pipelines stop at validation plus image publication.
-- There is no in-repo GitHub Actions deploy hook anymore.
 - Environment rollout is expected to happen from external infrastructure that
   consumes the `:main` images published by Woodpecker.
 - If deploy behavior, registry targets, or required secrets change, update
