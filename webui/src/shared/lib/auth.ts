@@ -27,6 +27,11 @@ export function getAuthHeader(): Record<string, string> {
   return { Authorization: `Basic ${auth}` };
 }
 
+export function getCredentialsOption(): RequestCredentials | undefined {
+  const type = localStorage.getItem("auth_type");
+  return type === "cookie" ? "include" : undefined;
+}
+
 export function isAuthenticated(): boolean {
   const type = localStorage.getItem("auth_type");
   if (type === "cookie") return true;

@@ -20,11 +20,16 @@ func Auth(repo *repository.UserRepository, jwtSecret string) gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 
 		// Resolve JWT: prefer Authorization header, fall back to auth_token cookie.
+		// Only fall back to cookie when no Authorization header is present at all;
+		// otherwise a Basic auth request with an existing OAuth cookie would
+		// silently authenticate via cookie instead of the provided credentials.
 		tokenStr := ""
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
-		} else if cookieToken, err := c.Cookie("auth_token"); err == nil && cookieToken != "" {
-			tokenStr = cookieToken
+		} else if authHeader == "" {
+			if cookieToken, err := c.Cookie("auth_token"); err == nil && cookieToken != "" {
+				tokenStr = cookieToken
+			}
 		}
 
 		if tokenStr != "" {
