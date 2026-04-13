@@ -55,7 +55,11 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 			router.POST("/api/v1/users", handlers.CreateUser(userRepo))
 		}
 		bucketRepo, _ = repository.NewBucketRepository(m.DB)
-		sourceRepo, _ = repository.NewSourceRepository(m.DB)
+		srcSecretKey := ""
+		if cfg != nil {
+			srcSecretKey = cfg.AccessSecretKey
+		}
+		sourceRepo, _ = repository.NewSourceRepository(m.DB, srcSecretKey)
 		fileRepo, _ = repository.NewFileRepository(m.DB)
 		shareLinkRepo, _ = repository.NewShareLinkRepository(m.DB)
 	}

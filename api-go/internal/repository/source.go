@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/example/sfree/api-go/internal/cryptoutil"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -27,10 +28,11 @@ type Source struct {
 }
 
 type SourceRepository struct {
-	coll *mongo.Collection
+	coll      *mongo.Collection
+	secretKey string
 }
 
-func NewSourceRepository(db *mongo.Database) (*SourceRepository, error) {
+func NewSourceRepository(db *mongo.Database, secretKey ...string) (*SourceRepository, error) {
 	coll := db.Collection("sources")
 	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
 		Keys: bson.D{{Key: "user_id", Value: 1}},
@@ -38,11 +40,40 @@ func NewSourceRepository(db *mongo.Database) (*SourceRepository, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &SourceRepository{coll: coll}, nil
+	key := ""
+	if len(secretKey) > 0 {
+		key = secretKey[0]
+	}
+	return &SourceRepository{coll: coll, secretKey: key}, nil
+}
+
+func (r *SourceRepository) encryptKey(plain string) (string, error) {
+	if r.secretKey == "" {
+		return plain, nil
+	}
+	return cryptoutil.Encrypt(plain, r.secretKey)
+}
+
+func (r *SourceRepository) decryptKey(cipher string) string {
+	if r.secretKey == "" || cipher == "" {
+		return cipher
+	}
+	plain, err := cryptoutil.Decrypt(cipher, r.secretKey)
+	if err != nil {
+		// Not encrypted (pre-migration data) — return as-is.
+		return cipher
+	}
+	return plain
 }
 
 func (r *SourceRepository) Create(ctx context.Context, s Source) (*Source, error) {
 	s.CreatedAt = s.CreatedAt.UTC()
+	enc, err := r.encryptKey(s.Key)
+	if err != nil {
+		return nil, err
+	}
+	plainKey := s.Key
+	s.Key = enc
 	res, err := r.coll.InsertOne(ctx, s)
 	if err != nil {
 		return nil, err
@@ -50,6 +81,7 @@ func (r *SourceRepository) Create(ctx context.Context, s Source) (*Source, error
 	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
 		s.ID = oid
 	}
+	s.Key = plainKey
 	return &s, nil
 }
 
@@ -59,6 +91,7 @@ func (r *SourceRepository) GetByID(ctx context.Context, id primitive.ObjectID) (
 	if err != nil {
 		return nil, err
 	}
+	s.Key = r.decryptKey(s.Key)
 	return &s, nil
 }
 
@@ -77,6 +110,7 @@ func (r *SourceRepository) ListByIDs(ctx context.Context, ids []primitive.Object
 		if err := cursor.Decode(&src); err != nil {
 			return nil, err
 		}
+		src.Key = r.decryptKey(src.Key)
 		byID[src.ID] = src
 	}
 	if err := cursor.Err(); err != nil {
@@ -105,6 +139,7 @@ func (r *SourceRepository) ListByUser(ctx context.Context, userID primitive.Obje
 		if err := cursor.Decode(&s); err != nil {
 			return nil, err
 		}
+		s.Key = r.decryptKey(s.Key)
 		sources = append(sources, s)
 	}
 	if err := cursor.Err(); err != nil {

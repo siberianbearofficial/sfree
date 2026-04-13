@@ -307,7 +307,7 @@ func UpdateBucketDistribution(repo *repository.BucketRepository) gin.HandlerFunc
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("update distribution: %v", err)
+			slog.ErrorContext(c.Request.Context(), "update distribution", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
