@@ -19,9 +19,15 @@ func Auth(repo *repository.UserRepository, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 
-		// Try Bearer JWT first.
+		// Resolve JWT: prefer Authorization header, fall back to auth_token cookie.
+		tokenStr := ""
 		if strings.HasPrefix(authHeader, "Bearer ") {
-			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+		} else if cookieToken, err := c.Cookie("auth_token"); err == nil && cookieToken != "" {
+			tokenStr = cookieToken
+		}
+
+		if tokenStr != "" {
 			token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
 				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, jwt.ErrSignatureInvalid

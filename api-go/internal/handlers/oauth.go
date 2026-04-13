@@ -118,14 +118,17 @@ func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin
 			return
 		}
 
-		// Redirect to frontend OAuth callback page with token.
+		// Set JWT as HttpOnly cookie instead of URL query parameter to
+		// prevent token leakage via logs, browser history, and Referer headers.
 		frontendURL := cfg.FrontendURL
 		if frontendURL == "" {
 			frontendURL = ""
 		}
+		c.SetSameSite(http.SameSiteLaxMode)
+		c.SetCookie("auth_token", jwtToken, 7*24*3600, "/", "", true, true)
+
 		redirectURL, _ := url.Parse(frontendURL + "/auth/callback")
 		q := redirectURL.Query()
-		q.Set("token", jwtToken)
 		q.Set("username", user.Username)
 		redirectURL.RawQuery = q.Encode()
 
