@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -55,14 +55,15 @@ type fileResponse struct {
 // @Router /api/v1/buckets [post]
 func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, secretKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		var req createBucketRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Printf("create bucket: invalid request: %v", err)
+			slog.WarnContext(ctx, "create bucket: invalid request", slog.String("error", err.Error()))
 			c.Status(http.StatusBadRequest)
 			return
 		}
 		if repo == nil || sourceRepo == nil {
-			log.Print("create bucket: repository is nil")
+			slog.ErrorContext(ctx, "create bucket: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -77,20 +78,20 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			return
 		}
 		if secretKey == "" {
-			log.Print("create bucket: secret key is empty")
+			slog.ErrorContext(ctx, "create bucket: secret key is empty")
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 		accessKey := req.Key
 		accessSecret, err := cryptoutil.GenerateSecret()
 		if err != nil {
-			log.Printf("create bucket: generate secret: %v", err)
+			slog.ErrorContext(ctx, "create bucket: generate secret", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 		encrypted, err := cryptoutil.Encrypt(accessSecret, secretKey)
 		if err != nil {
-			log.Printf("create bucket: encrypt secret: %v", err)
+			slog.ErrorContext(ctx, "create bucket: encrypt secret", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -107,7 +108,7 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 					c.Status(http.StatusBadRequest)
 					return
 				}
-				log.Printf("create bucket: get source: %v", err)
+				slog.ErrorContext(ctx, "create bucket: get source", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
@@ -128,11 +129,11 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 		created, err := repo.Create(c.Request.Context(), bucket)
 		if err != nil {
 			if mongo.IsDuplicateKeyError(err) {
-				log.Printf("create bucket: key %s already exists: %v", req.Key, err)
+				slog.WarnContext(ctx, "create bucket: key already exists", slog.String("key", req.Key))
 				c.Status(http.StatusConflict)
 				return
 			}
-			log.Printf("create bucket: failed to create bucket: %v", err)
+			slog.ErrorContext(ctx, "create bucket: failed to create bucket", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -156,8 +157,9 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 // @Router /api/v1/buckets [get]
 func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if repo == nil {
-			log.Print("list buckets: repository is nil")
+			slog.ErrorContext(ctx, "list buckets: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -173,7 +175,7 @@ func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 		}
 		buckets, err := repo.ListByUser(c.Request.Context(), userID)
 		if err != nil {
-			log.Printf("list buckets: failed to list buckets: %v", err)
+			slog.ErrorContext(ctx, "list buckets: failed to list buckets", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -203,8 +205,9 @@ func ListBuckets(repo *repository.BucketRepository) gin.HandlerFunc {
 // @Router /api/v1/buckets/{id} [delete]
 func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if repo == nil {
-			log.Print("delete bucket: repository is nil")
+			slog.ErrorContext(ctx, "delete bucket: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -229,7 +232,7 @@ func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("delete bucket: failed to delete: %v", err)
+			slog.ErrorContext(ctx, "delete bucket: failed to delete", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -259,8 +262,9 @@ type uploadFileResponse struct {
 // @Router /api/v1/buckets/{id}/upload [post]
 func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
-			log.Print("upload file: repository is nil")
+			slog.ErrorContext(ctx, "upload file: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -286,7 +290,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("upload file: get bucket: %v", err)
+			slog.ErrorContext(ctx, "upload file: get bucket", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -296,7 +300,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		sources, err := sourceRepo.ListByIDs(c.Request.Context(), bucketDoc.SourceIDs)
 		if err != nil {
-			log.Printf("upload file: list sources: %v", err)
+			slog.ErrorContext(ctx, "upload file: list sources", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -306,22 +310,21 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		fh, err := c.FormFile("file")
 		if err != nil {
-			log.Printf("upload file: get file: %v", err)
+			slog.WarnContext(ctx, "upload file: get file", slog.String("error", err.Error()))
 			c.Status(http.StatusBadRequest)
 			return
 		}
 		f, err := fh.Open()
 		if err != nil {
-			log.Printf("upload file: open file: %v", err)
+			slog.WarnContext(ctx, "upload file: open file", slog.String("error", err.Error()))
 			c.Status(http.StatusBadRequest)
 			return
 		}
 		defer func() { _ = f.Close() }()
 
-		ctx := c.Request.Context()
 		chunks, err := manager.UploadFileChunks(ctx, f, sources, chunkSize)
 		if err != nil {
-			log.Printf("upload file: upload chunks: %v", err)
+			slog.ErrorContext(ctx, "upload file: upload chunks", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -335,7 +338,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		created, err := fileRepo.Create(ctx, fileDoc)
 		if err != nil {
 			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-			log.Printf("upload file: save file: %v", err)
+			slog.ErrorContext(ctx, "upload file: save file", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -361,8 +364,9 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Router /api/v1/buckets/{id}/files [get]
 func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || fileRepo == nil {
-			log.Print("list files: repository is nil")
+			slog.ErrorContext(ctx, "list files: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -388,7 +392,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("list files: get bucket: %v", err)
+			slog.ErrorContext(ctx, "list files: get bucket", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -398,7 +402,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 		}
 		files, err := fileRepo.ListByBucket(c.Request.Context(), bucketID)
 		if err != nil {
-			log.Printf("list files: list files: %v", err)
+			slog.ErrorContext(ctx, "list files: list files", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -434,8 +438,9 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 // @Router /api/v1/buckets/{id}/files/{file_id}/download [get]
 func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
-			log.Print("download file: repository is nil")
+			slog.ErrorContext(ctx, "download file: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -467,7 +472,7 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("download file: get bucket: %v", err)
+			slog.ErrorContext(ctx, "download file: get bucket", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -481,7 +486,7 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("download file: get file: %v", err)
+			slog.ErrorContext(ctx, "download file: get file", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -498,7 +503,7 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 		c.Header("Content-Length", strconv.FormatInt(total, 10))
 		c.Status(http.StatusOK)
 		if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-			log.Printf("download file: %v", err)
+			slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
 		}
 	}
 }
@@ -517,8 +522,9 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 // @Router /api/v1/buckets/{id}/files/{file_id} [delete]
 func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
-			log.Print("delete file: repository is nil")
+			slog.ErrorContext(ctx, "delete file: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -550,7 +556,7 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("delete file: get bucket: %v", err)
+			slog.ErrorContext(ctx, "delete file: get bucket", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -564,7 +570,7 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("delete file: get file: %v", err)
+			slog.ErrorContext(ctx, "delete file: get file", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -572,14 +578,13 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusNotFound)
 			return
 		}
-		ctx := c.Request.Context()
 		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
-			log.Printf("delete file: delete chunk: %v", err)
+			slog.ErrorContext(ctx, "delete file: delete chunk", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 		if err := fileRepo.Delete(ctx, fileID); err != nil {
-			log.Printf("delete file: delete metadata: %v", err)
+			slog.ErrorContext(ctx, "delete file: delete metadata", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}

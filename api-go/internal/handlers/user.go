@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -75,26 +75,27 @@ type createUserResponse struct {
 // @Router /api/v1/users [post]
 func CreateUser(repo *repository.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		var req createUserRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Printf("create user: invalid request: %v", err)
+			slog.WarnContext(ctx, "create user: invalid request", slog.String("error", err.Error()))
 			c.Status(http.StatusBadRequest)
 			return
 		}
 		if repo == nil {
-			log.Print("create user: repository is nil")
+			slog.ErrorContext(ctx, "create user: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
 		password, err := generatePassword()
 		if err != nil {
-			log.Printf("create user: generate password: %v", err)
+			slog.ErrorContext(ctx, "create user: generate password", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
-			log.Printf("create user: failed to hash password: %v", err)
+			slog.ErrorContext(ctx, "create user: failed to hash password", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -106,11 +107,11 @@ func CreateUser(repo *repository.UserRepository) gin.HandlerFunc {
 		created, err := repo.Create(c.Request.Context(), user)
 		if err != nil {
 			if mongo.IsDuplicateKeyError(err) {
-				log.Printf("create user: username %s already exists: %v", req.Username, err)
+				slog.WarnContext(ctx, "create user: username already exists", slog.String("username", req.Username))
 				c.Status(http.StatusConflict)
 				return
 			}
-			log.Printf("create user: failed to create user: %v", err)
+			slog.ErrorContext(ctx, "create user: failed to create user", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}

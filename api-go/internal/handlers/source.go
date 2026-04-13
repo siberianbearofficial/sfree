@@ -3,7 +3,7 @@ package handlers
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -76,7 +76,7 @@ func CreateGDriveSource(repo *repository.SourceRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createGDriveSourceRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Printf("create gdrive source: invalid request: %v", err)
+			slog.WarnContext(c.Request.Context(), "create gdrive source: invalid request", slog.String("error", err.Error()))
 			c.Status(http.StatusBadRequest)
 			return
 		}
@@ -100,13 +100,13 @@ func CreateTelegramSource(repo *repository.SourceRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createTelegramSourceRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Printf("create telegram source: invalid request: %v", err)
+			slog.WarnContext(c.Request.Context(), "create telegram source: invalid request", slog.String("error", err.Error()))
 			c.Status(http.StatusBadRequest)
 			return
 		}
 		key, err := telegram.EncodeConfig(telegram.Config{Token: req.Token, ChatID: req.ChatID})
 		if err != nil {
-			log.Printf("create telegram source: encode key: %v", err)
+			slog.ErrorContext(c.Request.Context(), "create telegram source: encode key", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -130,7 +130,7 @@ func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createS3SourceRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Printf("create s3 source: invalid request: %v", err)
+			slog.WarnContext(c.Request.Context(), "create s3 source: invalid request", slog.String("error", err.Error()))
 			c.Status(http.StatusBadRequest)
 			return
 		}
@@ -143,7 +143,7 @@ func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
 			PathStyle:    req.PathStyle,
 		})
 		if err != nil {
-			log.Printf("create s3 source: encode key: %v", err)
+			slog.ErrorContext(c.Request.Context(), "create s3 source: encode key", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -152,6 +152,7 @@ func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
 }
 
 func saveSource(c *gin.Context, repo *repository.SourceRepository, sourceType repository.SourceType, name, key string) {
+	ctx := c.Request.Context()
 	if repo == nil {
 		c.Status(http.StatusServiceUnavailable)
 		return
@@ -175,7 +176,7 @@ func saveSource(c *gin.Context, repo *repository.SourceRepository, sourceType re
 	}
 	created, err := repo.Create(c.Request.Context(), source)
 	if err != nil {
-		log.Printf("create source: failed to create: %v", err)
+		slog.ErrorContext(ctx, "create source: failed to create", slog.String("error", err.Error()))
 		c.Status(http.StatusInternalServerError)
 		return
 	}
@@ -198,8 +199,9 @@ func saveSource(c *gin.Context, repo *repository.SourceRepository, sourceType re
 // @Router /api/v1/sources [get]
 func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if repo == nil {
-			log.Print("list sources: repository is nil")
+			slog.ErrorContext(ctx, "list sources: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -215,7 +217,7 @@ func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
 		}
 		sources, err := repo.ListByUser(c.Request.Context(), userID)
 		if err != nil {
-			log.Printf("list sources: failed to list: %v", err)
+			slog.ErrorContext(ctx, "list sources: failed to list", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -246,8 +248,9 @@ func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
 // @Router /api/v1/sources/{id} [delete]
 func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.BucketRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if repo == nil || bucketRepo == nil {
-			log.Print("delete source: repository is nil")
+			slog.ErrorContext(ctx, "delete source: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -269,7 +272,7 @@ func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.Buck
 		}
 		inUse, err := bucketRepo.HasSourceReference(c.Request.Context(), userID, id)
 		if err != nil {
-			log.Printf("delete source: check buckets: %v", err)
+			slog.ErrorContext(ctx, "delete source: check buckets", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -282,7 +285,7 @@ func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.Buck
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("delete source: failed to delete: %v", err)
+			slog.ErrorContext(ctx, "delete source: failed to delete", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -303,8 +306,9 @@ func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.Buck
 // @Router /api/v1/sources/{id}/info [get]
 func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if repo == nil {
-			log.Print("get source info: repository is nil")
+			slog.ErrorContext(ctx, "get source info: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -330,7 +334,7 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("get source info: get source: %v", err)
+			slog.ErrorContext(ctx, "get source info: get source", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -342,19 +346,19 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 		case repository.SourceTypeGDrive:
 			cli, err := gdrive.NewClient(c.Request.Context(), []byte(src.Key))
 			if err != nil {
-				log.Printf("get source info: create client: %v", err)
+				slog.ErrorContext(ctx, "get source info: create client", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 			files, err := cli.ListFiles(c.Request.Context())
 			if err != nil {
-				log.Printf("get source info: list files: %v", err)
+				slog.ErrorContext(ctx, "get source info: list files", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 			total, used, free, err := cli.StorageInfo(c.Request.Context())
 			if err != nil {
-				log.Printf("get source info: storage info: %v", err)
+				slog.ErrorContext(ctx, "get source info: storage info", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
@@ -384,19 +388,19 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 		case repository.SourceTypeS3:
 			cfg, err := s3compat.ParseConfig(src.Key)
 			if err != nil {
-				log.Printf("get source info: parse s3 source config: %v", err)
+				slog.ErrorContext(ctx, "get source info: parse s3 source config", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 			cli, err := s3compat.NewClient(c.Request.Context(), cfg)
 			if err != nil {
-				log.Printf("get source info: create s3 client: %v", err)
+				slog.ErrorContext(ctx, "get source info: create s3 client", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 			files, used, err := cli.ListObjects(c.Request.Context())
 			if err != nil {
-				log.Printf("get source info: list s3 objects: %v", err)
+				slog.ErrorContext(ctx, "get source info: list s3 objects", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
@@ -435,7 +439,7 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if sourceRepo == nil {
-			log.Print("download source file: repository is nil")
+			slog.ErrorContext(c.Request.Context(), "download source file: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -466,7 +470,7 @@ func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("download source file: get source: %v", err)
+			slog.ErrorContext(c.Request.Context(), "download source file: get source", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -482,32 +486,32 @@ func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc
 		case repository.SourceTypeGDrive:
 			cli, err := gdrive.NewClient(c.Request.Context(), []byte(src.Key))
 			if err != nil {
-				log.Printf("download source file: create gdrive client: %v", err)
+				slog.ErrorContext(c.Request.Context(), "download source file: create gdrive client", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 			body, err = cli.Download(c.Request.Context(), fileID)
 			if err != nil {
-				log.Printf("download source file: gdrive download: %v", err)
+				slog.ErrorContext(c.Request.Context(), "download source file: gdrive download", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 		case repository.SourceTypeS3:
 			cfg, err := s3compat.ParseConfig(src.Key)
 			if err != nil {
-				log.Printf("download source file: parse s3 config: %v", err)
+				slog.ErrorContext(c.Request.Context(), "download source file: parse s3 config", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 			cli, err := s3compat.NewClient(c.Request.Context(), cfg)
 			if err != nil {
-				log.Printf("download source file: create s3 client: %v", err)
+				slog.ErrorContext(c.Request.Context(), "download source file: create s3 client", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
 			body, err = cli.Download(c.Request.Context(), fileID)
 			if err != nil {
-				log.Printf("download source file: s3 download: %v", err)
+				slog.ErrorContext(c.Request.Context(), "download source file: s3 download", slog.String("error", err.Error()))
 				c.Status(http.StatusInternalServerError)
 				return
 			}
@@ -521,7 +525,7 @@ func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc
 		c.Header("Content-Type", "application/octet-stream")
 		c.Status(http.StatusOK)
 		if _, err := io.Copy(c.Writer, body); err != nil {
-			log.Printf("download source file: stream: %v", err)
+			slog.ErrorContext(c.Request.Context(), "download source file: stream", slog.String("error", err.Error()))
 		}
 	}
 }

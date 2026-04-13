@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/example/sfree/api-go/internal/cryptoutil"
@@ -16,20 +16,21 @@ func AWS4Auth(repo *repository.BucketRepository, secretKey string) gin.HandlerFu
 	validator := &s3sigv4.Validator{}
 
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if repo == nil {
-			log.Print("aws4 auth: bucket repository is nil")
+			slog.ErrorContext(ctx, "aws4 auth: bucket repository is nil")
 			c.AbortWithStatus(http.StatusServiceUnavailable)
 			return
 		}
 		if secretKey == "" {
-			log.Print("aws4 auth: secret key is empty")
+			slog.ErrorContext(ctx, "aws4 auth: secret key is empty")
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
 		accessKey, err := s3sigv4.AccessKeyFromRequest(c.Request)
 		if err != nil || accessKey == "" {
-			log.Printf("aws4 auth: failed to extract access key: %v", err)
+			slog.WarnContext(ctx, "aws4 auth: failed to extract access key", slog.String("error", errString(err)))
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
@@ -37,29 +38,36 @@ func AWS4Auth(repo *repository.BucketRepository, secretKey string) gin.HandlerFu
 		encSecret, err := repo.GetSecretByAccessKey(c.Request.Context(), accessKey)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
-				log.Print("aws4 auth: get secret by access key lead to ErrNoDocuments")
+				slog.WarnContext(ctx, "aws4 auth: unknown access key")
 				c.AbortWithStatus(http.StatusUnauthorized)
 				return
 			}
-			log.Printf("aws4 auth: failed to get secret: %v", err)
+			slog.ErrorContext(ctx, "aws4 auth: failed to get secret", slog.String("error", err.Error()))
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 		secret, err := cryptoutil.Decrypt(encSecret, secretKey)
 		if err != nil {
-			log.Printf("aws4 auth: decrypt secret: %v", err)
+			slog.ErrorContext(ctx, "aws4 auth: decrypt secret", slog.String("error", err.Error()))
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 
 		if _, err = validator.Validate(c.Request.Context(), c.Request, accessKey, secret); err != nil {
-			log.Printf("aws4 auth: signature validation failed: %v", err)
+			slog.WarnContext(ctx, "aws4 auth: signature validation failed", slog.String("error", err.Error()))
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 
-		log.Print("aws4 auth success")
+		slog.DebugContext(ctx, "aws4 auth success")
 		c.Set("accessKey", accessKey)
 		c.Next()
 	}
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

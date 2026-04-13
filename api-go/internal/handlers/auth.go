@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -65,7 +65,7 @@ func Auth(repo *repository.UserRepository, jwtSecret string) gin.HandlerFunc {
 			return
 		}
 		if repo == nil {
-			log.Print("auth: user repository is nil")
+			slog.ErrorContext(c.Request.Context(), "basic auth: user repository is nil")
 			c.AbortWithStatus(http.StatusServiceUnavailable)
 			return
 		}
@@ -75,7 +75,7 @@ func Auth(repo *repository.UserRepository, jwtSecret string) gin.HandlerFunc {
 				c.AbortWithStatus(http.StatusUnauthorized)
 				return
 			}
-			log.Printf("auth: failed to get user: %v", err)
+			slog.ErrorContext(c.Request.Context(), "basic auth: failed to get user", slog.String("error", err.Error()))
 			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
