@@ -14,9 +14,10 @@ export type FileInfo = {
   size: number;
 };
 
+import { getAuthHeader } from "../lib/auth";
+
 function authHeader(): Record<string, string> {
-  const auth = localStorage.getItem("auth");
-  return auth ? { Authorization: `Basic ${auth}` } : {};
+  return getAuthHeader();
 }
 
 export async function listBuckets(): Promise<Bucket[]> {

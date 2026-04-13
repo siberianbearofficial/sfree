@@ -14,9 +14,10 @@ export type SourceInfo = {
   storage_free: number;
 };
 
+import { getAuthHeader } from "../lib/auth";
+
 function authHeader(): Record<string, string> {
-  const auth = localStorage.getItem("auth");
-  return auth ? {Authorization: `Basic ${auth}`} : {};
+  return getAuthHeader();
 }
 
 export async function listSources(): Promise<Source[]> {

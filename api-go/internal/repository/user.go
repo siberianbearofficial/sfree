@@ -10,11 +10,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// User represents basic auth user
+// User represents an authenticated user (basic auth or OAuth).
 type User struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"`
 	Username     string             `bson:"username"`
-	PasswordHash string             `bson:"password_hash"`
+	PasswordHash string             `bson:"password_hash,omitempty"`
+	GitHubID     int64              `bson:"github_id,omitempty"`
+	AvatarURL    string             `bson:"avatar_url,omitempty"`
 	CreatedAt    time.Time          `bson:"created_at"`
 }
 
@@ -49,6 +51,24 @@ func (r *UserRepository) Create(ctx context.Context, user User) (*User, error) {
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*User, error) {
 	var u User
 	err := r.coll.FindOne(ctx, bson.M{"username": username}).Decode(&u)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *UserRepository) GetByGitHubID(ctx context.Context, githubID int64) (*User, error) {
+	var u User
+	err := r.coll.FindOne(ctx, bson.M{"github_id": githubID}).Decode(&u)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *UserRepository) GetByID(ctx context.Context, id primitive.ObjectID) (*User, error) {
+	var u User
+	err := r.coll.FindOne(ctx, bson.M{"_id": id}).Decode(&u)
 	if err != nil {
 		return nil, err
 	}

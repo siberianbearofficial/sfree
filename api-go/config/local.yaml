@@ -7,3 +7,9 @@ mongo:
 upload:
   chunk_size: 5242880
 access_secret_key: examplesecret
+jwt_secret: ""
+github_oauth:
+  client_id: ""
+  client_secret: ""
+  redirect_url: "http://localhost:8080/api/v1/auth/github/callback"
+frontend_url: "http://localhost:3000"
