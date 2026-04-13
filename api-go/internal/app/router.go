@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
@@ -23,6 +24,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 	}))
 	router.Use(gin.Recovery())
 	router.Use(observability.Middleware())
+	router.Use(otelgin.Middleware("sfree-api"))
 	router.GET("/readyz", handlers.Readyz)
 	router.GET("/healthz", handlers.Healthz)
 	router.GET("/publication/ready", handlers.PublicationReady)

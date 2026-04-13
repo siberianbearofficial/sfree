@@ -4,16 +4,22 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/example/sfree/api-go/internal/s3compat"
 	"github.com/example/sfree/api-go/internal/telegram"
+	"github.com/example/sfree/api-go/internal/telemetry"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var ErrUnsupportedSourceType = errors.New("unsupported source type")
+
+var tracer = telemetry.Tracer("sfree/manager")
 
 type sourceClient interface {
 	Upload(ctx context.Context, name string, r io.Reader) (string, error)
@@ -113,49 +119,86 @@ func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient,
 }
 
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {
+	ctx, span := tracer.Start(ctx, "StreamFile",
+		attribute.String("file.id", f.ID.Hex()),
+		attribute.Int("file.chunks", len(f.Chunks)),
+	)
+	defer span.End()
+
 	clients := make(map[primitive.ObjectID]sourceClient)
-	for _, ch := range f.Chunks {
+	for i, ch := range f.Chunks {
 		cli, ok := clients[ch.SourceID]
 		if !ok {
 			src, err := srcRepo.GetByID(ctx, ch.SourceID)
 			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "source lookup failed")
 				return err
 			}
 			cli, err = NewSourceClient(ctx, src)
 			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "client creation failed")
 				return err
 			}
 			clients[ch.SourceID] = cli
 		}
+
+		_, chunkSpan := tracer.Start(ctx, "DownloadChunk",
+			attribute.Int("chunk.order", i),
+			attribute.String("chunk.source_id", ch.SourceID.Hex()),
+		)
 		rc, err := cli.Download(ctx, ch.Name)
 		if err != nil {
+			chunkSpan.RecordError(err)
+			chunkSpan.SetStatus(codes.Error, "download failed")
+			chunkSpan.End()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "chunk download failed")
 			return err
 		}
-		if _, err := io.Copy(w, rc); err != nil {
-			_ = rc.Close()
-			return err
-		}
+		_, err = io.Copy(w, rc)
 		_ = rc.Close()
+		if err != nil {
+			chunkSpan.RecordError(err)
+			chunkSpan.SetStatus(codes.Error, "copy failed")
+			chunkSpan.End()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "chunk copy failed")
+			return err
+		}
+		chunkSpan.End()
 	}
 	return nil
 }
 
 func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository, chunks []repository.FileChunk) error {
+	ctx, span := tracer.Start(ctx, "DeleteFileChunks",
+		attribute.Int("chunks.count", len(chunks)),
+	)
+	defer span.End()
+
 	clients := make(map[primitive.ObjectID]sourceClient)
 	for _, ch := range chunks {
 		cli, ok := clients[ch.SourceID]
 		if !ok {
 			src, err := srcRepo.GetByID(ctx, ch.SourceID)
 			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "source lookup failed")
 				return err
 			}
 			cli, err = NewSourceClient(ctx, src)
 			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "client creation failed")
 				return err
 			}
 			clients[ch.SourceID] = cli
 		}
 		if err := cli.Delete(ctx, ch.Name); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "delete failed")
 			return err
 		}
 	}
@@ -167,6 +210,12 @@ func UploadFileChunks(ctx context.Context, r io.Reader, sources []repository.Sou
 }
 
 func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, factory SourceClientFactory, selector SourceSelector) ([]repository.FileChunk, error) {
+	ctx, span := tracer.Start(ctx, "UploadFileChunks",
+		attribute.Int("sources.count", len(sources)),
+		attribute.Int("chunk.size", chunkSize),
+	)
+	defer span.End()
+
 	if len(sources) == 0 {
 		return nil, errors.New("no sources")
 	}
@@ -186,6 +235,8 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 	for {
 		n, err := r.Read(buf)
 		if err != nil && err != io.EOF {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "read failed")
 			return nil, err
 		}
 		if n == 0 {
@@ -193,26 +244,44 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		}
 		_, src, err := selector.NextSource(sources)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "source selection failed")
 			return nil, err
 		}
 		cli, ok := clients[src.ID]
 		if !ok {
 			cli, err = factory(ctx, &src)
 			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "client creation failed")
 				return nil, err
 			}
 			clients[src.ID] = cli
 		}
+
+		_, chunkSpan := tracer.Start(ctx, "UploadChunk",
+			attribute.Int("chunk.order", idx),
+			attribute.String("chunk.source_type", src.Type),
+			attribute.Int("chunk.bytes", n),
+		)
 		driveName := primitive.NewObjectID().Hex()
 		chunkName, err := cli.Upload(ctx, driveName, bytes.NewReader(buf[:n]))
 		if err != nil {
+			chunkSpan.RecordError(err)
+			chunkSpan.SetStatus(codes.Error, "upload failed")
+			chunkSpan.End()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, fmt.Sprintf("chunk %d upload failed", idx))
 			return nil, err
 		}
+		chunkSpan.End()
+
 		chunks = append(chunks, repository.FileChunk{SourceID: src.ID, Name: chunkName, Order: idx, Size: int64(n)})
 		idx++
 		if err == io.EOF {
 			break
 		}
 	}
+	span.SetAttributes(attribute.Int("chunks.uploaded", len(chunks)))
 	return chunks, nil
 }
