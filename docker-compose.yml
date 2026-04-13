@@ -45,10 +45,21 @@ services:
       GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:-}"
       GITHUB_REDIRECT_URL: "http://localhost:8080/api/v1/auth/github/callback"
       FRONTEND_URL: "http://localhost:3000"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
     depends_on:
       - mongo
     ports:
       - "8080:8080"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.68
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    profiles:
+      - tracing
 
   webui:
     build:

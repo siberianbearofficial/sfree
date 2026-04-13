@@ -16,6 +16,7 @@ import (
 	"github.com/example/sfree/api-go/internal/db"
 	_ "github.com/example/sfree/api-go/internal/docs"
 	"github.com/example/sfree/api-go/internal/observability"
+	"github.com/example/sfree/api-go/internal/telemetry"
 )
 
 func main() {
@@ -27,6 +28,18 @@ func main() {
 		os.Exit(1)
 	}
 	ctx := context.Background()
+
+	shutdownTracer, err := telemetry.Init(ctx, "sfree-api")
+	if err != nil {
+		slog.Error("failed to init telemetry", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() {
+		if err := shutdownTracer(ctx); err != nil {
+			slog.Error("failed to shutdown tracer", slog.String("error", err.Error()))
+		}
+	}()
+
 	mongoConn, err := db.Connect(ctx, cfg.Mongo)
 	if err != nil {
 		slog.Error("failed to connect mongo", slog.String("error", err.Error()))
