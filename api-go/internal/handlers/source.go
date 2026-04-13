@@ -521,7 +521,7 @@ func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc
 		}
 		defer func() { _ = body.Close() }()
 
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(filename)))
 		c.Header("Content-Type", "application/octet-stream")
 		c.Status(http.StatusOK)
 		if _, err := io.Copy(c.Writer, body); err != nil {

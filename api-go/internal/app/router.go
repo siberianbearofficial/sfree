@@ -16,12 +16,19 @@ import (
 
 func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 	router := gin.New()
-	router.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
+
+	corsConfig := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 		AllowCredentials: true,
-	}))
+	}
+	if cfg != nil && cfg.FrontendURL != "" {
+		corsConfig.AllowOrigins = []string{cfg.FrontendURL}
+	} else {
+		corsConfig.AllowAllOrigins = true
+		corsConfig.AllowCredentials = false
+	}
+	router.Use(cors.New(corsConfig))
 	router.Use(gin.Recovery())
 	router.Use(observability.Middleware())
 	router.Use(otelgin.Middleware("sfree-api"))
