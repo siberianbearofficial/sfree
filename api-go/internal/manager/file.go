@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var ErrUnsupportedSourceType = errors.New("unsupported source type")
@@ -120,8 +121,10 @@ func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient,
 
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {
 	ctx, span := tracer.Start(ctx, "StreamFile",
-		attribute.String("file.id", f.ID.Hex()),
-		attribute.Int("file.chunks", len(f.Chunks)),
+		trace.WithAttributes(
+			attribute.String("file.id", f.ID.Hex()),
+			attribute.Int("file.chunks", len(f.Chunks)),
+		),
 	)
 	defer span.End()
 
@@ -145,8 +148,10 @@ func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *re
 		}
 
 		_, chunkSpan := tracer.Start(ctx, "DownloadChunk",
-			attribute.Int("chunk.order", i),
-			attribute.String("chunk.source_id", ch.SourceID.Hex()),
+			trace.WithAttributes(
+				attribute.Int("chunk.order", i),
+				attribute.String("chunk.source_id", ch.SourceID.Hex()),
+			),
 		)
 		rc, err := cli.Download(ctx, ch.Name)
 		if err != nil {
@@ -174,7 +179,9 @@ func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *re
 
 func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository, chunks []repository.FileChunk) error {
 	ctx, span := tracer.Start(ctx, "DeleteFileChunks",
-		attribute.Int("chunks.count", len(chunks)),
+		trace.WithAttributes(
+			attribute.Int("chunks.count", len(chunks)),
+		),
 	)
 	defer span.End()
 
@@ -211,8 +218,10 @@ func UploadFileChunks(ctx context.Context, r io.Reader, sources []repository.Sou
 
 func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, factory SourceClientFactory, selector SourceSelector) ([]repository.FileChunk, error) {
 	ctx, span := tracer.Start(ctx, "UploadFileChunks",
-		attribute.Int("sources.count", len(sources)),
-		attribute.Int("chunk.size", chunkSize),
+		trace.WithAttributes(
+			attribute.Int("sources.count", len(sources)),
+			attribute.Int("chunk.size", chunkSize),
+		),
 	)
 	defer span.End()
 
@@ -260,9 +269,11 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		}
 
 		_, chunkSpan := tracer.Start(ctx, "UploadChunk",
-			attribute.Int("chunk.order", idx),
-			attribute.String("chunk.source_type", src.Type),
-			attribute.Int("chunk.bytes", n),
+			trace.WithAttributes(
+				attribute.Int("chunk.order", idx),
+				attribute.String("chunk.source_type", string(src.Type)),
+				attribute.Int("chunk.bytes", n),
+			),
 		)
 		driveName := primitive.NewObjectID().Hex()
 		chunkName, err := cli.Upload(ctx, driveName, bytes.NewReader(buf[:n]))
