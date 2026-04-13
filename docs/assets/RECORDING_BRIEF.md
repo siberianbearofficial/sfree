@@ -65,6 +65,22 @@ logged in to avoid showing credentials on screen.
   and after each action for smooth playback.
 - Use a tool like `gifsicle` or `ffmpeg` to optimize the final GIF size.
 
+## Automated recording
+
+An automated Puppeteer script can record the demo with a mock API (no Docker
+required). It drives a real browser through the 5-scene sequence above and
+encodes the screenshots into a GIF.
+
+```bash
+cd scripts/record-demo
+npm install            # installs Puppeteer + Chrome + GIF encoder
+npm run record         # outputs docs/assets/demo.gif
+```
+
+Requirements: Node.js 20+ and a machine that can run headless Chrome (not a
+minimal container). The script starts its own mock API and Vite dev server
+automatically.
+
 ## Embed location
 
 README.md already references this file:
