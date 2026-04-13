@@ -13,12 +13,14 @@ current launch boundaries documented in [README.md](README.md) and
 
 ## Repository Ground Rules
 
-- `api-go/` is the primary backend. New backend features belong there.
-- `api/` is deprecated. Do not add new behavior there unless an issue explicitly
-  asks for legacy Python API work.
-- Woodpecker self-hosted is the only supported CI/CD path for this repository.
-  Do not add GitHub Actions workflows. Pipeline triggers, required secrets, and
-  published image targets are documented in [docs/ci.md](docs/ci.md).
+- **`api-go/` is the primary backend.** New backend features belong there.
+- **`api/` is deprecated.** Do not add new behavior there unless an issue
+  explicitly asks for legacy Python API work. See [`api/README.md`](api/README.md)
+  for details.
+- **Woodpecker self-hosted** is the only supported CI/CD path for this
+  repository. Do not add GitHub Actions workflows. Pipeline triggers, required
+  secrets, and published image targets are documented in
+  [docs/ci.md](docs/ci.md).
 - Preserve the current public caveats:
   - backend-supported sources are Google Drive, Telegram, and S3-compatible
     storage
@@ -29,13 +31,14 @@ current launch boundaries documented in [README.md](README.md) and
 
 ## Local Setup
 
-### Backend
+### Backend (Go)
 
 Prerequisites:
 
 - Go 1.24+
 - Docker, or another reachable MongoDB instance
-- `golangci-lint` for the standard lint pass
+- [`golangci-lint`](https://golangci-lint.run/welcome/install/) for the
+  standard lint pass
 
 Start local MongoDB:
 
@@ -53,29 +56,41 @@ ENV=local go run ./cmd/server
 
 Swagger is served from `http://localhost:8080/swagger/index.html`.
 
-### Frontend
+### Frontend (React / Vite)
 
 Prerequisites:
 
-- A recent Node.js release with npm
+- Node.js 20+ with npm
 
-Install dependencies and start Vite:
+Install **all** dependencies (including dev tools like TypeScript and ESLint)
+and start the dev server:
 
 ```bash
 cd webui
-npm install
+npm ci
 npm run dev
 ```
+
+> **Why `npm ci` instead of `npm install`?** `npm ci` installs from the
+> lockfile for deterministic builds and includes dev dependencies by default.
+> Avoid running with `NODE_ENV=production`, which omits `devDependencies` and
+> breaks `npm run lint` and `npm run build` (they need `tsc` and `eslint`).
 
 The frontend reads `VITE_API_BASE` at build time (defaults to `/api/v1`).
 For local development against the Docker Compose stack no changes are needed;
 the webui container proxies API requests to the backend automatically.
 
+For standalone dev against a local Go API:
+
+```bash
+VITE_API_BASE=http://localhost:8080/api/v1 npm run dev
+```
+
 ## Validation
 
 Run the checks that match the area you changed before opening a PR.
 
-Backend:
+### Backend
 
 ```bash
 cd api-go
@@ -83,15 +98,19 @@ golangci-lint run
 go test ./...
 ```
 
-Frontend:
+### Frontend
 
 ```bash
 cd webui
-npm run lint
-npm run build
+npm ci           # ensure deps are installed from lockfile
+npm run lint     # ESLint
+npm run build    # TypeScript type-check + Vite production build
 ```
 
-Optional E2E coverage:
+Both `lint` and `build` must pass — this matches what Woodpecker CI runs on
+pull requests (see [docs/ci.md](docs/ci.md)).
+
+### Optional: E2E Tests
 
 ```bash
 cd api-go
