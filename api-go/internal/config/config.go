@@ -34,9 +34,12 @@ type RateLimitConfig struct {
 }
 
 type SourceClientConfig struct {
-	TimeoutSeconds   int `yaml:"timeout_seconds"`   // per-request timeout (default 30)
-	FailureThreshold int `yaml:"failure_threshold"`  // consecutive failures before circuit opens (default 5)
-	RecoverySeconds  int `yaml:"recovery_seconds"`   // seconds before half-open probe (default 30)
+	TimeoutSeconds   int `yaml:"timeout_seconds"`    // per-request timeout (default 30)
+	FailureThreshold int `yaml:"failure_threshold"`   // consecutive failures before circuit opens (default 5)
+	RecoverySeconds  int `yaml:"recovery_seconds"`    // seconds before half-open probe (default 30)
+	MaxRetries       int `yaml:"max_retries"`          // retry attempts after first call (default 3)
+	RetryBaseDelayMs int `yaml:"retry_base_delay_ms"`  // initial backoff in ms (default 100)
+	RetryMaxDelayMs  int `yaml:"retry_max_delay_ms"`   // max backoff cap in ms (default 5000)
 }
 
 type Config struct {
@@ -134,6 +137,21 @@ func overrideEnv(cfg *Config) {
 	if v := os.Getenv("SOURCE_RECOVERY_SECONDS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.SourceClient.RecoverySeconds = n
+		}
+	}
+	if v := os.Getenv("SOURCE_MAX_RETRIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.SourceClient.MaxRetries = n
+		}
+	}
+	if v := os.Getenv("SOURCE_RETRY_BASE_DELAY_MS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.SourceClient.RetryBaseDelayMs = n
+		}
+	}
+	if v := os.Getenv("SOURCE_RETRY_MAX_DELAY_MS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.SourceClient.RetryMaxDelayMs = n
 		}
 	}
 }
