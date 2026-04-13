@@ -20,11 +20,19 @@ S3-compatible endpoint.
 ```bash
 git clone https://github.com/siberianbearofficial/sfree.git
 cd sfree
+docker compose up
+```
+
+Docker Compose will pull the pre-built images from GHCR. To build from
+source instead, add `--build`:
+
+```bash
 docker compose up --build
 ```
 
 Wait until you see log lines from all services (`mongo`, `minio`, `api`,
-`webui`). First build takes 2–3 minutes; subsequent starts are faster.
+`webui`). Pre-built images start in seconds; building from source takes
+2–3 minutes the first time.
 
 **Expected output (last few lines):**
 

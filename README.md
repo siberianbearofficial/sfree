@@ -90,11 +90,12 @@ read and write objects directly.
 ```bash
 git clone https://github.com/siberianbearofficial/sfree.git
 cd sfree
-docker compose up --build
+docker compose up
 ```
 
-This starts MongoDB, the Go API, a React frontend (with nginx), and a MinIO
-instance for local S3-compatible source testing.
+This pulls pre-built images from GHCR and starts MongoDB, the Go API, a
+React frontend (with nginx), and a MinIO instance for local S3-compatible
+source testing. To build from source instead, add `--build`.
 
 | Service  | URL                          |
 | -------- | ---------------------------- |
