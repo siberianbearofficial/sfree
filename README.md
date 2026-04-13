@@ -183,7 +183,31 @@ local API. Without it, the frontend defaults to a relative `/api/v1` path
 
 ### CLI
 
-Build the CLI from source:
+**Download a pre-built binary** from the
+[latest release](https://github.com/siberianbearofficial/sfree/releases/latest):
+
+| OS | Architecture | Binary |
+| --- | --- | --- |
+| Linux | x86_64 | `sfree-linux-amd64` |
+| Linux | ARM64 | `sfree-linux-arm64` |
+| macOS | Intel | `sfree-darwin-amd64` |
+| macOS | Apple Silicon | `sfree-darwin-arm64` |
+| Windows | x86_64 | `sfree-windows-amd64.exe` |
+
+```bash
+# Example: Linux x86_64
+curl -Lo sfree https://github.com/siberianbearofficial/sfree/releases/latest/download/sfree-linux-amd64
+chmod +x sfree
+sudo mv sfree /usr/local/bin/
+```
+
+**Or install with Go:**
+
+```bash
+go install github.com/example/sfree/api-go/cmd/sfree-cli@latest
+```
+
+**Or build from source:**
 
 ```bash
 cd api-go
