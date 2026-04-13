@@ -574,7 +574,7 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 		for _, ch := range fileDoc.Chunks {
 			total += ch.Size
 		}
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileDoc.Name))
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(fileDoc.Name)))
 		c.Header("Content-Type", "application/octet-stream")
 		c.Header("Content-Length", strconv.FormatInt(total, 10))
 		c.Status(http.StatusOK)
