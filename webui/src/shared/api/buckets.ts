@@ -97,6 +97,20 @@ export async function downloadFile(
   window.URL.revokeObjectURL(url);
 }
 
+export async function fetchFileBlob(
+  bucketId: string,
+  fileId: string,
+): Promise<Blob> {
+  const res = await fetch(
+    `${API_BASE}/buckets/${bucketId}/files/${fileId}/download`,
+    {
+      headers: authHeader(),
+    },
+  );
+  if (!res.ok) throw new Error("failed to fetch file");
+  return res.blob();
+}
+
 export async function deleteFile(
   bucketId: string,
   fileId: string,
