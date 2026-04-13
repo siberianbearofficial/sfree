@@ -57,6 +57,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		sourceRepo    *repository.SourceRepository
 		fileRepo      *repository.FileRepository
 		shareLinkRepo *repository.ShareLinkRepository
+		mpRepo        *repository.MultipartUploadRepository
 	)
 
 	jwtSecret := ""
@@ -81,6 +82,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		}
 		sourceRepo, _ = repository.NewSourceRepository(m.DB, srcSecretKey)
 		fileRepo, _ = repository.NewFileRepository(m.DB)
+		mpRepo, _ = repository.NewMultipartUploadRepository(m.DB)
 		shareLinkRepo, _ = repository.NewShareLinkRepository(m.DB)
 	}
 
@@ -146,11 +148,13 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		if cfg != nil {
 			chunkSize = cfg.Upload.ChunkSize
 		}
-		router.HEAD("/api/s3/:bucket/*object", handlers.AWS4Auth(bucketRepo, secretKey), handlers.HeadObject(bucketRepo, fileRepo))
-		router.GET("/api/s3/:bucket/*object", handlers.AWS4Auth(bucketRepo, secretKey), handlers.GetObject(bucketRepo, sourceRepo, fileRepo))
-		router.GET("/api/s3/:bucket", handlers.AWS4Auth(bucketRepo, secretKey), handlers.ListObjects(bucketRepo, fileRepo))
-		router.PUT("/api/s3/:bucket/*object", handlers.AWS4Auth(bucketRepo, secretKey), handlers.PutObject(bucketRepo, sourceRepo, fileRepo, chunkSize))
-		router.DELETE("/api/s3/:bucket/*object", handlers.AWS4Auth(bucketRepo, secretKey), handlers.DeleteObject(bucketRepo, sourceRepo, fileRepo))
+		s3Auth := handlers.AWS4Auth(bucketRepo, secretKey)
+		router.HEAD("/api/s3/:bucket/*object", s3Auth, handlers.HeadObject(bucketRepo, fileRepo))
+		router.GET("/api/s3/:bucket/*object", s3Auth, handlers.GetObjectOrParts(bucketRepo, sourceRepo, fileRepo, mpRepo))
+		router.GET("/api/s3/:bucket", s3Auth, handlers.ListObjectsOrUploads(bucketRepo, fileRepo, mpRepo))
+		router.PUT("/api/s3/:bucket/*object", s3Auth, handlers.PutObjectOrPart(bucketRepo, sourceRepo, fileRepo, mpRepo, chunkSize))
+		router.POST("/api/s3/:bucket/*object", s3Auth, handlers.PostObject(bucketRepo, sourceRepo, fileRepo, mpRepo, chunkSize))
+		router.DELETE("/api/s3/:bucket/*object", s3Auth, handlers.DeleteObjectOrAbort(bucketRepo, sourceRepo, fileRepo, mpRepo))
 	}
 	return router
 }
