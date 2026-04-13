@@ -1,4 +1,4 @@
-const API_BASE = "https://s3aas-api.dev.nachert.art/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
 
 export type Source = {id: string; name: string; type: string; key: string; created_at: string};
 

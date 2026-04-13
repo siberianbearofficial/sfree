@@ -1,0 +1,63 @@
+services:
+  mongo:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    volumes:
+      - mongo-data:/data/db
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin 2>/dev/null; do sleep 1; done;
+      mc mb --ignore-existing local/sfree-data;
+      exit 0;
+      "
+
+  api:
+    build:
+      context: ./api-go
+      dockerfile: Dockerfile
+    environment:
+      ENV: local
+      DB_HOST: mongo
+      DB_PORT: "27017"
+      DB_USER: root
+      DB_PASSWORD: example
+      DB_NAME: sfree
+      ACCESS_SECRET_KEY: examplesecret
+    depends_on:
+      - mongo
+    ports:
+      - "8080:8080"
+
+  webui:
+    build:
+      context: ./webui
+      dockerfile: Dockerfile
+    environment:
+      API_HOST: api
+      API_PORT: "8080"
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+volumes:
+  mongo-data:
+  minio-data:
