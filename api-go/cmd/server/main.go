@@ -55,6 +55,15 @@ func main() {
 	if cfg.SourceClient.RecoverySeconds > 0 {
 		rcfg.RecoveryTimeout = time.Duration(cfg.SourceClient.RecoverySeconds) * time.Second
 	}
+	if cfg.SourceClient.MaxRetries > 0 {
+		rcfg.MaxRetries = cfg.SourceClient.MaxRetries
+	}
+	if cfg.SourceClient.RetryBaseDelayMs > 0 {
+		rcfg.RetryBaseDelay = time.Duration(cfg.SourceClient.RetryBaseDelayMs) * time.Millisecond
+	}
+	if cfg.SourceClient.RetryMaxDelayMs > 0 {
+		rcfg.RetryMaxDelay = time.Duration(cfg.SourceClient.RetryMaxDelayMs) * time.Millisecond
+	}
 	manager.ResilienceConfig = rcfg
 
 	mongoConn, err := db.Connect(ctx, cfg.Mongo)

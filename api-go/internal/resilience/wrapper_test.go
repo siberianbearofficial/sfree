@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -15,9 +16,14 @@ type mockClient struct {
 	downloadErr error
 	deleteErr   error
 	delay       time.Duration
+
+	uploadCalls   atomic.Int32
+	downloadCalls atomic.Int32
+	deleteCalls   atomic.Int32
 }
 
 func (m *mockClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	m.uploadCalls.Add(1)
 	if m.delay > 0 {
 		select {
 		case <-time.After(m.delay):
@@ -29,6 +35,7 @@ func (m *mockClient) Upload(ctx context.Context, name string, r io.Reader) (stri
 }
 
 func (m *mockClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	m.downloadCalls.Add(1)
 	if m.delay > 0 {
 		select {
 		case <-time.After(m.delay):
@@ -43,6 +50,7 @@ func (m *mockClient) Download(ctx context.Context, name string) (io.ReadCloser, 
 }
 
 func (m *mockClient) Delete(ctx context.Context, name string) error {
+	m.deleteCalls.Add(1)
 	if m.delay > 0 {
 		select {
 		case <-time.After(m.delay):
@@ -79,7 +87,12 @@ func TestWrapperPassesThrough(t *testing.T) {
 
 func TestWrapperTimeout(t *testing.T) {
 	inner := &mockClient{delay: 200 * time.Millisecond}
-	cfg := WrapperConfig{Timeout: 50 * time.Millisecond, FailureThreshold: 100, RecoveryTimeout: time.Second}
+	cfg := WrapperConfig{
+		Timeout:          50 * time.Millisecond,
+		FailureThreshold: 100,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0, // no retries to isolate timeout behavior
+	}
 	w := Wrap(inner, cfg)
 
 	_, err := w.Upload(context.Background(), "slow.txt", strings.NewReader("data"))
@@ -93,7 +106,12 @@ func TestWrapperTimeout(t *testing.T) {
 
 func TestWrapperCircuitBreakerTrips(t *testing.T) {
 	inner := &mockClient{uploadErr: errors.New("backend down")}
-	cfg := WrapperConfig{Timeout: time.Second, FailureThreshold: 3, RecoveryTimeout: time.Second}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 3,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0, // no retries
+	}
 	w := Wrap(inner, cfg)
 
 	ctx := context.Background()
@@ -113,7 +131,12 @@ func TestWrapperCircuitBreakerTrips(t *testing.T) {
 
 func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 	inner := &mockClient{uploadErr: errors.New("backend down")}
-	cfg := WrapperConfig{Timeout: time.Second, FailureThreshold: 2, RecoveryTimeout: 50 * time.Millisecond}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 2,
+		RecoveryTimeout:  50 * time.Millisecond,
+		MaxRetries:       0,
+	}
 	w := Wrap(inner, cfg)
 
 	ctx := context.Background()
@@ -138,5 +161,179 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 	}
 	if name != "uploaded-ok.txt" {
 		t.Fatalf("expected uploaded-ok.txt, got %s", name)
+	}
+}
+
+// --- Retry-specific tests ---
+
+// flakeyClient fails a configurable number of times then succeeds.
+type flakeyClient struct {
+	failCount   int
+	callCount   atomic.Int32
+	permanentOK bool
+}
+
+func (f *flakeyClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	n := int(f.callCount.Add(1))
+	if n <= f.failCount {
+		return "", errors.New("transient failure")
+	}
+	return "uploaded-" + name, nil
+}
+
+func (f *flakeyClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	n := int(f.callCount.Add(1))
+	if n <= f.failCount {
+		return nil, errors.New("transient failure")
+	}
+	return io.NopCloser(strings.NewReader("data")), nil
+}
+
+func (f *flakeyClient) Delete(ctx context.Context, name string) error {
+	n := int(f.callCount.Add(1))
+	if n <= f.failCount {
+		return errors.New("transient failure")
+	}
+	return nil
+}
+
+func TestWrapperRetryUploadSucceeds(t *testing.T) {
+	inner := &flakeyClient{failCount: 2} // fails twice, then succeeds
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       3,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	name, err := w.Upload(context.Background(), "file.txt", strings.NewReader("data"))
+	if err != nil {
+		t.Fatalf("expected success after retries, got %v", err)
+	}
+	if name != "uploaded-file.txt" {
+		t.Fatalf("unexpected name: %s", name)
+	}
+	if got := int(inner.callCount.Load()); got != 3 {
+		t.Fatalf("expected 3 calls (2 failures + 1 success), got %d", got)
+	}
+}
+
+func TestWrapperRetryDownloadSucceeds(t *testing.T) {
+	inner := &flakeyClient{failCount: 1}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       2,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	rc, err := w.Download(context.Background(), "file.txt")
+	if err != nil {
+		t.Fatalf("expected success after retry, got %v", err)
+	}
+	_ = rc.Close()
+	if got := int(inner.callCount.Load()); got != 2 {
+		t.Fatalf("expected 2 calls, got %d", got)
+	}
+}
+
+func TestWrapperRetryDeleteSucceeds(t *testing.T) {
+	inner := &flakeyClient{failCount: 1}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       2,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	err := w.Delete(context.Background(), "file.txt")
+	if err != nil {
+		t.Fatalf("expected success after retry, got %v", err)
+	}
+	if got := int(inner.callCount.Load()); got != 2 {
+		t.Fatalf("expected 2 calls, got %d", got)
+	}
+}
+
+func TestWrapperRetryExhausted(t *testing.T) {
+	inner := &mockClient{uploadErr: errors.New("permanent failure")}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 100,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       2,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	_, err := w.Upload(context.Background(), "fail.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error after retries exhausted")
+	}
+	// 1 initial + 2 retries = 3 total calls
+	if got := int(inner.uploadCalls.Load()); got != 3 {
+		t.Fatalf("expected 3 upload calls, got %d", got)
+	}
+}
+
+func TestWrapperNoRetryOnCircuitOpen(t *testing.T) {
+	inner := &mockClient{uploadErr: errors.New("backend down")}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 1, // opens after 1 recorded failure
+		RecoveryTimeout:  10 * time.Second,
+		MaxRetries:       2,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	// First call: retries exhaust (1 initial + 2 retries = 3 backend calls),
+	// then records one failure to circuit breaker, which opens it.
+	_, err := w.Upload(context.Background(), "fail.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := int(inner.uploadCalls.Load()); got != 3 {
+		t.Fatalf("expected 3 backend calls (1 + 2 retries), got %d", got)
+	}
+
+	// Second call should get circuit open immediately with zero backend calls.
+	_, err = w.Upload(context.Background(), "fail2.txt", strings.NewReader("data"))
+	if !errors.Is(err, ErrCircuitOpen) {
+		t.Fatalf("expected ErrCircuitOpen, got %v", err)
+	}
+	// No additional backend calls.
+	if got := int(inner.uploadCalls.Load()); got != 3 {
+		t.Fatalf("expected still 3 backend calls (no new ones), got %d", got)
+	}
+}
+
+func TestWrapperRetryZeroMeansNoRetry(t *testing.T) {
+	inner := &mockClient{uploadErr: errors.New("fail")}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 100,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	_, err := w.Upload(context.Background(), "file.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := int(inner.uploadCalls.Load()); got != 1 {
+		t.Fatalf("expected exactly 1 call with 0 retries, got %d", got)
 	}
 }

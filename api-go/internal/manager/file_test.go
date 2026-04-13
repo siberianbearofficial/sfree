@@ -268,6 +268,68 @@ func TestSelectorForBucketDefault(t *testing.T) {
 	}
 }
 
+func TestUploadFileChunksFailoverToAlternateSource(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	s2 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	sources := []repository.Source{s1, s2}
+
+	failingStub := &stubSourceClient{uploadErr: errors.New("source down")}
+	workingStub := &stubSourceClient{}
+	factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		if src.ID == s1.ID {
+			return failingStub, nil
+		}
+		return workingStub, nil
+	}
+
+	payload := []byte("abcdef")
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), sources, 6, factory, &RoundRobinSelector{})
+	if err != nil {
+		t.Fatalf("expected failover to succeed, got %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	// Chunk should have been placed on s2 after s1 failed.
+	if chunks[0].SourceID != s2.ID {
+		t.Fatalf("expected chunk on s2 after failover, got source %s", chunks[0].SourceID.Hex())
+	}
+}
+
+func TestUploadFileChunksAllSourcesFail(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	s2 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	sources := []repository.Source{s1, s2}
+
+	factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		return &stubSourceClient{uploadErr: errors.New("source down")}, nil
+	}
+
+	payload := []byte("abcdef")
+	_, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), sources, 6, factory, &RoundRobinSelector{})
+	if err == nil {
+		t.Fatal("expected error when all sources fail")
+	}
+}
+
+func TestUploadFileChunksSingleSourceNoFailover(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	sources := []repository.Source{s1}
+
+	factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		return &stubSourceClient{uploadErr: errors.New("source down")}, nil
+	}
+
+	payload := []byte("abc")
+	_, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), sources, 3, factory, &RoundRobinSelector{})
+	if err == nil {
+		t.Fatal("expected error with single source and no failover possible")
+	}
+}
+
 func TestNewSourceClientNilSource(t *testing.T) {
 	t.Parallel()
 	_, err := NewSourceClient(context.Background(), nil)

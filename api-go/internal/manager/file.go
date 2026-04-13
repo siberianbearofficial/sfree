@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
@@ -257,31 +258,26 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 	chunks := make([]repository.FileChunk, 0)
 	buf := make([]byte, chunkSize)
 	idx := 0
+	failoverCount := 0
 	for {
-		n, err := r.Read(buf)
-		if err != nil && err != io.EOF {
-			span.RecordError(err)
+		n, readErr := r.Read(buf)
+		if readErr != nil && readErr != io.EOF {
+			span.RecordError(readErr)
 			span.SetStatus(codes.Error, "read failed")
-			return nil, err
+			return nil, readErr
 		}
 		if n == 0 {
 			break
 		}
-		_, src, err := selector.NextSource(sources)
+
+		chunkData := make([]byte, n)
+		copy(chunkData, buf[:n])
+
+		src, cli, err := pickSourceClient(ctx, sources, selector, clients, factory)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "source selection failed")
 			return nil, err
-		}
-		cli, ok := clients[src.ID]
-		if !ok {
-			cli, err = factory(ctx, &src)
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "client creation failed")
-				return nil, err
-			}
-			clients[src.ID] = cli
 		}
 
 		_, chunkSpan := tracer.Start(ctx, "UploadChunk",
@@ -292,23 +288,83 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 			),
 		)
 		driveName := primitive.NewObjectID().Hex()
-		chunkName, err := cli.Upload(ctx, driveName, bytes.NewReader(buf[:n]))
-		if err != nil {
-			chunkSpan.RecordError(err)
+		chunkName, uploadErr := cli.Upload(ctx, driveName, bytes.NewReader(chunkData))
+
+		// Failover: on upload failure, try other sources.
+		if uploadErr != nil && len(sources) > 1 {
+			chunkSpan.RecordError(uploadErr)
+			tried := map[primitive.ObjectID]bool{src.ID: true}
+			for attempt := 0; attempt < len(sources)-1; attempt++ {
+				altSrc, altCli, altErr := pickSourceClient(ctx, sources, selector, clients, factory)
+				if altErr != nil {
+					continue
+				}
+				if tried[altSrc.ID] {
+					continue
+				}
+				tried[altSrc.ID] = true
+				failoverCount++
+				slog.WarnContext(ctx, "upload failover",
+					slog.Int("chunk.order", idx),
+					slog.String("failed_source", src.ID.Hex()),
+					slog.String("failover_source", altSrc.ID.Hex()),
+					slog.String("last_error", uploadErr.Error()),
+				)
+				chunkSpan.AddEvent("failover",
+					trace.WithAttributes(
+						attribute.String("failover.from", src.ID.Hex()),
+						attribute.String("failover.to", altSrc.ID.Hex()),
+					),
+				)
+				altDriveName := primitive.NewObjectID().Hex()
+				altName, altUpErr := altCli.Upload(ctx, altDriveName, bytes.NewReader(chunkData))
+				if altUpErr == nil {
+					src = altSrc
+					chunkName = altName
+					uploadErr = nil
+					break
+				}
+				uploadErr = altUpErr
+			}
+		}
+
+		if uploadErr != nil {
+			chunkSpan.RecordError(uploadErr)
 			chunkSpan.SetStatus(codes.Error, "upload failed")
 			chunkSpan.End()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, fmt.Sprintf("chunk %d upload failed", idx))
-			return nil, err
+			span.RecordError(uploadErr)
+			span.SetStatus(codes.Error, fmt.Sprintf("chunk %d upload failed on all sources", idx))
+			return nil, uploadErr
 		}
 		chunkSpan.End()
 
 		chunks = append(chunks, repository.FileChunk{SourceID: src.ID, Name: chunkName, Order: idx, Size: int64(n)})
 		idx++
-		if err == io.EOF {
+		if readErr == io.EOF {
 			break
 		}
 	}
-	span.SetAttributes(attribute.Int("chunks.uploaded", len(chunks)))
+	span.SetAttributes(
+		attribute.Int("chunks.uploaded", len(chunks)),
+		attribute.Int("chunks.failovers", failoverCount),
+	)
 	return chunks, nil
+}
+
+// pickSourceClient selects the next source and returns its client, creating
+// the client if needed. It uses the provided selector, client cache, and factory.
+func pickSourceClient(ctx context.Context, sources []repository.Source, selector SourceSelector, clients map[primitive.ObjectID]sourceClient, factory SourceClientFactory) (repository.Source, sourceClient, error) {
+	_, src, err := selector.NextSource(sources)
+	if err != nil {
+		return repository.Source{}, nil, err
+	}
+	cli, ok := clients[src.ID]
+	if !ok {
+		cli, err = factory(ctx, &src)
+		if err != nil {
+			return repository.Source{}, nil, err
+		}
+		clients[src.ID] = cli
+	}
+	return src, cli, nil
 }
