@@ -13,6 +13,8 @@ import { DownloadIcon } from "../../../shared/icons";
 import { DeleteIcon } from "@heroui/shared-icons";
 import { ConfirmDialog } from "../../../shared/ui";
 import { ArrowLeftIcon } from "@heroui/shared-icons";
+import { FilePreviewModal } from "../../../features/bucket/ui/file-preview-modal";
+import { formatSize } from "../../../shared/lib/format";
 
 export function BucketPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +26,7 @@ export function BucketPage() {
   const confirm = useDisclosure();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FileInfo | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -115,8 +118,16 @@ export function BucketPage() {
             <tbody>
               {files.map((f) => (
                 <tr key={f.id} className="border-t">
-                  <td className="py-2">{f.name}</td>
-                  <td className="py-2">{f.size}</td>
+                  <td className="py-2">
+                    <button
+                      type="button"
+                      className="text-left hover:text-primary transition-colors cursor-pointer"
+                      onClick={() => setPreviewFile(f)}
+                    >
+                      {f.name}
+                    </button>
+                  </td>
+                  <td className="py-2">{formatSize(f.size)}</td>
                   <td className="py-2">
                     {new Date(f.created_at).toLocaleString()}
                   </td>
@@ -159,6 +170,12 @@ export function BucketPage() {
         onConfirm={handleDelete}
         confirmLabel="Delete"
         isConfirmLoading={isDeleting}
+      />
+      <FilePreviewModal
+        isOpen={previewFile !== null}
+        onClose={() => setPreviewFile(null)}
+        file={previewFile}
+        bucketId={id!}
       />
     </div>
   );
