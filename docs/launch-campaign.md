@@ -23,23 +23,25 @@ chunks and distributed round-robin across your sources. Downloads reassemble
 from the chunk manifest. Every bucket also gets auto-generated S3 credentials,
 so you can use any S3 SDK or tool (rclone, mc, boto3) to read and write objects.
 
-What actually works today:
+What actually works today (v0.1.0):
 
 - Go backend with REST API and Swagger docs
 - Three storage backends: Google Drive, Telegram, S3-compatible
 - S3-compatible endpoint with AWS SigV4 auth
-- React web UI for signup, bucket management, and file operations
-- Chunked upload/download with configurable chunk size (5 MB default)
-- MongoDB for metadata, Docker Compose for easy setup
+- React web UI for signup, bucket management, file upload/download/preview
+- Public share links — generate time-limited URLs for any file
+- GitHub OAuth login (plus HTTP Basic Auth)
+- CLI tool (sfree) for power users
+- Configurable chunk distribution strategies (round-robin, weighted)
+- Docker Compose one-command setup with MongoDB + MinIO
 
 What it does NOT do (being upfront):
 
 - No replication — chunks are distributed, not copied. If you lose an upstream
   source, those files are gone.
 - No erasure coding.
-- Basic HTTP auth only (not production-grade security).
-- Web UI only covers Google Drive for source setup; Telegram and S3 sources
-  require the API.
+- Auth is functional but not production-hardened.
+- No rate limiting yet.
 
 This is an early-stage project aimed at self-hosters and homelab tinkerers who
 want to unify their scattered free storage behind one interface. It is not a
@@ -77,18 +79,20 @@ backed by whichever sources you choose, and SFree splits uploads into chunks
 distributed round-robin across them. Every bucket also gets S3-compatible
 credentials, so tools like rclone or mc just work.
 
-**What works right now:**
+**What works right now (v0.1.0):**
 - Go backend with full REST API + Swagger docs
 - Google Drive, Telegram, and S3-compatible backends
 - S3-compatible endpoint (AWS SigV4 auth)
-- React web UI for managing buckets and files
-- Docker Compose setup with MongoDB
+- React web UI for buckets, files, preview, and public share links
+- GitHub OAuth + CLI tool for power users
+- Configurable distribution strategies (round-robin, weighted)
+- Docker Compose one-command setup
 
 **Honest caveats:**
 - Early stage — no replication or erasure coding
-- Basic auth only (not hardened for public internet)
+- Auth is functional, not production-hardened
 - Losing an upstream source = data loss for affected chunks
-- Web UI source creation only for Google Drive; Telegram/S3 via API
+- No rate limiting yet
 
 This is aimed at homelab/self-hosting experimentation, not production
 workloads. If you're interested in the approach or want to contribute, the
@@ -119,8 +123,10 @@ single object store with an S3-compatible interface.
 
 **Tech stack:** Go 1.24, MongoDB, React 19, Docker Compose, Woodpecker CI.
 
-This is early-stage software — no replication, basic auth, experimental. But
-the core loop works: chunk, distribute, reassemble, serve over S3.
+This is early-stage software — no replication, no erasure coding, experimental.
+But the core loop works: chunk, distribute, reassemble, serve over S3. Plus
+public share links, GitHub OAuth, a CLI, and configurable distribution
+strategies shipped in v0.1.0.
 
 Contributions welcome — the codebase is clean Go with Swagger docs and CI.
 
@@ -154,10 +160,12 @@ ENV=local go run ./cmd/server        # API on :8080
 - Telegram bot (good for small-chunk storage, API-only)
 - MinIO on a VPS (S3-compatible, API-only)
 
+**Also ships with:** public share links, GitHub OAuth, a CLI tool, and
+configurable distribution strategies (round-robin or weighted).
+
 **Fair warnings:**
 - No chunk replication — if a source goes down, affected files are gone
-- Basic HTTP auth — I run it behind a reverse proxy
-- Web UI only does Google Drive source setup; Telegram/S3 via API
+- Auth is functional but not production-hardened — run it behind a reverse proxy
 - This is experimental, not for irreplaceable data
 
 If you're into storage hacking or want to help add backends, check it out:
@@ -187,8 +195,8 @@ Rationale:
 
 ### Launch sequence
 
-1. **T-0**: Merge THE-27 landing page. Verify README, Quick Start, and repo
-   links are all clean.
+1. **T-0**: Verify README, Quick Start, and repo links are all clean.
+   v0.1.0 released, landing page live, demo visuals in README.
 2. **T+0 (morning)**: Post Show HN. Do NOT post Reddit simultaneously.
 3. **T+2 hours**: If HN post gains traction (10+ points), post to r/selfhosted.
 4. **T+4 hours**: Post to r/homelab.
@@ -200,7 +208,9 @@ based on early reactions.
 
 ### Pre-launch checklist
 
-- [ ] THE-27 landing page merged and live
+- [x] v0.1.0 released and tagged
+- [x] Landing page merged and live
+- [x] Demo visuals (annotated screenshots) in README
 - [ ] README Quick Start verified end-to-end (fresh clone to running)
 - [ ] Swagger docs accessible and accurate
 - [ ] Docker Compose brings up a working instance
