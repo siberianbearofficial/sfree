@@ -16,8 +16,10 @@ import (
 )
 
 type createBucketRequest struct {
-	Key       string   `json:"key" binding:"required"`
-	SourceIDs []string `json:"source_ids" binding:"required,min=1"`
+	Key                  string         `json:"key" binding:"required"`
+	SourceIDs            []string       `json:"source_ids" binding:"required,min=1"`
+	DistributionStrategy string         `json:"distribution_strategy,omitempty"`
+	SourceWeights        map[string]int `json:"source_weights,omitempty"`
 }
 
 type createBucketResponse struct {
@@ -118,13 +120,23 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			}
 			sourceIDs = append(sourceIDs, sourceID)
 		}
+		strategy := repository.DistributionStrategy(req.DistributionStrategy)
+		if strategy == "" {
+			strategy = repository.StrategyRoundRobin
+		}
+		if strategy != repository.StrategyRoundRobin && strategy != repository.StrategyWeighted {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid distribution_strategy"})
+			return
+		}
 		bucket := repository.Bucket{
-			UserID:          userID,
-			Key:             req.Key,
-			AccessKey:       accessKey,
-			AccessSecretEnc: encrypted,
-			SourceIDs:       sourceIDs,
-			CreatedAt:       time.Now().UTC(),
+			UserID:               userID,
+			Key:                  req.Key,
+			AccessKey:            accessKey,
+			AccessSecretEnc:      encrypted,
+			SourceIDs:            sourceIDs,
+			DistributionStrategy: strategy,
+			SourceWeights:        req.SourceWeights,
+			CreatedAt:            time.Now().UTC(),
 		}
 		created, err := repo.Create(c.Request.Context(), bucket)
 		if err != nil {
@@ -240,6 +252,69 @@ func DeleteBucket(repo *repository.BucketRepository) gin.HandlerFunc {
 	}
 }
 
+type updateDistributionRequest struct {
+	DistributionStrategy string         `json:"distribution_strategy" binding:"required"`
+	SourceWeights        map[string]int `json:"source_weights,omitempty"`
+}
+
+// UpdateBucketDistribution godoc
+// @Summary Update bucket distribution strategy
+// @Tags buckets
+// @Accept json
+// @Produce json
+// @Param id path string true "Bucket ID"
+// @Param body body updateDistributionRequest true "Distribution config"
+// @Success 200 {string} string ""
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets/{id}/distribution [patch]
+func UpdateBucketDistribution(repo *repository.BucketRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if repo == nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		var req updateDistributionRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		strategy := repository.DistributionStrategy(req.DistributionStrategy)
+		if strategy != repository.StrategyRoundRobin && strategy != repository.StrategyWeighted {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid distribution_strategy"})
+			return
+		}
+		userIDHex := c.GetString("userID")
+		if userIDHex == "" {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		userID, err := primitive.ObjectIDFromHex(userIDHex)
+		if err != nil {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		idHex := c.Param("id")
+		id, err := primitive.ObjectIDFromHex(idHex)
+		if err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if err := repo.UpdateDistribution(c.Request.Context(), id, userID, strategy, req.SourceWeights); err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			log.Printf("update distribution: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusOK)
+	}
+}
+
 type uploadFileResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -322,7 +397,8 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		defer func() { _ = f.Close() }()
 
-		chunks, err := manager.UploadFileChunks(ctx, f, sources, chunkSize)
+		selector := manager.SelectorForBucket(bucketDoc, sources)
+		chunks, err := manager.UploadFileChunksWithStrategy(ctx, f, sources, chunkSize, nil, selector)
 		if err != nil {
 			slog.ErrorContext(ctx, "upload file: upload chunks", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)

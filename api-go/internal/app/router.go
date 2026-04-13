@@ -74,6 +74,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		router.POST("/api/v1/buckets", auth, handlers.CreateBucket(bucketRepo, sourceRepo, secretKey))
 		router.GET("/api/v1/buckets", auth, handlers.ListBuckets(bucketRepo))
 		router.DELETE("/api/v1/buckets/:id", auth, handlers.DeleteBucket(bucketRepo))
+		router.PATCH("/api/v1/buckets/:id/distribution", auth, handlers.UpdateBucketDistribution(bucketRepo))
 		if sourceRepo != nil && fileRepo != nil {
 			chunkSize := 0
 			if cfg != nil {

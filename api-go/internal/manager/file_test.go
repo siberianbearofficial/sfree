@@ -138,6 +138,136 @@ func TestUploadFileChunksUploadError(t *testing.T) {
 	}
 }
 
+func TestWeightedSelectorDistribution(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID()}
+	s2 := repository.Source{ID: primitive.NewObjectID()}
+	sources := []repository.Source{s1, s2}
+	weights := map[string]int{s1.ID.Hex(): 3, s2.ID.Hex(): 1}
+	sel := NewWeightedSelector(sources, weights)
+
+	// Sequence should be [s1, s1, s1, s2] repeating
+	counts := map[primitive.ObjectID]int{}
+	for i := 0; i < 8; i++ {
+		_, src, err := sel.NextSource(sources)
+		if err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+		counts[src.ID]++
+	}
+	if counts[s1.ID] != 6 {
+		t.Fatalf("expected s1 count 6, got %d", counts[s1.ID])
+	}
+	if counts[s2.ID] != 2 {
+		t.Fatalf("expected s2 count 2, got %d", counts[s2.ID])
+	}
+}
+
+func TestWeightedSelectorDefaultWeight(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID()}
+	s2 := repository.Source{ID: primitive.NewObjectID()}
+	sources := []repository.Source{s1, s2}
+	// Only s1 has explicit weight; s2 defaults to 1
+	weights := map[string]int{s1.ID.Hex(): 2}
+	sel := NewWeightedSelector(sources, weights)
+
+	// Sequence: [s1, s1, s2] repeating
+	counts := map[primitive.ObjectID]int{}
+	for i := 0; i < 6; i++ {
+		_, src, err := sel.NextSource(sources)
+		if err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+		counts[src.ID]++
+	}
+	if counts[s1.ID] != 4 {
+		t.Fatalf("expected s1 count 4, got %d", counts[s1.ID])
+	}
+	if counts[s2.ID] != 2 {
+		t.Fatalf("expected s2 count 2, got %d", counts[s2.ID])
+	}
+}
+
+func TestWeightedSelectorNoSources(t *testing.T) {
+	t.Parallel()
+	sel := NewWeightedSelector(nil, nil)
+	_, _, err := sel.NextSource(nil)
+	if err == nil {
+		t.Fatal("expected error for empty sources")
+	}
+}
+
+func TestUploadFileChunksWithWeightedStrategy(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	s2 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	sources := []repository.Source{s1, s2}
+
+	clients := map[primitive.ObjectID]*stubSourceClient{}
+	factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		cli := &stubSourceClient{}
+		clients[src.ID] = cli
+		return cli, nil
+	}
+
+	weights := map[string]int{s1.ID.Hex(): 2, s2.ID.Hex(): 1}
+	sel := NewWeightedSelector(sources, weights)
+
+	// 9 bytes with chunk size 3 = 3 chunks
+	// Weighted sequence [s1, s1, s2]: chunk0->s1, chunk1->s1, chunk2->s2
+	payload := []byte("abcdefghi")
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), sources, 3, factory, sel)
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(chunks))
+	}
+	if chunks[0].SourceID != s1.ID || chunks[1].SourceID != s1.ID {
+		t.Fatalf("first two chunks should go to s1: %+v", chunks)
+	}
+	if chunks[2].SourceID != s2.ID {
+		t.Fatalf("third chunk should go to s2: %+v", chunks)
+	}
+}
+
+func TestSelectorForBucketRoundRobin(t *testing.T) {
+	t.Parallel()
+	bucket := &repository.Bucket{DistributionStrategy: repository.StrategyRoundRobin}
+	s1 := repository.Source{ID: primitive.NewObjectID()}
+	sources := []repository.Source{s1}
+	sel := SelectorForBucket(bucket, sources)
+	if _, ok := sel.(*RoundRobinSelector); !ok {
+		t.Fatalf("expected RoundRobinSelector, got %T", sel)
+	}
+}
+
+func TestSelectorForBucketWeighted(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID()}
+	bucket := &repository.Bucket{
+		DistributionStrategy: repository.StrategyWeighted,
+		SourceWeights:        map[string]int{s1.ID.Hex(): 5},
+	}
+	sources := []repository.Source{s1}
+	sel := SelectorForBucket(bucket, sources)
+	if _, ok := sel.(*WeightedSelector); !ok {
+		t.Fatalf("expected WeightedSelector, got %T", sel)
+	}
+}
+
+func TestSelectorForBucketDefault(t *testing.T) {
+	t.Parallel()
+	// Empty strategy should default to round-robin
+	bucket := &repository.Bucket{}
+	sources := []repository.Source{{ID: primitive.NewObjectID()}}
+	sel := SelectorForBucket(bucket, sources)
+	if _, ok := sel.(*RoundRobinSelector); !ok {
+		t.Fatalf("expected RoundRobinSelector for empty strategy, got %T", sel)
+	}
+}
+
 func TestNewSourceClientNilSource(t *testing.T) {
 	t.Parallel()
 	_, err := NewSourceClient(context.Background(), nil)

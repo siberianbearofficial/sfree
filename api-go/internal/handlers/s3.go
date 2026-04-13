@@ -242,7 +242,8 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		if err == mongo.ErrNoDocuments {
 			existingFile = nil
 		}
-		chunks, err := manager.UploadFileChunks(ctx, c.Request.Body, sources, chunkSize)
+		selector := manager.SelectorForBucket(bucketDoc, sources)
+		chunks, err := manager.UploadFileChunksWithStrategy(ctx, c.Request.Body, sources, chunkSize, nil, selector)
 		if err != nil {
 			slog.ErrorContext(ctx, "put object: upload chunks", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")

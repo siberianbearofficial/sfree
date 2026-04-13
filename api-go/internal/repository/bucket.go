@@ -10,14 +10,23 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+type DistributionStrategy string
+
+const (
+	StrategyRoundRobin DistributionStrategy = "round_robin"
+	StrategyWeighted   DistributionStrategy = "weighted"
+)
+
 type Bucket struct {
-	ID              primitive.ObjectID   `bson:"_id,omitempty"`
-	UserID          primitive.ObjectID   `bson:"user_id"`
-	Key             string               `bson:"key"`
-	AccessKey       string               `bson:"access_key"`
-	AccessSecretEnc string               `bson:"access_secret"`
-	SourceIDs       []primitive.ObjectID `bson:"source_ids"`
-	CreatedAt       time.Time            `bson:"created_at"`
+	ID                   primitive.ObjectID   `bson:"_id,omitempty"`
+	UserID               primitive.ObjectID   `bson:"user_id"`
+	Key                  string               `bson:"key"`
+	AccessKey            string               `bson:"access_key"`
+	AccessSecretEnc      string               `bson:"access_secret"`
+	SourceIDs            []primitive.ObjectID `bson:"source_ids"`
+	DistributionStrategy DistributionStrategy `bson:"distribution_strategy,omitempty"`
+	SourceWeights        map[string]int       `bson:"source_weights,omitempty"`
+	CreatedAt            time.Time            `bson:"created_at"`
 }
 
 type BucketRepository struct {
@@ -110,6 +119,21 @@ func (r *BucketRepository) HasSourceReference(ctx context.Context, userID, sourc
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (r *BucketRepository) UpdateDistribution(ctx context.Context, id, userID primitive.ObjectID, strategy DistributionStrategy, weights map[string]int) error {
+	update := bson.M{"$set": bson.M{
+		"distribution_strategy": strategy,
+		"source_weights":        weights,
+	}}
+	res, err := r.coll.UpdateOne(ctx, bson.M{"_id": id, "user_id": userID}, update)
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return mongo.ErrNoDocuments
+	}
+	return nil
 }
 
 func (r *BucketRepository) Delete(ctx context.Context, id, userID primitive.ObjectID) error {
