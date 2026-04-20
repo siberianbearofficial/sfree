@@ -196,7 +196,21 @@ func streamFileWithFactory(ctx context.Context, f *repository.File, w io.Writer,
 			span.SetStatus(codes.Error, "chunk download failed")
 			return err
 		}
-		chunkData, err := io.ReadAll(rc)
+		if ch.Checksum == "" {
+			_, err = io.Copy(w, rc)
+			_ = rc.Close()
+			if err != nil {
+				chunkSpan.RecordError(err)
+				chunkSpan.SetStatus(codes.Error, "copy failed")
+				chunkSpan.End()
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "chunk copy failed")
+				return err
+			}
+			chunkSpan.End()
+			continue
+		}
+		chunkData, err := readChecksummedChunk(rc, ch, i)
 		_ = rc.Close()
 		if err != nil {
 			chunkSpan.RecordError(err)
@@ -205,18 +219,6 @@ func streamFileWithFactory(ctx context.Context, f *repository.File, w io.Writer,
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "chunk read failed")
 			return err
-		}
-		if ch.Checksum != "" {
-			sum := sha256.Sum256(chunkData)
-			if hex.EncodeToString(sum[:]) != ch.Checksum {
-				err = fmt.Errorf("%w: chunk %d", ErrChecksumMismatch, i)
-				chunkSpan.RecordError(err)
-				chunkSpan.SetStatus(codes.Error, "checksum mismatch")
-				chunkSpan.End()
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "chunk checksum mismatch")
-				return err
-			}
 		}
 		if _, err = w.Write(chunkData); err != nil {
 			chunkSpan.RecordError(err)
@@ -229,6 +231,24 @@ func streamFileWithFactory(ctx context.Context, f *repository.File, w io.Writer,
 		chunkSpan.End()
 	}
 	return nil
+}
+
+func readChecksummedChunk(r io.Reader, ch repository.FileChunk, order int) ([]byte, error) {
+	if ch.Size < 0 {
+		return nil, fmt.Errorf("%w: chunk %d invalid size", ErrChecksumMismatch, order)
+	}
+	data, err := io.ReadAll(io.LimitReader(r, ch.Size+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) != ch.Size {
+		return nil, fmt.Errorf("%w: chunk %d size", ErrChecksumMismatch, order)
+	}
+	sum := sha256.Sum256(data)
+	if hex.EncodeToString(sum[:]) != ch.Checksum {
+		return nil, fmt.Errorf("%w: chunk %d", ErrChecksumMismatch, order)
+	}
+	return data, nil
 }
 
 func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository, chunks []repository.FileChunk) error {
