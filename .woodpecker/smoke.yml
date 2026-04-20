@@ -1,0 +1,37 @@
+when:
+  - event: pull_request
+    path:
+      include:
+        - .woodpecker/smoke.yml
+        - docker-compose.yml
+        - scripts/woodpecker-smoke.sh
+        - api-go/**
+        - webui/**
+
+  - event: push
+    branch: main
+    path:
+      include:
+        - .woodpecker/smoke.yml
+        - docker-compose.yml
+        - scripts/woodpecker-smoke.sh
+        - api-go/**
+        - webui/**
+
+steps:
+  - name: stack smoke
+    image: golang:1.24-alpine
+    environment:
+      DOCKER_HOST: tcp://docker:2375
+      DOCKER_TLS_CERTDIR: ""
+    commands:
+      - apk add --no-cache aws-cli curl docker-cli docker-cli-compose jq
+      - chmod +x scripts/woodpecker-smoke.sh
+      - scripts/woodpecker-smoke.sh
+
+services:
+  - name: docker
+    image: docker:27-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
