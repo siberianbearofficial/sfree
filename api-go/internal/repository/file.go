@@ -2,11 +2,13 @@ package repository
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type FileChunk struct {
@@ -35,6 +37,12 @@ func NewFileRepository(db *mongo.Database) (*FileRepository, error) {
 	coll := db.Collection("files")
 	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
 		Keys: bson.D{{Key: "bucket_id", Value: 1}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+		Keys: bson.D{{Key: "bucket_id", Value: 1}, {Key: "name", Value: 1}},
 	})
 	if err != nil {
 		return nil, err
@@ -73,7 +81,15 @@ func (r *FileRepository) GetByName(ctx context.Context, bucketID primitive.Objec
 }
 
 func (r *FileRepository) ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]File, error) {
-	cursor, err := r.coll.Find(ctx, bson.M{"bucket_id": bucketID})
+	return r.ListByBucketWithPrefix(ctx, bucketID, "")
+}
+
+func (r *FileRepository) ListByBucketWithPrefix(ctx context.Context, bucketID primitive.ObjectID, prefix string) ([]File, error) {
+	filter := bson.M{"bucket_id": bucketID}
+	if prefix != "" {
+		filter["name"] = bson.M{"$regex": "^" + regexp.QuoteMeta(prefix)}
+	}
+	cursor, err := r.coll.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "name", Value: 1}}))
 	if err != nil {
 		return nil, err
 	}
