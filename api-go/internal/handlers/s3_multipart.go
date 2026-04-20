@@ -39,8 +39,8 @@ type completeMultipartUploadResult struct {
 }
 
 type completeMultipartUploadRequest struct {
-	XMLName xml.Name          `xml:"CompleteMultipartUpload"`
-	Parts   []completionPart  `xml:"Part"`
+	XMLName xml.Name         `xml:"CompleteMultipartUpload"`
+	Parts   []completionPart `xml:"Part"`
 }
 
 type completionPart struct {
@@ -49,10 +49,10 @@ type completionPart struct {
 }
 
 type listMultipartUploadsResult struct {
-	XMLName    xml.Name              `xml:"ListMultipartUploadsResult"`
-	Xmlns      string                `xml:"xmlns,attr"`
-	Bucket     string                `xml:"Bucket"`
-	Upload     []multipartUploadXML  `xml:"Upload"`
+	XMLName     xml.Name             `xml:"ListMultipartUploadsResult"`
+	Xmlns       string               `xml:"xmlns,attr"`
+	Bucket      string               `xml:"Bucket"`
+	Upload      []multipartUploadXML `xml:"Upload"`
 	IsTruncated bool                 `xml:"IsTruncated"`
 }
 
@@ -63,13 +63,13 @@ type multipartUploadXML struct {
 }
 
 type listPartsResult struct {
-	XMLName    xml.Name    `xml:"ListPartsResult"`
-	Xmlns      string      `xml:"xmlns,attr"`
-	Bucket     string      `xml:"Bucket"`
-	Key        string      `xml:"Key"`
-	UploadId   string      `xml:"UploadId"`
-	Part       []partXML   `xml:"Part"`
-	IsTruncated bool       `xml:"IsTruncated"`
+	XMLName     xml.Name  `xml:"ListPartsResult"`
+	Xmlns       string    `xml:"xmlns,attr"`
+	Bucket      string    `xml:"Bucket"`
+	Key         string    `xml:"Key"`
+	UploadId    string    `xml:"UploadId"`
+	Part        []partXML `xml:"Part"`
+	IsTruncated bool      `xml:"IsTruncated"`
 }
 
 type partXML struct {
@@ -172,20 +172,21 @@ func GetObjectOrParts(bucketRepo *repository.BucketRepository, sourceRepo *repos
 
 // ListObjectsOrUploads dispatches GET requests on bucket paths.
 // ?uploads → ListMultipartUploads
+// ?list-type=2 → ListObjectsV2
 // otherwise → ListObjects
 func ListObjectsOrUploads(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) gin.HandlerFunc {
 	listHandler := ListObjects(bucketRepo, fileRepo)
 	listV2Handler := ListObjectsV2(bucketRepo, fileRepo)
 	return func(c *gin.Context) {
-		if c.Query("list-type") == "2" {
-			listV2Handler(c)
-			return
-		}
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploads"); ok {
 				listMultipartUploads(c, bucketRepo, mpRepo)
 				return
 			}
+		}
+		if c.Query("list-type") == "2" {
+			listV2Handler(c)
+			return
 		}
 		listHandler(c)
 	}

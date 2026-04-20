@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
@@ -13,6 +14,7 @@ import (
 	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -58,6 +60,8 @@ type listBucketPageItem struct {
 	hasEntry     bool
 	commonPrefix string
 }
+
+const listCommonPrefixSkipSuffix = "\U0010FFFF"
 
 func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
@@ -108,62 +112,78 @@ func fileListBucketEntry(file repository.File) listBucketEntry {
 	}
 }
 
-func buildListBucketPage(files []repository.File, prefix, delimiter, after string, maxKeys int) ([]listBucketEntry, []listCommonPrefix, bool, string) {
-	items := make([]listBucketPageItem, 0, len(files))
+func buildListBucketPage(ctx context.Context, fileRepo *repository.FileRepository, bucketID primitive.ObjectID, prefix, delimiter, after string, maxKeys int) ([]listBucketEntry, []listCommonPrefix, bool, string, error) {
+	batchLimit := maxKeys + 1
+	if batchLimit < 1 {
+		batchLimit = 1
+	}
+	if batchLimit > 1001 {
+		batchLimit = 1001
+	}
+
+	contents := make([]listBucketEntry, 0, maxKeys)
+	commonPrefixes := make([]listCommonPrefix, 0, maxKeys)
 	seenPrefixes := make(map[string]struct{})
-	for _, file := range files {
-		if !strings.HasPrefix(file.Name, prefix) {
-			continue
+	cursorAfter := after
+	lastToken := ""
+
+	for {
+		files, hasMore, err := fileRepo.ListByBucketWithPrefixPage(ctx, bucketID, prefix, cursorAfter, batchLimit)
+		if err != nil {
+			return nil, nil, false, "", err
 		}
-		if delimiter != "" {
-			remainder := strings.TrimPrefix(file.Name, prefix)
-			if idx := strings.Index(remainder, delimiter); idx >= 0 {
-				commonPrefix := prefix + remainder[:idx+len(delimiter)]
-				if _, ok := seenPrefixes[commonPrefix]; !ok {
-					seenPrefixes[commonPrefix] = struct{}{}
-					items = append(items, listBucketPageItem{sortKey: commonPrefix, commonPrefix: commonPrefix})
-				}
-				continue
+		if len(files) == 0 {
+			return contents, commonPrefixes, false, "", nil
+		}
+
+		for _, file := range files {
+			if file.Name > cursorAfter {
+				cursorAfter = file.Name
 			}
-		}
-		items = append(items, listBucketPageItem{
-			sortKey:  file.Name,
-			entry:    fileListBucketEntry(file),
-			hasEntry: true,
-		})
-	}
 
-	start := 0
-	if after != "" {
-		for start < len(items) && items[start].sortKey <= after {
-			start++
-		}
-	}
-	remaining := len(items) - start
-	if remaining < 0 {
-		remaining = 0
-	}
-	pageSize := maxKeys
-	if pageSize > remaining {
-		pageSize = remaining
-	}
-	page := items[start : start+pageSize]
-	isTruncated := start+pageSize < len(items)
-	nextToken := ""
-	if isTruncated && len(page) > 0 {
-		nextToken = page[len(page)-1].sortKey
-	}
+			item := listBucketPageItem{
+				sortKey:  file.Name,
+				entry:    fileListBucketEntry(file),
+				hasEntry: true,
+			}
+			if delimiter != "" {
+				remainder := strings.TrimPrefix(file.Name, prefix)
+				if idx := strings.Index(remainder, delimiter); idx >= 0 {
+					commonPrefix := prefix + remainder[:idx+len(delimiter)]
+					skipAfter := commonPrefix + listCommonPrefixSkipSuffix
+					if skipAfter > cursorAfter {
+						cursorAfter = skipAfter
+					}
+					if commonPrefix <= after {
+						continue
+					}
+					if _, ok := seenPrefixes[commonPrefix]; ok {
+						continue
+					}
+					seenPrefixes[commonPrefix] = struct{}{}
+					item = listBucketPageItem{sortKey: commonPrefix, commonPrefix: commonPrefix}
+				}
+			}
 
-	contents := make([]listBucketEntry, 0, len(page))
-	commonPrefixes := make([]listCommonPrefix, 0, len(page))
-	for _, item := range page {
-		if item.hasEntry {
-			contents = append(contents, item.entry)
-			continue
+			if maxKeys == 0 {
+				return contents, commonPrefixes, true, item.sortKey, nil
+			}
+			if len(contents)+len(commonPrefixes) == maxKeys {
+				return contents, commonPrefixes, true, lastToken, nil
+			}
+
+			if item.hasEntry {
+				contents = append(contents, item.entry)
+			} else {
+				commonPrefixes = append(commonPrefixes, listCommonPrefix{Prefix: item.commonPrefix})
+			}
+			lastToken = item.sortKey
 		}
-		commonPrefixes = append(commonPrefixes, listCommonPrefix{Prefix: item.commonPrefix})
+
+		if !hasMore {
+			return contents, commonPrefixes, false, "", nil
+		}
 	}
-	return contents, commonPrefixes, isTruncated, nextToken
 }
 
 // ListObjects godoc
@@ -194,13 +214,12 @@ func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.F
 		prefix := c.Query("prefix")
 		delimiter := c.Query("delimiter")
 		marker := c.Query("marker")
-		files, err := fileRepo.ListByBucketWithPrefix(ctx, bucketDoc.ID, prefix)
+		contents, commonPrefixes, isTruncated, nextMarker, err := buildListBucketPage(ctx, fileRepo, bucketDoc.ID, prefix, delimiter, marker, maxKeys)
 		if err != nil {
 			slog.ErrorContext(ctx, "list objects: list files", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		contents, commonPrefixes, isTruncated, nextMarker := buildListBucketPage(files, prefix, delimiter, marker, maxKeys)
 		result := listBucketResult{
 			Xmlns:          "http://s3.amazonaws.com/doc/2006-03-01/",
 			Name:           bucketKey,
@@ -242,13 +261,12 @@ func ListObjectsV2(bucketRepo *repository.BucketRepository, fileRepo *repository
 		if continuationToken != "" {
 			after = continuationToken
 		}
-		files, err := fileRepo.ListByBucketWithPrefix(ctx, bucketDoc.ID, prefix)
+		contents, commonPrefixes, isTruncated, nextToken, err := buildListBucketPage(ctx, fileRepo, bucketDoc.ID, prefix, delimiter, after, maxKeys)
 		if err != nil {
 			slog.ErrorContext(ctx, "list objects v2: list files", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		contents, commonPrefixes, isTruncated, nextToken := buildListBucketPage(files, prefix, delimiter, after, maxKeys)
 		result := listBucketResult{
 			Xmlns:                 "http://s3.amazonaws.com/doc/2006-03-01/",
 			Name:                  bucketKey,

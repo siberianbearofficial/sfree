@@ -108,6 +108,48 @@ func (r *FileRepository) ListByBucketWithPrefix(ctx context.Context, bucketID pr
 	return files, nil
 }
 
+func (r *FileRepository) ListByBucketWithPrefixPage(ctx context.Context, bucketID primitive.ObjectID, prefix, after string, limit int) ([]File, bool, error) {
+	filter := bson.M{"bucket_id": bucketID}
+	nameFilter := bson.M{}
+	if prefix != "" {
+		nameFilter["$regex"] = "^" + regexp.QuoteMeta(prefix)
+	}
+	if after != "" {
+		nameFilter["$gt"] = after
+	}
+	if len(nameFilter) > 0 {
+		filter["name"] = nameFilter
+	}
+
+	findOpts := options.Find().SetSort(bson.D{{Key: "name", Value: 1}})
+	if limit >= 0 {
+		findOpts.SetLimit(int64(limit + 1))
+	}
+	cursor, err := r.coll.Find(ctx, filter, findOpts)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+
+	files := make([]File, 0, limit)
+	for cursor.Next(ctx) {
+		var f File
+		if err := cursor.Decode(&f); err != nil {
+			return nil, false, err
+		}
+		files = append(files, f)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := limit >= 0 && len(files) > limit
+	if hasMore {
+		files = files[:limit]
+	}
+	return files, hasMore, nil
+}
+
 func (r *FileRepository) Delete(ctx context.Context, id primitive.ObjectID) error {
 	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
 	if err != nil {
