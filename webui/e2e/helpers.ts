@@ -18,7 +18,7 @@ export async function injectAuth(
 }
 
 /**
- * Mock a GET endpoint. Glob pattern: API_GLOB + path, e.g. "**/api/v1/sources".
+ * Mock a GET endpoint. Glob pattern: API_GLOB + path, e.g. "/api/v1/sources".
  */
 export async function mockGet(
   page: Page,
