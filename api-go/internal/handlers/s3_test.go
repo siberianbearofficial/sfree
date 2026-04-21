@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -187,13 +188,13 @@ func TestFileListBucketEntryAndObjectETag(t *testing.T) {
 	if !strings.HasPrefix(entry.ETag, "\"") || !strings.HasSuffix(entry.ETag, "\"") {
 		t.Fatalf("expected quoted ETag, got %q", entry.ETag)
 	}
-	if entry.ETag != objectETag(file) {
-		t.Fatalf("expected entry ETag to match objectETag")
+	if entry.ETag != manager.ObjectETag(file) {
+		t.Fatalf("expected entry ETag to match ObjectETag")
 	}
 
 	changed := file
 	changed.Chunks[1].Size = 6
-	if objectETag(changed) == entry.ETag {
+	if manager.ObjectETag(changed) == entry.ETag {
 		t.Fatal("expected ETag to change when chunk metadata changes")
 	}
 }
