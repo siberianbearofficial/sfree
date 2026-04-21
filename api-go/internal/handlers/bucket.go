@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -543,7 +544,11 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		downloadFile(bucketRepo, sourceRepo, fileRepo, grantRepo)(c)
+		var grantReader bucketAccessGrantReader
+		if grantRepo != nil {
+			grantReader = grantRepo
+		}
+		downloadFile(bucketRepo, sourceRepo, fileRepo, grantReader)(c)
 	}
 }
 

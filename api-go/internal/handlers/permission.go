@@ -34,7 +34,11 @@ func requireBucketAccess(
 	grantRepo *repository.BucketGrantRepository,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
-	return requireBucketAccessFor(c, bucketRepo, grantRepo, requiredRole)
+	var grantReader bucketAccessGrantReader
+	if grantRepo != nil {
+		grantReader = grantRepo
+	}
+	return requireBucketAccessFor(c, bucketRepo, grantReader, requiredRole)
 }
 
 func requireBucketAccessFor(
