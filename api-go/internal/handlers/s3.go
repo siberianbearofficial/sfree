@@ -24,6 +24,34 @@ type s3Error struct {
 	Message string   `xml:"Message"`
 }
 
+type deleteObjectsRequest struct {
+	XMLName xml.Name              `xml:"Delete"`
+	Quiet   bool                  `xml:"Quiet"`
+	Objects []deleteObjectRequest `xml:"Object"`
+}
+
+type deleteObjectRequest struct {
+	Key       string `xml:"Key"`
+	VersionID string `xml:"VersionId,omitempty"`
+}
+
+type deleteObjectsResult struct {
+	XMLName xml.Name              `xml:"DeleteResult"`
+	Xmlns   string                `xml:"xmlns,attr"`
+	Deleted []deletedObjectResult `xml:"Deleted,omitempty"`
+	Errors  []deleteObjectError   `xml:"Error,omitempty"`
+}
+
+type deletedObjectResult struct {
+	Key string `xml:"Key"`
+}
+
+type deleteObjectError struct {
+	Key     string `xml:"Key"`
+	Code    string `xml:"Code"`
+	Message string `xml:"Message"`
+}
+
 type listBucketResult struct {
 	XMLName               xml.Name           `xml:"ListBucketResult"`
 	Xmlns                 string             `xml:"xmlns,attr"`
@@ -70,6 +98,26 @@ const listCommonPrefixSkipSuffix = "\U0010FFFF"
 
 func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
+}
+
+func deleteObjectByName(ctx context.Context, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, bucketID primitive.ObjectID, name string) (bool, error) {
+	fileDoc, err := fileRepo.GetByName(ctx, bucketID, name)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := fileRepo.Delete(ctx, fileDoc.ID); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
+		slog.WarnContext(ctx, "delete object: delete chunks", slog.String("error", err.Error()))
+	}
+	return true, nil
 }
 
 func objectETag(file repository.File) string {
@@ -579,28 +627,66 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusNoContent)
 			return
 		}
-		fileDoc, err := fileRepo.GetByName(ctx, bucketDoc.ID, name)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNoContent)
-				return
-			}
-			slog.ErrorContext(ctx, "delete object: get file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		if err := fileRepo.Delete(ctx, fileDoc.ID); err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNoContent)
-				return
-			}
+		if _, err := deleteObjectByName(ctx, sourceRepo, fileRepo, bucketDoc.ID, name); err != nil {
 			slog.ErrorContext(ctx, "delete object: delete file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
-			slog.WarnContext(ctx, "delete object: delete chunks", slog.String("error", err.Error()))
-		}
 		c.Status(http.StatusNoContent)
+	}
+}
+
+func DeleteObjects(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		bucketDoc, ok := lookupBucket(c, bucketRepo)
+		if !ok {
+			return
+		}
+
+		var req deleteObjectsRequest
+		decoder := xml.NewDecoder(c.Request.Body)
+		if err := decoder.Decode(&req); err != nil {
+			writeS3Error(c, http.StatusBadRequest, "MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema")
+			return
+		}
+		if len(req.Objects) > 1000 {
+			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "DeleteObjects supports at most 1000 objects per request")
+			return
+		}
+
+		result := deleteObjectsResult{
+			Xmlns:   "http://s3.amazonaws.com/doc/2006-03-01/",
+			Deleted: make([]deletedObjectResult, 0, len(req.Objects)),
+			Errors:  make([]deleteObjectError, 0),
+		}
+		for _, obj := range req.Objects {
+			key := obj.Key
+			if key == "" {
+				result.Errors = append(result.Errors, deleteObjectError{
+					Key:     key,
+					Code:    "InvalidArgument",
+					Message: "Object key must not be empty",
+				})
+				continue
+			}
+			if _, err := deleteObjectByName(ctx, sourceRepo, fileRepo, bucketDoc.ID, key); err != nil {
+				slog.ErrorContext(ctx, "delete objects: delete file", slog.String("key", key), slog.String("error", err.Error()))
+				result.Errors = append(result.Errors, deleteObjectError{
+					Key:     key,
+					Code:    "InternalError",
+					Message: "Internal error deleting object",
+				})
+				continue
+			}
+			if !req.Quiet {
+				result.Deleted = append(result.Deleted, deletedObjectResult{Key: key})
+			}
+		}
+		c.XML(http.StatusOK, result)
 	}
 }

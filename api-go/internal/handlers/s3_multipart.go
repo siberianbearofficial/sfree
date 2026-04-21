@@ -122,6 +122,19 @@ func PostObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 	}
 }
 
+// PostBucket dispatches POST requests on S3 bucket paths.
+// ?delete -> DeleteObjects
+func PostBucket(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	deleteObjectsHandler := DeleteObjects(bucketRepo, sourceRepo, fileRepo)
+	return func(c *gin.Context) {
+		if _, ok := c.GetQuery("delete"); ok {
+			deleteObjectsHandler(c)
+			return
+		}
+		writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "missing delete parameter")
+	}
+}
+
 // PutObjectOrPart dispatches PUT requests.
 // ?uploadId=X&partNumber=N → UploadPart
 // otherwise → PutObject

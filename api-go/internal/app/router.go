@@ -164,6 +164,7 @@ func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
 		router.GET("/api/s3/:bucket/*object", s3Auth, handlers.GetObjectOrParts(bucketRepo, sourceRepo, fileRepo, mpRepo))
 		router.GET("/api/s3/:bucket", s3Auth, handlers.ListObjectsOrUploads(bucketRepo, fileRepo, mpRepo))
 		router.PUT("/api/s3/:bucket/*object", s3Auth, handlers.PutObjectOrPart(bucketRepo, sourceRepo, fileRepo, mpRepo, chunkSize))
+		router.POST("/api/s3/:bucket", s3Auth, handlers.PostBucket(bucketRepo, sourceRepo, fileRepo))
 		router.POST("/api/s3/:bucket/*object", s3Auth, handlers.PostObject(bucketRepo, sourceRepo, fileRepo, mpRepo, chunkSize))
 		router.DELETE("/api/s3/:bucket/*object", s3Auth, handlers.DeleteObjectOrAbort(bucketRepo, sourceRepo, fileRepo, mpRepo))
 	}
