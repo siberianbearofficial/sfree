@@ -3,10 +3,16 @@ package resilience
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"time"
+
+	"github.com/example/sfree/api-go/internal/gdrive"
+	"github.com/example/sfree/api-go/internal/s3compat"
 )
+
+var ErrUnsupportedOperation = errors.New("unsupported source client operation")
 
 // Client mirrors the source client interface (Upload, Download, Delete).
 type Client interface {
@@ -212,6 +218,49 @@ func (w *wrapper) Download(ctx context.Context, name string) (io.ReadCloser, err
 	return nil, lastErr
 }
 
+func (w *wrapper) DownloadStream(ctx context.Context, name string) (io.ReadCloser, error) {
+	if err := w.cb.Allow(); err != nil {
+		return nil, err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying streamed download",
+				slog.String("name", name),
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return nil, ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return nil, err
+			}
+		}
+
+		reqCtx, cancel := context.WithCancel(ctx)
+		rc, err := w.inner.Download(reqCtx, name)
+		if err == nil {
+			w.cb.RecordSuccess()
+			return &cancelOnCloseReadCloser{ReadCloser: rc, cancel: cancel}, nil
+		}
+		cancel()
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return nil, lastErr
+}
+
 func (w *wrapper) Delete(ctx context.Context, name string) error {
 	if err := w.cb.Allow(); err != nil {
 		return err
@@ -254,4 +303,159 @@ func (w *wrapper) Delete(ctx context.Context, name string) error {
 
 	w.cb.RecordFailure()
 	return lastErr
+}
+
+type cancelOnCloseReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (r *cancelOnCloseReadCloser) Close() error {
+	err := r.ReadCloser.Close()
+	r.cancel()
+	return err
+}
+
+func (w *wrapper) ListFiles(ctx context.Context) ([]gdrive.File, error) {
+	inner, ok := w.inner.(interface {
+		ListFiles(context.Context) ([]gdrive.File, error)
+	})
+	if !ok {
+		return nil, ErrUnsupportedOperation
+	}
+	if err := w.cb.Allow(); err != nil {
+		return nil, err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying list files",
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return nil, ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return nil, err
+			}
+		}
+
+		reqCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
+		files, err := inner.ListFiles(reqCtx)
+		cancel()
+		if err == nil {
+			w.cb.RecordSuccess()
+			return files, nil
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return nil, lastErr
+}
+
+func (w *wrapper) StorageInfo(ctx context.Context) (int64, int64, int64, error) {
+	inner, ok := w.inner.(interface {
+		StorageInfo(context.Context) (int64, int64, int64, error)
+	})
+	if !ok {
+		return 0, 0, 0, ErrUnsupportedOperation
+	}
+	if err := w.cb.Allow(); err != nil {
+		return 0, 0, 0, err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying storage info",
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return 0, 0, 0, ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return 0, 0, 0, err
+			}
+		}
+
+		reqCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
+		total, used, free, err := inner.StorageInfo(reqCtx)
+		cancel()
+		if err == nil {
+			w.cb.RecordSuccess()
+			return total, used, free, nil
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return 0, 0, 0, lastErr
+}
+
+func (w *wrapper) ListObjects(ctx context.Context) ([]s3compat.ObjectInfo, int64, error) {
+	inner, ok := w.inner.(interface {
+		ListObjects(context.Context) ([]s3compat.ObjectInfo, int64, error)
+	})
+	if !ok {
+		return nil, 0, ErrUnsupportedOperation
+	}
+	if err := w.cb.Allow(); err != nil {
+		return nil, 0, err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying list objects",
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return nil, 0, ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return nil, 0, err
+			}
+		}
+
+		reqCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
+		objects, used, err := inner.ListObjects(reqCtx)
+		cancel()
+		if err == nil {
+			w.cb.RecordSuccess()
+			return objects, used, nil
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return nil, 0, lastErr
 }

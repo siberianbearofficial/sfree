@@ -9,16 +9,25 @@ import (
 	"io"
 	"testing"
 
+	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/resilience"
+	"github.com/example/sfree/api-go/internal/s3compat"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type stubSourceClient struct {
-	uploaded    [][]byte
-	uploadErr   error
-	downloadErr error
-	deleted     []string
-	deleteErr   error
+	uploaded     [][]byte
+	uploadErr    error
+	downloadErr  error
+	deleted      []string
+	deleteErr    error
+	gdriveFiles  []gdrive.File
+	storageTotal int64
+	storageUsed  int64
+	storageFree  int64
+	s3Objects    []s3compat.ObjectInfo
+	s3Used       int64
 }
 
 func (c *stubSourceClient) Upload(_ context.Context, _ string, r io.Reader) (string, error) {
@@ -40,6 +49,18 @@ func (c *stubSourceClient) Download(_ context.Context, name string) (io.ReadClos
 func (c *stubSourceClient) Delete(_ context.Context, name string) error {
 	c.deleted = append(c.deleted, name)
 	return c.deleteErr
+}
+
+func (c *stubSourceClient) ListFiles(_ context.Context) ([]gdrive.File, error) {
+	return c.gdriveFiles, nil
+}
+
+func (c *stubSourceClient) StorageInfo(_ context.Context) (int64, int64, int64, error) {
+	return c.storageTotal, c.storageUsed, c.storageFree, nil
+}
+
+func (c *stubSourceClient) ListObjects(_ context.Context) ([]s3compat.ObjectInfo, int64, error) {
+	return c.s3Objects, c.s3Used, nil
 }
 
 func TestSourceClientCacheReusesClients(t *testing.T) {
@@ -381,6 +402,155 @@ func TestNewSourceClientUnsupportedType(t *testing.T) {
 	if !errors.Is(err, ErrUnsupportedSourceType) {
 		t.Fatalf("expected ErrUnsupportedSourceType, got %v", err)
 	}
+}
+
+func TestInspectSourceUsesFactoryForGDrive(t *testing.T) {
+	t.Parallel()
+	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeGDrive}
+	calls := 0
+	factory := func(_ context.Context, got *repository.Source) (SourceClient, error) {
+		calls++
+		if got != src {
+			t.Fatal("expected source pointer to be passed to factory")
+		}
+		return &stubSourceClient{
+			gdriveFiles:  []gdrive.File{{ID: "file-id", Name: "file.txt", Size: 42}},
+			storageTotal: 100,
+			storageUsed:  42,
+			storageFree:  58,
+		}, nil
+	}
+
+	info, err := InspectSource(context.Background(), src, factory)
+	if err != nil {
+		t.Fatalf("inspect source: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected factory to be called once, got %d", calls)
+	}
+	if len(info.Files) != 1 || info.Files[0].ID != "file-id" || info.Files[0].Name != "file.txt" || info.Files[0].Size != 42 {
+		t.Fatalf("unexpected files: %#v", info.Files)
+	}
+	if info.StorageTotal != 100 || info.StorageUsed != 42 || info.StorageFree != 58 {
+		t.Fatalf("unexpected storage info: %#v", info)
+	}
+}
+
+func TestInspectSourceUsesFactoryForS3(t *testing.T) {
+	t.Parallel()
+	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeS3}
+	calls := 0
+	factory := func(_ context.Context, got *repository.Source) (SourceClient, error) {
+		calls++
+		if got != src {
+			t.Fatal("expected source pointer to be passed to factory")
+		}
+		return &stubSourceClient{
+			s3Objects: []s3compat.ObjectInfo{{Key: "object-key", Size: 12}},
+			s3Used:    12,
+		}, nil
+	}
+
+	info, err := InspectSource(context.Background(), src, factory)
+	if err != nil {
+		t.Fatalf("inspect source: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected factory to be called once, got %d", calls)
+	}
+	if len(info.Files) != 1 || info.Files[0].ID != "object-key" || info.Files[0].Name != "object-key" || info.Files[0].Size != 12 {
+		t.Fatalf("unexpected files: %#v", info.Files)
+	}
+	if info.StorageUsed != 12 || info.StorageTotal != 0 || info.StorageFree != 0 {
+		t.Fatalf("unexpected storage info: %#v", info)
+	}
+}
+
+func TestDownloadSourceFileUsesFactory(t *testing.T) {
+	t.Parallel()
+	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeS3}
+	calls := 0
+	factory := func(_ context.Context, got *repository.Source) (SourceClient, error) {
+		calls++
+		if got != src {
+			t.Fatal("expected source pointer to be passed to factory")
+		}
+		return &stubSourceClient{}, nil
+	}
+
+	rc, err := DownloadSourceFile(context.Background(), src, "source-object", factory)
+	if err != nil {
+		t.Fatalf("download source file: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read download: %v", err)
+	}
+	if string(data) != "source-object" {
+		t.Fatalf("unexpected body %q", data)
+	}
+	if calls != 1 {
+		t.Fatalf("expected factory to be called once, got %d", calls)
+	}
+}
+
+func TestDownloadSourceFileKeepsWrappedStreamContextOpen(t *testing.T) {
+	t.Parallel()
+	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeS3}
+	factory := func(_ context.Context, _ *repository.Source) (SourceClient, error) {
+		cfg := resilience.DefaultWrapperConfig()
+		cfg.MaxRetries = 0
+		return resilience.Wrap(&contextAwareDownloadClient{payload: []byte("streamed-data")}, cfg), nil
+	}
+
+	rc, err := DownloadSourceFile(context.Background(), src, "source-object", factory)
+	if err != nil {
+		t.Fatalf("download source file: %v", err)
+	}
+	data, readErr := io.ReadAll(rc)
+	closeErr := rc.Close()
+	if readErr != nil {
+		t.Fatalf("read download: %v", readErr)
+	}
+	if closeErr != nil {
+		t.Fatalf("close download: %v", closeErr)
+	}
+	if string(data) != "streamed-data" {
+		t.Fatalf("unexpected body %q", data)
+	}
+}
+
+type contextAwareDownloadClient struct {
+	payload []byte
+}
+
+func (c *contextAwareDownloadClient) Upload(_ context.Context, _ string, _ io.Reader) (string, error) {
+	return "", nil
+}
+
+func (c *contextAwareDownloadClient) Download(ctx context.Context, _ string) (io.ReadCloser, error) {
+	return &contextAwareReadCloser{ctx: ctx, reader: bytes.NewReader(c.payload)}, nil
+}
+
+func (c *contextAwareDownloadClient) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+type contextAwareReadCloser struct {
+	ctx    context.Context
+	reader *bytes.Reader
+}
+
+func (r *contextAwareReadCloser) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+func (r *contextAwareReadCloser) Close() error {
+	return nil
 }
 
 func TestStreamFileNoChunks(t *testing.T) {
