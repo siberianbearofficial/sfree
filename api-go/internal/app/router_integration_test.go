@@ -22,7 +22,10 @@ func TestRouterWithDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := SetupRouter(mongoConn, cfg)
+	r, err := SetupRouter(mongoConn, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	req, _ := http.NewRequest(http.MethodGet, "/dbz", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
