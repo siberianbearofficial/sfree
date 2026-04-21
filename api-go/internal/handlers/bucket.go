@@ -401,12 +401,17 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			CreatedAt: time.Now().UTC(),
 			Chunks:    chunks,
 		}
-		created, err := fileRepo.Create(ctx, fileDoc)
+		created, previousFile, err := fileRepo.ReplaceByName(ctx, fileDoc)
 		if err != nil {
 			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
 			slog.ErrorContext(ctx, "upload file: save file", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
+		}
+		if previousFile != nil {
+			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
+				slog.WarnContext(ctx, "upload file: delete old chunks", slog.String("error", err.Error()))
+			}
 		}
 		c.JSON(http.StatusOK, uploadFileResponse{
 			ID:        created.ID.Hex(),

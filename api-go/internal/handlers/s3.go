@@ -751,16 +751,6 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 			return
 		}
-		var existingFile *repository.File
-		existingFile, err = fileRepo.GetByName(ctx, bucketDoc.ID, name)
-		if err != nil && err != mongo.ErrNoDocuments {
-			slog.ErrorContext(ctx, "put object: get existing file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		if err == mongo.ErrNoDocuments {
-			existingFile = nil
-		}
 		selector := manager.SelectorForBucket(bucketDoc, sources)
 		chunks, err := manager.UploadFileChunksWithStrategy(ctx, c.Request.Body, sources, chunkSize, nil, selector)
 		if err != nil {
@@ -770,25 +760,17 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		}
 
 		fileDoc := repository.File{BucketID: bucketDoc.ID, Name: name, CreatedAt: time.Now().UTC(), Chunks: chunks}
-		if existingFile == nil {
-			if _, err := fileRepo.Create(ctx, fileDoc); err != nil {
-				_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-				slog.ErrorContext(ctx, "put object: save file", slog.String("error", err.Error()))
-				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-				return
-			}
-			c.Status(http.StatusOK)
-			return
-		}
-		fileDoc.ID = existingFile.ID
-		if _, err := fileRepo.UpdateByID(ctx, fileDoc); err != nil {
+		_, previousFile, err := fileRepo.ReplaceByName(ctx, fileDoc)
+		if err != nil {
 			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-			slog.ErrorContext(ctx, "put object: update file", slog.String("error", err.Error()))
+			slog.ErrorContext(ctx, "put object: save file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); err != nil {
-			slog.WarnContext(ctx, "put object: delete old chunks", slog.String("error", err.Error()))
+		if previousFile != nil {
+			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
+				slog.WarnContext(ctx, "put object: delete old chunks", slog.String("error", err.Error()))
+			}
 		}
 		c.Status(http.StatusOK)
 	}
@@ -861,39 +843,20 @@ func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		now := time.Now().UTC()
 		chunks := append([]repository.FileChunk(nil), sourceFile.Chunks...)
 		copyFile := repository.File{BucketID: destBucket.ID, Name: destKey, CreatedAt: now, Chunks: chunks}
-		existingFile, err := fileRepo.GetByName(ctx, destBucket.ID, destKey)
-		if err != nil && err != mongo.ErrNoDocuments {
-			slog.ErrorContext(ctx, "copy object: get existing file", slog.String("error", err.Error()))
+		currentFile, previousFile, err := fileRepo.ReplaceByName(ctx, copyFile)
+		if err != nil {
+			slog.ErrorContext(ctx, "copy object: save file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		if err == mongo.ErrNoDocuments {
-			existingFile = nil
-		}
-		if existingFile == nil {
-			created, err := fileRepo.Create(ctx, copyFile)
-			if err != nil {
-				slog.ErrorContext(ctx, "copy object: create file", slog.String("error", err.Error()))
-				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-				return
-			}
-			copyFile = *created
-		} else {
-			copyFile.ID = existingFile.ID
-			updated, err := fileRepo.UpdateByID(ctx, copyFile)
-			if err != nil {
-				slog.ErrorContext(ctx, "copy object: update file", slog.String("error", err.Error()))
-				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-				return
-			}
-			copyFile = *updated
-			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); err != nil {
+		if previousFile != nil {
+			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
 				slog.WarnContext(ctx, "copy object: delete old chunks", slog.String("error", err.Error()))
 			}
 		}
 		c.XML(http.StatusOK, copyObjectResult{
 			Xmlns:        "http://s3.amazonaws.com/doc/2006-03-01/",
-			ETag:         objectETag(copyFile),
+			ETag:         objectETag(*currentFile),
 			LastModified: now.Format(time.RFC3339),
 		})
 	}

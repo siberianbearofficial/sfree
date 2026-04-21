@@ -407,36 +407,21 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 		}
 	}
 
-	// Create or update the final file.
 	fileDoc := repository.File{
 		BucketID:  bucketDoc.ID,
 		Name:      mu.ObjectKey,
 		CreatedAt: time.Now().UTC(),
 		Chunks:    allChunks,
 	}
-
-	existingFile, err := fileRepo.GetByName(ctx, bucketDoc.ID, mu.ObjectKey)
-	if err != nil && err != mongo.ErrNoDocuments {
-		slog.ErrorContext(ctx, "complete multipart: check existing", slog.String("error", err.Error()))
+	_, previousFile, err := fileRepo.ReplaceByName(ctx, fileDoc)
+	if err != nil {
+		slog.ErrorContext(ctx, "complete multipart: save file", slog.String("error", err.Error()))
 		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 		return
 	}
-
-	if existingFile != nil {
-		fileDoc.ID = existingFile.ID
-		if _, err := fileRepo.UpdateByID(ctx, fileDoc); err != nil {
-			slog.ErrorContext(ctx, "complete multipart: update file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		if delErr := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); delErr != nil {
+	if previousFile != nil {
+		if delErr := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); delErr != nil {
 			slog.WarnContext(ctx, "complete multipart: delete old chunks", slog.String("error", delErr.Error()))
-		}
-	} else {
-		if _, err := fileRepo.Create(ctx, fileDoc); err != nil {
-			slog.ErrorContext(ctx, "complete multipart: create file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
 		}
 	}
 
