@@ -80,8 +80,13 @@ type ChunkReferenceCounter interface {
 	CountByChunk(ctx context.Context, sourceID primitive.ObjectID, name string) (int64, error)
 }
 
-type objectFileStore interface {
+type BucketScopedChunkReferenceCounter interface {
 	ChunkReferenceCounter
+	CountByChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error)
+}
+
+type objectFileStore interface {
+	BucketScopedChunkReferenceCounter
 	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
 	ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]repository.File, error)
 	ReplaceByName(ctx context.Context, f repository.File) (*repository.File, *repository.File, error)
@@ -93,6 +98,7 @@ type objectMultipartStore interface {
 	GetByUploadID(ctx context.Context, uploadID string) (*repository.MultipartUpload, error)
 	ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]repository.MultipartUpload, error)
 	CountByPartChunk(ctx context.Context, sourceID primitive.ObjectID, name string) (int64, error)
+	CountByPartChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error)
 	Delete(ctx context.Context, uploadID string) error
 	DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error
 }
@@ -217,6 +223,9 @@ func (s *ObjectService) DeleteBucketContents(ctx context.Context, bucketID primi
 	}
 
 	chunks := bucketCleanupChunks(files, uploads)
+	if err := s.deleteBucketChunksIfUnreferenced(ctx, bucketID, chunks); err != nil {
+		return DeleteBucketContentsResult{}, err
+	}
 	if err := s.files.DeleteByBucket(ctx, bucketID); err != nil {
 		return DeleteBucketContentsResult{}, err
 	}
@@ -224,9 +233,6 @@ func (s *ObjectService) DeleteBucketContents(ctx context.Context, bucketID primi
 		if err := s.multipart.DeleteByBucket(ctx, bucketID); err != nil {
 			return DeleteBucketContentsResult{}, err
 		}
-	}
-	if err := s.deleteBucketChunksIfUnreferenced(ctx, chunks); err != nil {
-		return DeleteBucketContentsResult{}, err
 	}
 	return DeleteBucketContentsResult{
 		FilesDeleted:            len(files),
@@ -333,8 +339,8 @@ func (s *ObjectService) deleteFileChunksIfUnreferenced(ctx context.Context, chun
 	return deleteFileChunksIfUnreferenced(ctx, s.files, s.deleteChunks, chunks)
 }
 
-func (s *ObjectService) deleteBucketChunksIfUnreferenced(ctx context.Context, chunks []repository.FileChunk) error {
-	return deleteBucketChunksIfUnreferenced(ctx, s.files, s.multipart, s.deleteChunks, chunks)
+func (s *ObjectService) deleteBucketChunksIfUnreferenced(ctx context.Context, bucketID primitive.ObjectID, chunks []repository.FileChunk) error {
+	return deleteBucketChunksIfUnreferenced(ctx, bucketID, s.files, s.multipart, s.deleteChunks, chunks)
 }
 
 func DeleteFileChunksIfUnreferenced(ctx context.Context, sourceRepo *repository.SourceRepository, fileStore ChunkReferenceCounter, chunks []repository.FileChunk) error {
@@ -365,7 +371,7 @@ func deleteFileChunksIfUnreferenced(ctx context.Context, files ChunkReferenceCou
 	return nil
 }
 
-func deleteBucketChunksIfUnreferenced(ctx context.Context, files ChunkReferenceCounter, multipart objectMultipartStore, deleteChunks objectChunkDeleter, chunks []repository.FileChunk) error {
+func deleteBucketChunksIfUnreferenced(ctx context.Context, bucketID primitive.ObjectID, files BucketScopedChunkReferenceCounter, multipart objectMultipartStore, deleteChunks objectChunkDeleter, chunks []repository.FileChunk) error {
 	seen := make(map[string]struct{}, len(chunks))
 	for _, chunk := range chunks {
 		ref := chunk.SourceID.Hex() + "/" + chunk.Name
@@ -373,7 +379,7 @@ func deleteBucketChunksIfUnreferenced(ctx context.Context, files ChunkReferenceC
 			continue
 		}
 		seen[ref] = struct{}{}
-		count, err := files.CountByChunk(ctx, chunk.SourceID, chunk.Name)
+		count, err := files.CountByChunkExcludingBucket(ctx, bucketID, chunk.SourceID, chunk.Name)
 		if err != nil {
 			return err
 		}
@@ -381,7 +387,7 @@ func deleteBucketChunksIfUnreferenced(ctx context.Context, files ChunkReferenceC
 			continue
 		}
 		if multipart != nil {
-			count, err = multipart.CountByPartChunk(ctx, chunk.SourceID, chunk.Name)
+			count, err = multipart.CountByPartChunkExcludingBucket(ctx, bucketID, chunk.SourceID, chunk.Name)
 			if err != nil {
 				return err
 			}

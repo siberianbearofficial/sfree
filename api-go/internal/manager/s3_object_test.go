@@ -125,6 +125,25 @@ func (f *fakeObjectFiles) CountByChunk(_ context.Context, sourceID primitive.Obj
 	return count, nil
 }
 
+func (f *fakeObjectFiles) CountByChunkExcludingBucket(_ context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error) {
+	if f.countErr != nil {
+		return 0, f.countErr
+	}
+	var count int64
+	for _, file := range f.byName {
+		if file.BucketID == bucketID {
+			continue
+		}
+		for _, chunk := range file.Chunks {
+			if chunk.SourceID == sourceID && chunk.Name == name {
+				count++
+				break
+			}
+		}
+	}
+	return count, nil
+}
+
 type fakeMultipartUploads struct {
 	uploads map[string]repository.MultipartUpload
 	delErr  error
@@ -166,6 +185,24 @@ func (f *fakeMultipartUploads) ListByBucket(_ context.Context, bucketID primitiv
 func (f *fakeMultipartUploads) CountByPartChunk(_ context.Context, sourceID primitive.ObjectID, name string) (int64, error) {
 	var count int64
 	for _, upload := range f.uploads {
+		for _, part := range upload.Parts {
+			for _, chunk := range part.Chunks {
+				if chunk.SourceID == sourceID && chunk.Name == name {
+					count++
+					break
+				}
+			}
+		}
+	}
+	return count, nil
+}
+
+func (f *fakeMultipartUploads) CountByPartChunkExcludingBucket(_ context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error) {
+	var count int64
+	for _, upload := range f.uploads {
+		if upload.BucketID == bucketID {
+			continue
+		}
 		for _, part := range upload.Parts {
 			for _, chunk := range part.Chunks {
 				if chunk.SourceID == sourceID && chunk.Name == name {
@@ -433,6 +470,9 @@ func TestObjectServiceDeleteBucketContentsReturnsChunkCleanupError(t *testing.T)
 	_, err := svc.DeleteBucketContents(context.Background(), bucketID)
 	if !errors.Is(err, cleanupErr) {
 		t.Fatalf("expected cleanup error, got %v", err)
+	}
+	if _, err := files.GetByName(context.Background(), bucketID, "object.txt"); err != nil {
+		t.Fatalf("expected file metadata to remain after cleanup failure, got %v", err)
 	}
 }
 

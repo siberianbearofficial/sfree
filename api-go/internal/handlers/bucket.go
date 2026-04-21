@@ -259,7 +259,7 @@ func DeleteBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			return
 		}
 
-		if sourceRepo == nil || fileRepo == nil || mpRepo == nil {
+		if sourceRepo == nil || fileRepo == nil {
 			slog.ErrorContext(ctx, "delete bucket: cleanup repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return

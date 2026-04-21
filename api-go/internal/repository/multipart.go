@@ -99,6 +99,18 @@ func (r *MultipartUploadRepository) CountByPartChunk(ctx context.Context, source
 	})
 }
 
+func (r *MultipartUploadRepository) CountByPartChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error) {
+	return r.coll.CountDocuments(ctx, bson.M{
+		"bucket_id": bson.M{"$ne": bucketID},
+		"parts": bson.M{"$elemMatch": bson.M{
+			"chunks": bson.M{"$elemMatch": bson.M{
+				"source_id": sourceID,
+				"name":      name,
+			}},
+		}},
+	})
+}
+
 func (r *MultipartUploadRepository) SetPart(ctx context.Context, uploadID string, part UploadPart) error {
 	partDoc := bson.D{
 		{Key: "part_number", Value: part.PartNumber},
