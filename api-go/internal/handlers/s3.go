@@ -172,10 +172,6 @@ type objectRange struct {
 	end   int64
 }
 
-const (
-	s3GetPreflightBytes = int64(1)
-)
-
 var (
 	streamS3Object      = manager.StreamFile
 	streamS3ObjectRange = manager.StreamFileRange
@@ -309,14 +305,7 @@ func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
 // incomplete body under the declared Content-Length, which preserves large
 // object streaming without staging the full response in memory or on disk.
 func preflightObjectRange(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, start, end int64) error {
-	if end < start {
-		return nil
-	}
-	preflightEnd := start + s3GetPreflightBytes - 1
-	if preflightEnd > end {
-		preflightEnd = end
-	}
-	return streamS3ObjectRange(ctx, sourceRepo, fileDoc, io.Discard, start, preflightEnd)
+	return preflightFileRange(ctx, sourceRepo, fileDoc, start, end, streamS3ObjectRange)
 }
 
 // HeadObject godoc

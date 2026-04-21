@@ -1,10 +1,8 @@
 package handlers
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -545,8 +543,20 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
+		downloadFile(bucketRepo, sourceRepo, fileRepo, grantRepo)(c)
+	}
+}
 
-		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleViewer)
+func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader, grantRepo bucketAccessGrantReader) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+			slog.ErrorContext(ctx, "download file: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+
+		acc := requireBucketAccessFor(c, bucketRepo, grantRepo, repository.RoleViewer)
 		if acc == nil {
 			return
 		}
@@ -570,16 +580,16 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusNotFound)
 			return
 		}
-		var total int64
-		for _, ch := range fileDoc.Chunks {
-			total += ch.Size
-		}
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(fileDoc.Name)))
-		c.Header("Content-Type", "application/octet-stream")
-		c.Header("Content-Length", strconv.FormatInt(total, 10))
-		c.Status(http.StatusOK)
-		if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
+		total := fileContentLength(fileDoc)
+		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamDownloadFileRange); err != nil {
 			slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		setAttachmentDownloadHeaders(c, fileDoc.Name, total)
+		c.Status(http.StatusOK)
+		if err := streamDownloadFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
+			slog.ErrorContext(ctx, "download file: stream failed after response commit", slog.String("error", err.Error()))
 		}
 	}
 }
