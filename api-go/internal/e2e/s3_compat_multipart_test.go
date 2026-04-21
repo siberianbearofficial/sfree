@@ -195,3 +195,56 @@ func TestS3CompatMultipartUploadLifecycle(t *testing.T) {
 	}
 	assertS3Error(t, body, "NoSuchUpload")
 }
+
+func TestS3CompatMalformedUnsupportedMultipartErrors(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	suffix := uniqueSuffix()
+	ts, bucket := setupS3CompatTest(t, env, suffix)
+	s3URL := func(key string, params url.Values) string {
+		rawURL := fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, key)
+		if len(params) > 0 {
+			rawURL += "?" + params.Encode()
+		}
+		return rawURL
+	}
+
+	assertError := func(name string, gotStatus, wantStatus int, body []byte, wantCode string) {
+		t.Helper()
+		if gotStatus != wantStatus {
+			t.Fatalf("%s: expected status %d, got %d: %s", name, wantStatus, gotStatus, body)
+		}
+		assertS3Error(t, body, wantCode)
+	}
+
+	objectKey := "malformed-errors-" + suffix + ".txt"
+	status, body := s3Do(t, http.MethodPost, s3URL(objectKey, nil), bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	assertError("POST object without multipart query", status, http.StatusBadRequest, body, "InvalidRequest")
+
+	copyHeaders := map[string]string{"x-amz-copy-source": "/" + bucket.Key + "/source-" + suffix + ".txt"}
+	status, _, body = s3DoWithHeaders(t, http.MethodPut, s3URL(objectKey, url.Values{"uploadId": {"upload-part-copy-id"}}), bucket.AccessKey, bucket.AccessSecret, env.Region, nil, copyHeaders)
+	assertError("UploadPartCopy", status, http.StatusNotImplemented, body, "NotImplemented")
+
+	createURL := s3URL(objectKey, url.Values{"uploads": {""}})
+	status, body = s3Do(t, http.MethodPost, createURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK {
+		t.Fatalf("CreateMultipartUpload: expected 200, got %d: %s", status, body)
+	}
+	var createResult struct {
+		UploadID string `xml:"UploadId"`
+	}
+	if err := xml.Unmarshal(body, &createResult); err != nil || createResult.UploadID == "" {
+		t.Fatalf("CreateMultipartUpload decode: uploadId=%q err=%v body=%s", createResult.UploadID, err, body)
+	}
+
+	completeURL := s3URL(objectKey, url.Values{"uploadId": {createResult.UploadID}})
+	status, body = s3Do(t, http.MethodPost, completeURL, bucket.AccessKey, bucket.AccessSecret, env.Region, []byte("<CompleteMultipartUpload><Part>"))
+	assertError("malformed CompleteMultipartUpload XML", status, http.StatusBadRequest, body, "MalformedXML")
+
+	missingUploadURL := s3URL("missing-upload-"+suffix+".txt", url.Values{"uploadId": {"missing-upload-id"}})
+	status, body = s3Do(t, http.MethodPost, missingUploadURL, bucket.AccessKey, bucket.AccessSecret, env.Region, []byte("<CompleteMultipartUpload/>"))
+	assertError("unknown multipart upload ID", status, http.StatusNotFound, body, "NoSuchUpload")
+}
