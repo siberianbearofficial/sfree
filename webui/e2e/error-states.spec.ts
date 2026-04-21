@@ -54,7 +54,7 @@ test.describe("Error states", () => {
     await expect(dialog.getByText("generated-secret-pw")).toBeVisible();
 
     // Close button dismisses
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await dialog.getByText("Close", { exact: true }).click();
     await expect(dialog).not.toBeVisible();
   });
 
