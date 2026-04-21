@@ -177,6 +177,44 @@ func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 	}
 }
 
+func TestObjectServicePutObjectCreateFailureDeletesUploadedChunks(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	files := newFakeObjectFiles()
+	files.createErr = errors.New("create failed")
+	var deleted []repository.FileChunk
+	svc := testObjectService(files, &deleted)
+
+	_, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5)
+	if err == nil {
+		t.Fatal("expected PutObject create error")
+	}
+	if len(deleted) != 1 || deleted[0].Name != "new-chunk" {
+		t.Fatalf("expected uploaded chunk cleanup after create failure, got %#v", deleted)
+	}
+}
+
+func TestObjectServicePutObjectUpdateFailureDeletesUploadedChunks(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	existing := repository.File{
+		ID:       primitive.NewObjectID(),
+		BucketID: bucketID,
+		Name:     "object.txt",
+		Chunks:   []repository.FileChunk{{SourceID: primitive.NewObjectID(), Name: "old-chunk", Size: 9}},
+	}
+	files := newFakeObjectFiles(existing)
+	files.updateErr = errors.New("update failed")
+	var deleted []repository.FileChunk
+	svc := testObjectService(files, &deleted)
+
+	_, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5)
+	if err == nil {
+		t.Fatal("expected PutObject update error")
+	}
+	if len(deleted) != 1 || deleted[0].Name != "new-chunk" {
+		t.Fatalf("expected uploaded chunk cleanup after update failure, got %#v", deleted)
+	}
+}
+
 func TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination(t *testing.T) {
 	userID := primitive.NewObjectID()
 	sourceBucketID := primitive.NewObjectID()
