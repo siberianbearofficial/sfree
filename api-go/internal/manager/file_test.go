@@ -3,6 +3,8 @@ package manager
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"testing"
@@ -363,5 +365,168 @@ func TestDeleteFileChunksNoChunks(t *testing.T) {
 	t.Parallel()
 	if err := DeleteFileChunks(context.Background(), nil, []repository.FileChunk{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// fixedDownloadClient returns predetermined bytes for named chunks.
+type fixedDownloadClient struct {
+	data map[string][]byte
+}
+
+func (c *fixedDownloadClient) Upload(_ context.Context, name string, _ io.Reader) (string, error) {
+	return name, nil
+}
+
+func (c *fixedDownloadClient) Download(_ context.Context, name string) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(c.data[name])), nil
+}
+
+func (c *fixedDownloadClient) Delete(_ context.Context, _ string) error { return nil }
+
+func TestUploadFileChunksStoresChecksum(t *testing.T) {
+	t.Parallel()
+	src := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	stub := &stubSourceClient{}
+	factory := func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return stub, nil
+	}
+
+	payload := []byte("hello world")
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), []repository.Source{src}, len(payload), factory, &RoundRobinSelector{})
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+
+	sum := sha256.Sum256(payload)
+	want := hex.EncodeToString(sum[:])
+	if chunks[0].Checksum != want {
+		t.Fatalf("checksum mismatch: got %q, want %q", chunks[0].Checksum, want)
+	}
+}
+
+func TestUploadFileChunksChecksumPerChunk(t *testing.T) {
+	t.Parallel()
+	src := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	stub := &stubSourceClient{}
+	factory := func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return stub, nil
+	}
+
+	// 6 bytes split into two 3-byte chunks
+	payload := []byte("abcdef")
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), []repository.Source{src}, 3, factory, &RoundRobinSelector{})
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(chunks))
+	}
+
+	for i, part := range [][]byte{payload[:3], payload[3:]} {
+		sum := sha256.Sum256(part)
+		want := hex.EncodeToString(sum[:])
+		if chunks[i].Checksum != want {
+			t.Fatalf("chunk %d checksum: got %q, want %q", i, chunks[i].Checksum, want)
+		}
+	}
+}
+
+func TestStreamFileChecksumVerificationPass(t *testing.T) {
+	t.Parallel()
+	payload := []byte("integrity check")
+	sum := sha256.Sum256(payload)
+	chunk := repository.FileChunk{
+		SourceID: primitive.NewObjectID(),
+		Name:     "chunk0",
+		Order:    0,
+		Size:     int64(len(payload)),
+		Checksum: hex.EncodeToString(sum[:]),
+	}
+	f := &repository.File{Chunks: []repository.FileChunk{chunk}}
+
+	var buf bytes.Buffer
+	err := streamFileWithFactory(context.Background(), f, &buf, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{"chunk0": payload}}, nil
+	})
+	if err != nil {
+		t.Fatalf("expected no error for matching checksum, got %v", err)
+	}
+	if !bytes.Equal(buf.Bytes(), payload) {
+		t.Fatalf("unexpected output: %q", buf.Bytes())
+	}
+}
+
+func TestStreamFileChecksumVerificationFail(t *testing.T) {
+	t.Parallel()
+	payload := []byte("integrity check")
+	sum := sha256.Sum256(payload)
+	chunk := repository.FileChunk{
+		SourceID: primitive.NewObjectID(),
+		Name:     "chunk0",
+		Order:    0,
+		Size:     int64(len(payload)),
+		Checksum: hex.EncodeToString(sum[:]),
+	}
+	f := &repository.File{Chunks: []repository.FileChunk{chunk}}
+
+	corrupted := []byte("CORRUPTED DATA!!")
+	var buf bytes.Buffer
+	err := streamFileWithFactory(context.Background(), f, &buf, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{"chunk0": corrupted}}, nil
+	})
+	if !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("expected ErrChecksumMismatch, got %v", err)
+	}
+}
+
+func TestStreamFileChecksumRejectsOversizedChunk(t *testing.T) {
+	t.Parallel()
+	payload := []byte("integrity check")
+	sum := sha256.Sum256(payload)
+	chunk := repository.FileChunk{
+		SourceID: primitive.NewObjectID(),
+		Name:     "chunk0",
+		Order:    0,
+		Size:     int64(len(payload)),
+		Checksum: hex.EncodeToString(sum[:]),
+	}
+	f := &repository.File{Chunks: []repository.FileChunk{chunk}}
+
+	var buf bytes.Buffer
+	err := streamFileWithFactory(context.Background(), f, &buf, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{"chunk0": append(payload, '!')}}, nil
+	})
+	if !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("expected ErrChecksumMismatch, got %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("expected no bytes written before checksum validation, got %d", buf.Len())
+	}
+}
+
+func TestStreamFileNoChecksumSkipsVerification(t *testing.T) {
+	t.Parallel()
+	payload := []byte("legacy chunk")
+	// Chunk with no checksum — verification should be skipped (backwards compat).
+	chunk := repository.FileChunk{
+		SourceID: primitive.NewObjectID(),
+		Name:     "chunk0",
+		Order:    0,
+		Size:     int64(len(payload)),
+	}
+	f := &repository.File{Chunks: []repository.FileChunk{chunk}}
+
+	var buf bytes.Buffer
+	err := streamFileWithFactory(context.Background(), f, &buf, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{"chunk0": payload}}, nil
+	})
+	if err != nil {
+		t.Fatalf("expected no error for chunk without checksum, got %v", err)
+	}
+	if !bytes.Equal(buf.Bytes(), payload) {
+		t.Fatalf("unexpected output: %q", buf.Bytes())
 	}
 }

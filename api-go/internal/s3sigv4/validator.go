@@ -322,7 +322,7 @@ func (v *Validator) validatePresign(ctx context.Context, r *http.Request, access
 	if now.Before(amzDate.Add(-v.skew())) {
 		return nil, ErrClockSkew
 	}
-	if now.After(amzDate.Add(ttl).Add(v.skew())) {
+	if now.After(amzDate.Add(ttl)) {
 		return nil, ErrExpired
 	}
 

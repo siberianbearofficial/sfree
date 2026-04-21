@@ -36,22 +36,25 @@ test.describe("Error states", () => {
     });
 
     await page.goto("/");
-    await page.getByRole("button", { name: "Sign Up" }).click();
+    await page.getByRole("button", { name: "Sign Up" }).first().click();
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(
-      dialog.getByRole("heading", { name: "Sign Up" }),
+      dialog
+        .locator(":not(button)")
+        .filter({ hasText: /^Sign Up$/ })
+        .first(),
     ).toBeVisible();
 
     await dialog.getByLabel("Username").fill("newuser");
     await dialog.getByRole("button", { name: "Sign Up" }).click();
 
     // Generated password is shown via Snippet
-    await expect(page.getByText("generated-secret-pw")).toBeVisible();
+    await expect(dialog.getByText("generated-secret-pw")).toBeVisible();
 
     // Close button dismisses
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await dialog.getByText("Close", { exact: true }).click();
     await expect(dialog).not.toBeVisible();
   });
 
@@ -91,12 +94,17 @@ test.describe("Error states", () => {
     await page.goto("/sources");
 
     // Page must not crash — heading and Add Source button should still be present
-    await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Source" }),
+      page.getByRole("heading", { name: /^Sources$/, level: 1 }),
     ).toBeVisible();
-    // Shows empty state (error silently results in empty list)
-    await expect(page.getByText("No sources yet")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Add Source" }).first(),
+    ).toBeVisible();
+    // API errors should show the dedicated empty state title and retry action
+    await expect(
+      page.getByRole("heading", { name: "Failed to load sources" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 
   test("buckets page renders without crashing when API returns error", async ({
@@ -109,10 +117,15 @@ test.describe("Error states", () => {
 
     await page.goto("/buckets");
 
-    await expect(page.getByRole("heading", { name: "Buckets" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Bucket" }),
+      page.getByRole("heading", { name: /^Buckets$/, level: 1 }),
     ).toBeVisible();
-    await expect(page.getByText("No buckets yet")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Add Bucket" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Failed to load buckets" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 });
