@@ -143,6 +143,57 @@ func TestUploadFileChunksWithRoundRobinStrategy(t *testing.T) {
 	}
 }
 
+type shortReadReader struct {
+	data    []byte
+	maxRead int
+}
+
+func (r *shortReadReader) Read(p []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, io.EOF
+	}
+	if len(p) > r.maxRead {
+		p = p[:r.maxRead]
+	}
+	if len(p) > len(r.data) {
+		p = p[:len(r.data)]
+	}
+	n := copy(p, r.data[:len(p)])
+	r.data = r.data[n:]
+	return n, nil
+}
+
+func TestUploadFileChunksFillsChunksAcrossShortReads(t *testing.T) {
+	t.Parallel()
+	src := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	stub := &stubSourceClient{}
+	factory := func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return stub, nil
+	}
+
+	payload := []byte("abcdefghij")
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), &shortReadReader{data: payload, maxRead: 1}, []repository.Source{src}, 4, factory, &RoundRobinSelector{})
+	if err != nil {
+		t.Fatalf("upload chunks: %v", err)
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("expected 3 chunks, got %d", len(chunks))
+	}
+	if len(stub.uploaded) != 3 {
+		t.Fatalf("expected 3 uploaded payloads, got %d", len(stub.uploaded))
+	}
+
+	wantUploads := [][]byte{payload[:4], payload[4:8], payload[8:]}
+	for i, want := range wantUploads {
+		if !bytes.Equal(stub.uploaded[i], want) {
+			t.Fatalf("upload %d: got %q, want %q", i, stub.uploaded[i], want)
+		}
+		if chunks[i].Size != int64(len(want)) {
+			t.Fatalf("chunk %d size: got %d, want %d", i, chunks[i].Size, len(want))
+		}
+	}
+}
+
 func TestRoundRobinSelectorNoSources(t *testing.T) {
 	t.Parallel()
 	sel := &RoundRobinSelector{}
