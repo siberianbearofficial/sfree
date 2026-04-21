@@ -71,7 +71,11 @@ func main() {
 		slog.Error("failed to connect mongo", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	router := app.SetupRouter(mongoConn, cfg)
+	router, err := app.SetupRouter(mongoConn, cfg)
+	if err != nil {
+		slog.Error("failed to initialize router", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 	slog.Info("starting server")
 	if err := router.Run(); err != nil {
 		slog.Error("failed to run server", slog.String("error", err.Error()))

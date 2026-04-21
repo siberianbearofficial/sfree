@@ -157,7 +157,10 @@ func newTestServer(t *testing.T) (*httptest.Server, *appconfig.Config) {
 	if err != nil {
 		t.Fatalf("connect mongo: %v", err)
 	}
-	router := app.SetupRouter(mongoConn, cfg)
+	router, err := app.SetupRouter(mongoConn, cfg)
+	if err != nil {
+		t.Fatalf("setup router: %v", err)
+	}
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, cfg

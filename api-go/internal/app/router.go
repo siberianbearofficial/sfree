@@ -10,19 +10,22 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
-func SetupRouter(m *db.Mongo, cfg *config.Config) *gin.Engine {
+func SetupRouter(m *db.Mongo, cfg *config.Config) (*gin.Engine, error) {
 	router := gin.New()
 
 	registerMiddleware(router, cfg)
 	registerProbeRoutes(router, m)
 
-	deps := newRouterDependencies(m, cfg)
+	deps, err := newRouterDependencies(m, cfg)
+	if err != nil {
+		return nil, err
+	}
 	registerRESTRoutes(router, cfg, deps)
 	registerPublicShareRoutes(router, deps)
 	registerDocsMetricsRoutes(router)
 	registerS3Routes(router, cfg, deps)
 
-	return router
+	return router, nil
 }
 
 func registerMiddleware(router *gin.Engine, cfg *config.Config) {

@@ -1,11 +1,23 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
 	"github.com/example/sfree/api-go/internal/handlers"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+)
+
+var (
+	newUserRepository            = repository.NewUserRepository
+	newBucketRepository          = repository.NewBucketRepository
+	newSourceRepository          = repository.NewSourceRepository
+	newFileRepository            = repository.NewFileRepository
+	newShareLinkRepository       = repository.NewShareLinkRepository
+	newMultipartUploadRepository = repository.NewMultipartUploadRepository
+	newBucketGrantRepository     = repository.NewBucketGrantRepository
 )
 
 type routerDependencies struct {
@@ -19,25 +31,45 @@ type routerDependencies struct {
 	grantRepo     *repository.BucketGrantRepository
 }
 
-func newRouterDependencies(m *db.Mongo, cfg *config.Config) *routerDependencies {
+func newRouterDependencies(m *db.Mongo, cfg *config.Config) (*routerDependencies, error) {
 	deps := &routerDependencies{}
 	if m == nil {
-		return deps
+		return deps, nil
 	}
 
 	var err error
-	deps.userRepo, err = repository.NewUserRepository(m.DB)
-	if err == nil {
-		deps.auth = handlers.Auth(deps.userRepo, routerJWTSecret(cfg))
+	deps.userRepo, err = newUserRepository(m.DB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize user repository: %w", err)
 	}
-	deps.bucketRepo, _ = repository.NewBucketRepository(m.DB)
-	deps.sourceRepo, _ = repository.NewSourceRepository(m.DB, routerAccessSecret(cfg))
-	deps.fileRepo, _ = repository.NewFileRepository(m.DB)
-	deps.mpRepo, _ = repository.NewMultipartUploadRepository(m.DB)
-	deps.shareLinkRepo, _ = repository.NewShareLinkRepository(m.DB)
-	deps.grantRepo, _ = repository.NewBucketGrantRepository(m.DB)
+	deps.auth = handlers.Auth(deps.userRepo, routerJWTSecret(cfg))
 
-	return deps
+	deps.bucketRepo, err = newBucketRepository(m.DB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize bucket repository: %w", err)
+	}
+	deps.sourceRepo, err = newSourceRepository(m.DB, routerAccessSecret(cfg))
+	if err != nil {
+		return nil, fmt.Errorf("initialize source repository: %w", err)
+	}
+	deps.fileRepo, err = newFileRepository(m.DB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize file repository: %w", err)
+	}
+	deps.mpRepo, err = newMultipartUploadRepository(m.DB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize multipart upload repository: %w", err)
+	}
+	deps.shareLinkRepo, err = newShareLinkRepository(m.DB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize share link repository: %w", err)
+	}
+	deps.grantRepo, err = newBucketGrantRepository(m.DB)
+	if err != nil {
+		return nil, fmt.Errorf("initialize bucket grant repository: %w", err)
+	}
+
+	return deps, nil
 }
 
 func routerJWTSecret(cfg *config.Config) string {
