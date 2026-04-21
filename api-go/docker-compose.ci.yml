@@ -1,6 +1,9 @@
 services:
   api-go:
-    build: .
+    build:
+      context: .
+      args:
+        GO_IMAGE: ${GO_IMAGE:-golang:1.24}
     environment:
       - GIN_MODE=release
       - ENV=test
@@ -8,7 +11,7 @@ services:
     depends_on:
       - mongo
   mongo:
-    image: mongo:7.0.32-rc2-jammy
+    image: ${MONGO_IMAGE:-mongo:7.0.32-rc2-jammy}
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=example
