@@ -115,4 +115,11 @@ func TestS3CompatDeleteObjects(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("DeleteObjects too many keys: expected 400, got %d: %s", status, body)
 	}
+	assertS3Error(t, body, "InvalidRequest")
+
+	status, body = s3Do(t, http.MethodPost, deleteURL, bucket.AccessKey, bucket.AccessSecret, env.Region, []byte("<Delete><Object><Key>broken"))
+	if status != http.StatusBadRequest {
+		t.Fatalf("DeleteObjects malformed XML: expected 400, got %d: %s", status, body)
+	}
+	assertS3Error(t, body, "MalformedXML")
 }
