@@ -136,11 +136,21 @@ func PostBucket(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 }
 
 // PutObjectOrPart dispatches PUT requests.
+// x-amz-copy-source → CopyObject
 // ?uploadId=X&partNumber=N → UploadPart
 // otherwise → PutObject
 func PutObjectOrPart(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int) gin.HandlerFunc {
 	putHandler := PutObject(bucketRepo, sourceRepo, fileRepo, chunkSize)
+	copyHandler := CopyObject(bucketRepo, fileRepo)
 	return func(c *gin.Context) {
+		if c.GetHeader("x-amz-copy-source") != "" {
+			if _, ok := c.GetQuery("uploadId"); ok {
+				writeS3Error(c, http.StatusNotImplemented, "NotImplemented", "UploadPartCopy is not supported")
+				return
+			}
+			copyHandler(c)
+			return
+		}
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploadId"); ok {
 				uploadPart(c, bucketRepo, sourceRepo, mpRepo, chunkSize)
