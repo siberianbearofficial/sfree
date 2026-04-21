@@ -66,15 +66,53 @@ type wrapper struct {
 	retryCfg RetryConfig
 }
 
+type uploadBodyReplay interface {
+	Reader() (io.Reader, error)
+}
+
+type seekableUploadBody struct {
+	r     io.ReadSeeker
+	start int64
+}
+
+func (b seekableUploadBody) Reader() (io.Reader, error) {
+	if _, err := b.r.Seek(b.start, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return b.r, nil
+}
+
+type bufferedUploadBody []byte
+
+func (b bufferedUploadBody) Reader() (io.Reader, error) {
+	return bytes.NewReader(b), nil
+}
+
+func newUploadBodyReplay(r io.Reader) (uploadBodyReplay, error) {
+	if rs, ok := r.(io.ReadSeeker); ok {
+		start, err := rs.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return nil, err
+		}
+		return seekableUploadBody{r: rs, start: start}, nil
+	}
+
+	payload, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return bufferedUploadBody(payload), nil
+}
+
 func (w *wrapper) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
 	if err := w.cb.Allow(); err != nil {
 		return "", err
 	}
 
-	var payload []byte
+	var replay uploadBodyReplay
 	if w.retryCfg.MaxRetries > 0 {
 		var err error
-		payload, err = io.ReadAll(r)
+		replay, err = newUploadBodyReplay(r)
 		if err != nil {
 			w.cb.RecordFailure()
 			return "", err
@@ -104,8 +142,13 @@ func (w *wrapper) Upload(ctx context.Context, name string, r io.Reader) (string,
 		}
 
 		body := r
-		if payload != nil {
-			body = bytes.NewReader(payload)
+		if replay != nil {
+			var err error
+			body, err = replay.Reader()
+			if err != nil {
+				w.cb.RecordFailure()
+				return "", err
+			}
 		}
 		reqCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
 		result, err := w.inner.Upload(reqCtx, name, body)

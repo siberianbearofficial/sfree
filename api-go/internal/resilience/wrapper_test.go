@@ -272,6 +272,60 @@ func TestWrapperRetryUploadReplaysBody(t *testing.T) {
 	}
 }
 
+type countingReadSeeker struct {
+	*strings.Reader
+	readCalls atomic.Int32
+}
+
+func (r *countingReadSeeker) Read(p []byte) (int, error) {
+	r.readCalls.Add(1)
+	return r.Reader.Read(p)
+}
+
+type firstAttemptUploadClient struct {
+	body *countingReadSeeker
+}
+
+func (c *firstAttemptUploadClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	if c.body.readCalls.Load() != 0 {
+		return "", errors.New("upload body was read before first attempt")
+	}
+	if _, err := io.ReadAll(r); err != nil {
+		return "", err
+	}
+	return "uploaded-" + name, nil
+}
+
+func (c *firstAttemptUploadClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *firstAttemptUploadClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+func TestWrapperRetryUploadDoesNotPreReadSeekableBody(t *testing.T) {
+	body := &countingReadSeeker{Reader: strings.NewReader("chunk-payload")}
+	inner := &firstAttemptUploadClient{body: body}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       1,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	name, err := w.Upload(context.Background(), "file.txt", body)
+	if err != nil {
+		t.Fatalf("expected upload without pre-reading seekable body, got %v", err)
+	}
+	if name != "uploaded-file.txt" {
+		t.Fatalf("unexpected name: %s", name)
+	}
+}
+
 func TestWrapperRetryDownloadSucceeds(t *testing.T) {
 	inner := &flakeyClient{failCount: 1}
 	cfg := WrapperConfig{
