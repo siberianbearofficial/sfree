@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/example/sfree/api-go/internal/gdrive"
+	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/example/sfree/api-go/internal/s3compat"
 	"github.com/example/sfree/api-go/internal/telegram"
@@ -284,6 +284,10 @@ func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.Buck
 // @Security BasicAuth
 // @Router /api/v1/sources/{id}/info [get]
 func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
+	return getSourceInfo(repo, nil)
+}
+
+func getSourceInfo(repo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if repo == nil {
@@ -313,84 +317,29 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		switch src.Type {
-		case repository.SourceTypeGDrive:
-			cli, err := gdrive.NewClient(c.Request.Context(), []byte(src.Key))
-			if err != nil {
-				slog.ErrorContext(ctx, "get source info: create client", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
+		info, err := manager.InspectSource(c.Request.Context(), src, factory)
+		if err != nil {
+			if err == manager.ErrUnsupportedSourceType {
+				c.Status(http.StatusBadRequest)
 				return
 			}
-			files, err := cli.ListFiles(c.Request.Context())
-			if err != nil {
-				slog.ErrorContext(ctx, "get source info: list files", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			total, used, free, err := cli.StorageInfo(c.Request.Context())
-			if err != nil {
-				slog.ErrorContext(ctx, "get source info: storage info", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			respFiles := make([]sourceInfoFile, 0, len(files))
-			for _, f := range files {
-				respFiles = append(respFiles, sourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size})
-			}
-			c.JSON(http.StatusOK, sourceInfoResponse{
-				ID:           src.ID.Hex(),
-				Name:         src.Name,
-				Type:         string(src.Type),
-				Files:        respFiles,
-				StorageTotal: total,
-				StorageUsed:  used,
-				StorageFree:  free,
-			})
-		case repository.SourceTypeTelegram:
-			c.JSON(http.StatusOK, sourceInfoResponse{
-				ID:           src.ID.Hex(),
-				Name:         src.Name,
-				Type:         string(src.Type),
-				Files:        []sourceInfoFile{},
-				StorageTotal: 0,
-				StorageUsed:  0,
-				StorageFree:  0,
-			})
-		case repository.SourceTypeS3:
-			cfg, err := s3compat.ParseConfig(src.Key)
-			if err != nil {
-				slog.ErrorContext(ctx, "get source info: parse s3 source config", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			cli, err := s3compat.NewClient(c.Request.Context(), cfg)
-			if err != nil {
-				slog.ErrorContext(ctx, "get source info: create s3 client", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			files, used, err := cli.ListObjects(c.Request.Context())
-			if err != nil {
-				slog.ErrorContext(ctx, "get source info: list s3 objects", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			respFiles := make([]sourceInfoFile, 0, len(files))
-			for _, f := range files {
-				respFiles = append(respFiles, sourceInfoFile{ID: f.Key, Name: f.Key, Size: f.Size})
-			}
-			c.JSON(http.StatusOK, sourceInfoResponse{
-				ID:           src.ID.Hex(),
-				Name:         src.Name,
-				Type:         string(src.Type),
-				Files:        respFiles,
-				StorageTotal: 0,
-				StorageUsed:  used,
-				StorageFree:  0,
-			})
-		default:
-			c.Status(http.StatusBadRequest)
+			slog.ErrorContext(ctx, "get source info: inspect source", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
 		}
+		respFiles := make([]sourceInfoFile, 0, len(info.Files))
+		for _, f := range info.Files {
+			respFiles = append(respFiles, sourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size})
+		}
+		c.JSON(http.StatusOK, sourceInfoResponse{
+			ID:           src.ID.Hex(),
+			Name:         src.Name,
+			Type:         string(src.Type),
+			Files:        respFiles,
+			StorageTotal: info.StorageTotal,
+			StorageUsed:  info.StorageUsed,
+			StorageFree:  info.StorageFree,
+		})
 	}
 }
 
@@ -408,6 +357,10 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 // @Security BasicAuth
 // @Router /api/v1/sources/{id}/files/{file_id}/download [get]
 func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
+	return downloadSourceFile(sourceRepo, nil)
+}
+
+func downloadSourceFile(sourceRepo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if sourceRepo == nil {
 			slog.ErrorContext(c.Request.Context(), "download source file: repository is nil")
@@ -442,43 +395,18 @@ func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc
 			return
 		}
 
-		var body io.ReadCloser
 		filename := fileID
-
-		switch src.Type {
-		case repository.SourceTypeGDrive:
-			cli, err := gdrive.NewClient(c.Request.Context(), []byte(src.Key))
-			if err != nil {
-				slog.ErrorContext(c.Request.Context(), "download source file: create gdrive client", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
+		body, err := manager.DownloadSourceFile(c.Request.Context(), src, fileID, factory)
+		if err != nil {
+			if err == manager.ErrUnsupportedSourceType {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "download not supported for this source type"})
 				return
 			}
-			body, err = cli.Download(c.Request.Context(), fileID)
-			if err != nil {
-				slog.ErrorContext(c.Request.Context(), "download source file: gdrive download", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-		case repository.SourceTypeS3:
-			cfg, err := s3compat.ParseConfig(src.Key)
-			if err != nil {
-				slog.ErrorContext(c.Request.Context(), "download source file: parse s3 config", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			cli, err := s3compat.NewClient(c.Request.Context(), cfg)
-			if err != nil {
-				slog.ErrorContext(c.Request.Context(), "download source file: create s3 client", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-			body, err = cli.Download(c.Request.Context(), fileID)
-			if err != nil {
-				slog.ErrorContext(c.Request.Context(), "download source file: s3 download", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
-				return
-			}
-		default:
+			slog.ErrorContext(c.Request.Context(), "download source file: download", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if body == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "download not supported for this source type"})
 			return
 		}

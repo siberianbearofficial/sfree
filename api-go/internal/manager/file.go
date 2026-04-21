@@ -30,13 +30,15 @@ var ErrChecksumMismatch = errors.New("checksum mismatch")
 
 var tracer = telemetry.Tracer("sfree/manager")
 
-type sourceClient interface {
+type SourceClient interface {
 	Upload(ctx context.Context, name string, r io.Reader) (string, error)
 	Download(ctx context.Context, name string) (io.ReadCloser, error)
 	Delete(ctx context.Context, name string) error
 }
 
-type SourceClientFactory func(ctx context.Context, src *repository.Source) (sourceClient, error)
+type sourceClient = SourceClient
+
+type SourceClientFactory func(ctx context.Context, src *repository.Source) (SourceClient, error)
 
 type SourceSelector interface {
 	NextSource(sources []repository.Source) (int, repository.Source, error)
@@ -136,7 +138,7 @@ func SelectorForBucket(bucket *repository.Bucket, sources []repository.Source) S
 // 5-failure threshold, 30s recovery).
 var ResilienceConfig = resilience.DefaultWrapperConfig()
 
-func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient, error) {
+func NewSourceClient(ctx context.Context, src *repository.Source) (SourceClient, error) {
 	if src == nil {
 		return nil, errors.New("nil source")
 	}
