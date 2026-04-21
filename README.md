@@ -40,6 +40,19 @@ pool free-tier and personal storage services into one namespace.
 chunks, provide erasure coding, or guarantee durability if an upstream source
 disappears. See [Launch Caveats](#launch-caveats) for the full picture.
 
+## Features
+
+- **Multi-backend buckets** backed by Google Drive, Telegram, and
+  S3-compatible storage sources.
+- **Browser UI, REST API, CLI, and S3-compatible endpoint** for managing
+  sources, buckets, objects, and generated S3 credentials.
+- **RBAC and bucket sharing** for scoped access to stored objects.
+- **Multipart upload and presigned URLs** for S3-compatible client workflows.
+- **Source failover** during object reads when a configured source is
+  temporarily unavailable.
+- **Rate limiting** on API traffic.
+- **Credential encryption** for stored upstream source secrets.
+
 ## Supported Storage Backends
 
 | Backend | API | Browser UI | Notes |
@@ -242,9 +255,8 @@ SFree is an early-stage project. These constraints are current and intentional:
 
 - **No redundancy.** Chunks are distributed, not replicated. Losing an upstream
   source can make files unrecoverable.
-- **Basic auth only.** The API uses HTTP Basic Auth. The browser UI stores
-  credentials in `localStorage`. Source API responses echo stored credential
-  payloads.
+- **Authentication is still early.** The API supports HTTP Basic Auth and OAuth,
+  but auth flows and browser token storage are not production-hardened.
 - **Uneven observability.** Google Drive sources expose the richest file and
   quota info. Telegram and S3-compatible sources return less metadata.
 
