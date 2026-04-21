@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,9 @@ func TestSetupRouterNilMongoRouteSet(t *testing.T) {
 		{http.MethodGet, "/healthz"},
 		{http.MethodGet, "/publication/ready"},
 		{http.MethodGet, "/dbz"},
+		{http.MethodGet, "/api/openapi.json"},
+		{http.MethodGet, "/api/docs"},
+		{http.MethodGet, "/api/docs/*any"},
 		{http.MethodGet, "/swagger/*any"},
 		{http.MethodGet, "/metrics"},
 	}
@@ -63,6 +67,39 @@ func TestSetupRouterNilMongoRouteSet(t *testing.T) {
 	for _, unexpected := range unexpectedRoutes {
 		if hasRoute(r, unexpected.method, unexpected.path) {
 			t.Fatalf("did not expect %s %s to be registered", unexpected.method, unexpected.path)
+		}
+	}
+}
+
+func TestOpenAPIJSONRoute(t *testing.T) {
+	r, err := SetupRouter(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "/api/openapi.json", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if contentType := w.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
+		t.Fatalf("expected OpenAPI JSON content type, got %q", contentType)
+	}
+	var doc struct {
+		OpenAPI string                         `json:"openapi"`
+		Paths   map[string]map[string]struct{} `json:"paths"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("expected valid OpenAPI JSON: %v", err)
+	}
+	if doc.OpenAPI != "3.0.3" {
+		t.Fatalf("expected OpenAPI 3.0.3, got %q", doc.OpenAPI)
+	}
+	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/s3/{bucket}", "/api/s3/{bucket}/{objectKey}"} {
+		if _, ok := doc.Paths[path]; !ok {
+			t.Fatalf("expected OpenAPI path %s", path)
 		}
 	}
 }
