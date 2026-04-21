@@ -228,6 +228,30 @@ async def test_s3_sdk_get_object_range_returns_partial_content(client, e2e_conte
     assert response["AcceptRanges"] == "bytes"
 
 
+async def test_s3_sdk_head_object_returns_metadata(client, e2e_context):
+    filename = f"e2e-sdk-head-{uuid4().hex[:8]}.txt"
+    payload = b"sfree sdk head payload"
+
+    await client.upload_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+        content=payload,
+    )
+
+    response = await client.head_object_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+    )
+    assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
+    assert response["ContentLength"] == len(payload)
+    assert response["ETag"]
+    assert response["LastModified"]
+
+
 async def test_s3_sdk_copy_object_compatibility(client, e2e_context):
     suffix = uuid4().hex[:8]
     source_key = f"e2e-sdk-copy-source-{suffix}.txt"
