@@ -261,6 +261,62 @@ func TestValidatorHeaderAuthRejectsBodyWithoutPayloadHash(t *testing.T) {
 	}
 }
 
+func TestValidatorHeaderAuthAllowsUnknownLengthEmptyBodyWithoutPayloadHash(t *testing.T) {
+	accessKey := "mybucketkey"
+	secretKey := "mysecretkey123"
+	now := time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC)
+	payloadHash := emptyPayloadHash()
+
+	req, err := http.NewRequest("PUT", "https://sfree.example.com/api/s3/mybucket/uploads/empty.txt", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	body := &readTrackingBody{reader: strings.NewReader("")}
+	req.Body = body
+	req.ContentLength = -1
+
+	signedHeaders := []string{"host", "x-amz-date"}
+	signHeaderAuthRequest(t, req, accessKey, secretKey, "us-east-1", "s3", signedHeaders, now, payloadHash)
+
+	v := Validator{Now: func() time.Time { return now }}
+	res, err := v.Validate(context.Background(), req, accessKey, secretKey)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if res.PayloadHash != payloadHash {
+		t.Fatalf("payload hash: expected %s got %s", payloadHash, res.PayloadHash)
+	}
+	if body.reads != 1 {
+		t.Fatalf("expected one-byte empty-body probe, read count was %d", body.reads)
+	}
+}
+
+func TestValidatorHeaderAuthRejectsUnknownLengthBodyWithoutPayloadHashAfterBoundedProbe(t *testing.T) {
+	accessKey := "mybucketkey"
+	secretKey := "mysecretkey123"
+	now := time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC)
+	payload := "streamed object payload"
+
+	req, err := http.NewRequest("PUT", "https://sfree.example.com/api/s3/mybucket/uploads/doc.pdf", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	body := &readTrackingBody{reader: strings.NewReader(payload)}
+	req.Body = body
+	req.ContentLength = -1
+	req.Header.Set("X-Amz-Date", now.Format("20060102T150405Z"))
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+accessKey+"/"+now.Format("20060102")+"/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-date, Signature="+strings.Repeat("a", 64))
+
+	v := Validator{Now: func() time.Time { return now }}
+	_, err = v.Validate(context.Background(), req, accessKey, secretKey)
+	if !errors.Is(err, ErrMissingPayloadHash) {
+		t.Fatalf("expected missing payload hash error, got %v", err)
+	}
+	if body.reads != 1 {
+		t.Fatalf("expected one-byte bounded probe, read count was %d", body.reads)
+	}
+}
+
 func TestValidatorPresignExpired(t *testing.T) {
 	accessKey := "mybucketkey"
 	secretKey := "mysecretkey123"
@@ -455,11 +511,18 @@ func (b *readTrackingBody) Close() error {
 	return nil
 }
 
+func emptyPayloadHash() string {
+	sum := sha256.Sum256(nil)
+	return hex.EncodeToString(sum[:])
+}
+
 func signHeaderAuthRequest(t *testing.T, req *http.Request, accessKey, secretKey, region, service string, signedHeaders []string, now time.Time, payloadHash string) {
 	t.Helper()
 
 	req.Header.Set("X-Amz-Date", now.Format("20060102T150405Z"))
-	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	if contains(signedHeaders, "x-amz-content-sha256") {
+		req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	}
 
 	dateStr := now.Format("20060102")
 	scope := dateStr + "/" + region + "/" + service + "/aws4_request"

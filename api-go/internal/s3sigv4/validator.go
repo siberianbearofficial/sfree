@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -685,6 +686,17 @@ func payloadHashForHeaderAuth(r *http.Request) (string, error) {
 	if r.Body == nil || r.Body == http.NoBody || r.ContentLength == 0 {
 		empty := sha256.Sum256(nil)
 		return hex.EncodeToString(empty[:]), nil
+	}
+	if r.ContentLength < 0 {
+		var b [1]byte
+		n, err := r.Body.Read(b[:])
+		if n == 0 && err == io.EOF {
+			empty := sha256.Sum256(nil)
+			return hex.EncodeToString(empty[:]), nil
+		}
+		if err != nil && err != io.EOF {
+			return "", fmt.Errorf("sigv4: read body prefix: %w", err)
+		}
 	}
 	return "", ErrMissingPayloadHash
 }
