@@ -409,7 +409,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			return
 		}
 		if previousFile != nil {
-			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
+			if err := manager.DeleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
 				slog.WarnContext(ctx, "upload file: delete old chunks", slog.String("error", err.Error()))
 			}
 		}
