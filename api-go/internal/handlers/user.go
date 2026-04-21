@@ -8,7 +8,6 @@ import (
 	"github.com/example/sfree/api-go/internal/cryptoutil"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -25,14 +24,8 @@ type currentUserResponse struct {
 // GetCurrentUser returns the profile of the authenticated user.
 func GetCurrentUser(repo *repository.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		oid, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
+		oid, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
 		user, err := repo.GetByID(c.Request.Context(), oid)

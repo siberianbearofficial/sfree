@@ -11,7 +11,6 @@ import (
 	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -60,13 +59,14 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 		}
 		bucketID := acc.Bucket.ID
 
-		fileID, err := primitive.ObjectIDFromHex(c.Param("file_id"))
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		fileID, ok := routeObjectID(c, "file_id")
+		if !ok {
 			return
 		}
-		userIDHex := c.GetString("userID")
-		userID, _ := primitive.ObjectIDFromHex(userIDHex)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
+			return
+		}
 
 		// Verify file exists in bucket.
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
@@ -219,9 +219,8 @@ func ListShareLinks(bucketRepo *repository.BucketRepository, fileRepo *repositor
 		}
 		bucketID := acc.Bucket.ID
 
-		fileID, err := primitive.ObjectIDFromHex(c.Param("file_id"))
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		fileID, ok := routeObjectID(c, "file_id")
+		if !ok {
 			return
 		}
 
@@ -281,19 +280,12 @@ func DeleteShareLink(shareLinkRepo *repository.ShareLinkRepository) gin.HandlerF
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		id, err := primitive.ObjectIDFromHex(c.Param("id"))
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		id, ok := routeObjectID(c, "id")
+		if !ok {
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
 
