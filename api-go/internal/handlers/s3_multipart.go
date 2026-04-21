@@ -380,8 +380,6 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 	}
 
 	// Validate all requested parts exist and ETags match.
-	var allChunks []repository.FileChunk
-	chunkOrder := 0
 	for _, rp := range req.Parts {
 		up, exists := partMap[rp.PartNumber]
 		if !exists {
@@ -395,17 +393,8 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 			writeS3Error(c, http.StatusBadRequest, "InvalidPart", fmt.Sprintf("ETag mismatch for part %d", rp.PartNumber))
 			return
 		}
-		// Append this part's chunks with renumbered order.
-		for _, ch := range up.Chunks {
-			allChunks = append(allChunks, repository.FileChunk{
-				SourceID: ch.SourceID,
-				Name:     ch.Name,
-				Order:    chunkOrder,
-				Size:     ch.Size,
-			})
-			chunkOrder++
-		}
 	}
+	allChunks := completedMultipartChunks(req.Parts, partMap)
 
 	// Create or update the final file.
 	fileDoc := repository.File{
@@ -475,6 +464,20 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 		Key:      mu.ObjectKey,
 		ETag:     etag,
 	})
+}
+
+func completedMultipartChunks(parts []completionPart, partMap map[int]repository.UploadPart) []repository.FileChunk {
+	var allChunks []repository.FileChunk
+	chunkOrder := 0
+	for _, rp := range parts {
+		up := partMap[rp.PartNumber]
+		for _, ch := range up.Chunks {
+			ch.Order = chunkOrder
+			allChunks = append(allChunks, ch)
+			chunkOrder++
+		}
+	}
+	return allChunks
 }
 
 func abortMultipartUpload(c *gin.Context, sourceRepo *repository.SourceRepository, mpRepo *repository.MultipartUploadRepository) {
