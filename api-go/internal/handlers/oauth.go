@@ -77,7 +77,9 @@ func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		var ghUser githubUser
 		if err := json.NewDecoder(resp.Body).Decode(&ghUser); err != nil {
