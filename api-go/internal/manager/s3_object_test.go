@@ -146,8 +146,10 @@ func (f *fakeObjectFiles) CountByChunkExcludingBucket(_ context.Context, bucketI
 
 type fakeMultipartUploads struct {
 	uploads map[string]repository.MultipartUpload
+	setErr  error
 	delErr  error
 	listErr error
+	events  *[]string
 }
 
 func (f *fakeMultipartUploads) GetByUploadID(_ context.Context, uploadID string) (*repository.MultipartUpload, error) {
@@ -156,6 +158,33 @@ func (f *fakeMultipartUploads) GetByUploadID(_ context.Context, uploadID string)
 		return nil, mongo.ErrNoDocuments
 	}
 	return &upload, nil
+}
+
+func (f *fakeMultipartUploads) SetPart(_ context.Context, uploadID string, part repository.UploadPart) (*repository.UploadPart, error) {
+	if f.events != nil {
+		*f.events = append(*f.events, "set part")
+	}
+	if f.setErr != nil {
+		return nil, f.setErr
+	}
+	upload, ok := f.uploads[uploadID]
+	if !ok {
+		return nil, mongo.ErrNoDocuments
+	}
+	var previous *repository.UploadPart
+	parts := make([]repository.UploadPart, 0, len(upload.Parts)+1)
+	for _, existing := range upload.Parts {
+		if existing.PartNumber != part.PartNumber {
+			parts = append(parts, existing)
+			continue
+		}
+		partCopy := existing
+		previous = &partCopy
+	}
+	parts = append(parts, part)
+	upload.Parts = parts
+	f.uploads[uploadID] = upload
+	return previous, nil
 }
 
 func (f *fakeMultipartUploads) Delete(_ context.Context, uploadID string) error {
@@ -225,6 +254,124 @@ func (f *fakeMultipartUploads) DeleteByBucket(_ context.Context, bucketID primit
 		}
 	}
 	return nil
+}
+
+func TestObjectServiceUploadMultipartPartReplacesPartThenDeletesPreviousChunks(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	sourceID := primitive.NewObjectID()
+	oldChunk := repository.FileChunk{SourceID: sourceID, Name: "old-part-chunk", Size: 5}
+	var deleted []repository.FileChunk
+	var events []string
+	svc := testObjectService(newFakeObjectFiles(), &deleted)
+	svc.sources = &fakeObjectSources{sources: []repository.Source{{ID: sourceID}}}
+	svc.multipart = &fakeMultipartUploads{
+		uploads: map[string]repository.MultipartUpload{
+			"upload-1": {
+				BucketID: bucketID,
+				UploadID: "upload-1",
+				Parts: []repository.UploadPart{
+					{PartNumber: 1, ETag: `"old"`, Chunks: []repository.FileChunk{oldChunk}},
+				},
+			},
+		},
+		events: &events,
+	}
+	svc.uploadChunks = func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {
+		if _, err := io.Copy(io.Discard, r); err != nil {
+			return nil, err
+		}
+		return []repository.FileChunk{{SourceID: sourceID, Name: "new-part-chunk", Size: 4}}, nil
+	}
+	svc.deleteChunks = func(_ context.Context, chunks []repository.FileChunk) error {
+		deleted = append(deleted, chunks...)
+		for _, chunk := range chunks {
+			events = append(events, "delete "+chunk.Name)
+		}
+		return nil
+	}
+
+	result, err := svc.UploadMultipartPartRecord(
+		context.Background(),
+		&repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{sourceID}},
+		&repository.MultipartUpload{BucketID: bucketID, UploadID: "upload-1", Parts: []repository.UploadPart{{PartNumber: 1, ETag: `"old"`, Chunks: []repository.FileChunk{oldChunk}}}},
+		1,
+		bytes.NewBufferString("data"),
+		5,
+	)
+	if err != nil {
+		t.Fatalf("UploadMultipartPartRecord returned error: %v", err)
+	}
+	if result.Part.PartNumber != 1 || len(result.Part.Chunks) != 1 || result.Part.Chunks[0].Name != "new-part-chunk" {
+		t.Fatalf("expected replacement part to use new chunk, got %#v", result.Part)
+	}
+	if len(deleted) != 1 || deleted[0].Name != "old-part-chunk" {
+		t.Fatalf("expected previous chunk cleanup after replacement, got %#v", deleted)
+	}
+	if len(events) != 2 || events[0] != "set part" || events[1] != "delete old-part-chunk" {
+		t.Fatalf("expected metadata write before old chunk cleanup, got %#v", events)
+	}
+	got := svc.multipart.(*fakeMultipartUploads).uploads["upload-1"]
+	if len(got.Parts) != 1 || got.Parts[0].Chunks[0].Name != "new-part-chunk" {
+		t.Fatalf("expected stored metadata to contain replacement part, got %#v", got.Parts)
+	}
+}
+
+func TestObjectServiceUploadMultipartPartSetFailureDeletesOnlyNewChunks(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	sourceID := primitive.NewObjectID()
+	oldChunk := repository.FileChunk{SourceID: sourceID, Name: "old-part-chunk", Size: 5}
+	var deleted []repository.FileChunk
+	var events []string
+	svc := testObjectService(newFakeObjectFiles(), &deleted)
+	svc.sources = &fakeObjectSources{sources: []repository.Source{{ID: sourceID}}}
+	svc.multipart = &fakeMultipartUploads{
+		uploads: map[string]repository.MultipartUpload{
+			"upload-1": {
+				BucketID: bucketID,
+				UploadID: "upload-1",
+				Parts: []repository.UploadPart{
+					{PartNumber: 1, ETag: `"old"`, Chunks: []repository.FileChunk{oldChunk}},
+				},
+			},
+		},
+		setErr: errors.New("set part failed"),
+		events: &events,
+	}
+	svc.uploadChunks = func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {
+		if _, err := io.Copy(io.Discard, r); err != nil {
+			return nil, err
+		}
+		return []repository.FileChunk{{SourceID: sourceID, Name: "new-part-chunk", Size: 4}}, nil
+	}
+	svc.deleteChunks = func(_ context.Context, chunks []repository.FileChunk) error {
+		deleted = append(deleted, chunks...)
+		for _, chunk := range chunks {
+			events = append(events, "delete "+chunk.Name)
+		}
+		return nil
+	}
+
+	_, err := svc.UploadMultipartPartRecord(
+		context.Background(),
+		&repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{sourceID}},
+		&repository.MultipartUpload{BucketID: bucketID, UploadID: "upload-1", Parts: []repository.UploadPart{{PartNumber: 1, ETag: `"old"`, Chunks: []repository.FileChunk{oldChunk}}}},
+		1,
+		bytes.NewBufferString("data"),
+		5,
+	)
+	if err == nil {
+		t.Fatal("expected metadata replacement error")
+	}
+	if len(deleted) != 1 || deleted[0].Name != "new-part-chunk" {
+		t.Fatalf("expected new chunk cleanup after metadata failure, got %#v", deleted)
+	}
+	if len(events) != 2 || events[0] != "set part" || events[1] != "delete new-part-chunk" {
+		t.Fatalf("expected failed metadata write before new chunk cleanup, got %#v", events)
+	}
+	got := svc.multipart.(*fakeMultipartUploads).uploads["upload-1"]
+	if len(got.Parts) != 1 || got.Parts[0].Chunks[0].Name != "old-part-chunk" {
+		t.Fatalf("expected existing metadata to remain unchanged, got %#v", got.Parts)
+	}
 }
 
 func fileKey(bucketID primitive.ObjectID, name string) string {

@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -255,55 +253,25 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 		return
 	}
 
-	sources, err := sourceRepo.ListByIDs(ctx, bucketDoc.SourceIDs)
+	objectSvc := manager.NewObjectService(sourceRepo, nil, mpRepo)
+	result, err := objectSvc.UploadMultipartPartRecord(ctx, bucketDoc, mu, partNum, c.Request.Body, chunkSize)
 	if err != nil {
-		slog.ErrorContext(ctx, "upload part: list sources", slog.String("error", err.Error()))
-		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-		return
-	}
-	if len(sources) == 0 {
-		writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "no sources configured")
-		return
-	}
-
-	previousChunks := multipartPartChunks(mu.Parts, partNum)
-
-	selector := manager.SelectorForBucket(bucketDoc, sources)
-	chunks, err := manager.UploadFileChunksWithStrategy(ctx, c.Request.Body, sources, chunkSize, nil, selector)
-	if err != nil {
-		slog.ErrorContext(ctx, "upload part: upload chunks", slog.String("error", err.Error()))
-		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-		return
-	}
-
-	var totalSize int64
-	h := md5.New()
-	for _, ch := range chunks {
-		totalSize += ch.Size
-		_, _ = h.Write([]byte(ch.Name))
-	}
-	etag := fmt.Sprintf("\"%s\"", hex.EncodeToString(h.Sum(nil)))
-
-	part := repository.UploadPart{
-		PartNumber: partNum,
-		ETag:       etag,
-		Size:       totalSize,
-		Chunks:     chunks,
-	}
-	if err := mpRepo.SetPart(ctx, uploadID, part); err != nil {
-		slog.ErrorContext(ctx, "upload part: set part", slog.String("error", err.Error()))
-		// Best-effort cleanup of the uploaded chunks.
-		_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-		return
-	}
-	if len(previousChunks) > 0 {
-		if delErr := manager.DeleteFileChunks(ctx, sourceRepo, previousChunks); delErr != nil {
-			slog.WarnContext(ctx, "upload part: delete replaced part chunks", slog.String("error", delErr.Error()))
+		switch {
+		case errors.Is(err, manager.ErrMultipartUploadNotFound):
+			writeS3Error(c, http.StatusNotFound, "NoSuchUpload", "")
+		case errors.Is(err, manager.ErrNoSources):
+			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "no sources configured")
+		default:
+			slog.ErrorContext(ctx, "upload part: store part", slog.String("error", err.Error()))
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 		}
+		return
+	}
+	if result.CleanupErr != nil {
+		slog.WarnContext(ctx, "upload part: delete old part chunks", slog.String("error", result.CleanupErr.Error()))
 	}
 
-	c.Header("ETag", etag)
+	c.Header("ETag", result.ETag)
 	c.Status(http.StatusOK)
 }
 
