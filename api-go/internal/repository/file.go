@@ -241,6 +241,11 @@ func (r *FileRepository) Delete(ctx context.Context, id primitive.ObjectID) erro
 	return nil
 }
 
+func (r *FileRepository) DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error {
+	_, err := r.coll.DeleteMany(ctx, bson.M{"bucket_id": bucketID})
+	return err
+}
+
 func (r *FileRepository) UpdateByID(ctx context.Context, f File) (*File, error) {
 	f.CreatedAt = f.CreatedAt.UTC()
 	res, err := r.coll.UpdateOne(ctx, bson.M{"_id": f.ID}, bson.M{"$set": bson.M{

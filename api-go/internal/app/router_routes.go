@@ -53,7 +53,7 @@ func registerBucketRoutes(router *gin.Engine, cfg *config.Config, deps *routerDe
 	}
 	router.POST("/api/v1/buckets", deps.auth, handlers.CreateBucket(deps.bucketRepo, deps.sourceRepo, routerAccessSecret(cfg)))
 	router.GET("/api/v1/buckets", deps.auth, handlers.ListBuckets(deps.bucketRepo, deps.grantRepo))
-	router.DELETE("/api/v1/buckets/:id", deps.auth, handlers.DeleteBucket(deps.bucketRepo, deps.grantRepo))
+	router.DELETE("/api/v1/buckets/:id", deps.auth, handlers.DeleteBucket(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.grantRepo))
 	router.PATCH("/api/v1/buckets/:id/distribution", deps.auth, handlers.UpdateBucketDistribution(deps.bucketRepo, deps.grantRepo))
 
 	registerBucketGrantRoutes(router, deps)

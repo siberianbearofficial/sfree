@@ -245,7 +245,7 @@ func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.Bucket
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id} [delete]
-func DeleteBucket(repo *repository.BucketRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
+func DeleteBucket(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if repo == nil {
@@ -256,6 +256,18 @@ func DeleteBucket(repo *repository.BucketRepository, grantRepo *repository.Bucke
 
 		acc := requireBucketAccess(c, repo, grantRepo, repository.RoleOwner)
 		if acc == nil {
+			return
+		}
+
+		if sourceRepo == nil || fileRepo == nil || mpRepo == nil {
+			slog.ErrorContext(ctx, "delete bucket: cleanup repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		objectSvc := manager.NewObjectService(sourceRepo, fileRepo, mpRepo)
+		if _, err := objectSvc.DeleteBucketContents(ctx, acc.Bucket.ID); err != nil {
+			slog.ErrorContext(ctx, "delete bucket: cleanup contents", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
 			return
 		}
 

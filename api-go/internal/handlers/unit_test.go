@@ -320,7 +320,7 @@ func TestListBucketsNoUserID(t *testing.T) {
 func TestDeleteBucketNilRepo(t *testing.T) {
 	t.Parallel()
 	r := gin.New()
-	r.DELETE("/buckets/:id", DeleteBucket(nil, nil))
+	r.DELETE("/buckets/:id", DeleteBucket(nil, nil, nil, nil, nil))
 
 	req, _ := http.NewRequest(http.MethodDelete, "/buckets/"+primitive.NewObjectID().Hex(), nil)
 	w := httptest.NewRecorder()
@@ -336,7 +336,7 @@ func TestDeleteBucketInvalidIDParam(t *testing.T) {
 	r := gin.New()
 	r.DELETE("/buckets/:id",
 		setUserID(validUserID()),
-		DeleteBucket(&repository.BucketRepository{}, nil),
+		DeleteBucket(&repository.BucketRepository{}, nil, nil, nil, nil),
 	)
 
 	req, _ := http.NewRequest(http.MethodDelete, "/buckets/not-a-valid-oid", nil)
