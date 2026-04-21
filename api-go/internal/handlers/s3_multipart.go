@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
