@@ -1,4 +1,5 @@
-FROM golang:1.24
+ARG GO_IMAGE=golang:1.24
+FROM ${GO_IMAGE}
 
 WORKDIR /app
 

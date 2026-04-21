@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+ARG PYTHON_IMAGE=python:3.12-slim
+FROM ${PYTHON_IMAGE}
 
 WORKDIR /work
 COPY e2e/requirements.txt /tmp/requirements.txt
