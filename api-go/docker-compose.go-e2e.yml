@@ -1,6 +1,6 @@
 services:
   mongo:
-    image: ${MONGO_IMAGE:-mongo:7}
+    image: ${MONGO_IMAGE:-mongo:7.0.32-rc2-jammy}
     environment:
       - MONGO_INITDB_ROOT_USERNAME=root
       - MONGO_INITDB_ROOT_PASSWORD=example

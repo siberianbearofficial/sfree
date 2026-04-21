@@ -13,19 +13,12 @@ when:
         - webui/**
 
 steps:
-  - name: validate
+  - name: validate and e2e
     image: node:20
     commands:
       - cd webui
       - npm ci --include=dev
       - npm run lint
-      - npm run build
-
-  - name: e2e tests
-    image: node:20
-    commands:
-      - cd webui
-      - npm ci --include=dev
       - npm run build
       - npx playwright install --with-deps chromium
       - npm run test:e2e
