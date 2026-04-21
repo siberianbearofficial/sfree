@@ -61,13 +61,13 @@ make test-e2e-python
 
 ## CI (Woodpecker)
 
-Pipeline `.woodpecker/api-go.yml` запускает `docker-compose.e2e.yml` через DinD трижды: для `gdrive`, `telegram` и `s3`.
+Pipeline `.woodpecker/api-go.yml` запускает `docker-compose.e2e.yml` через DinD только для `s3`. Этот режим использует локальный MinIO из `docker-compose.e2e.yml` и является обязательным PR-gate.
 
-Нужны секреты:
+Режимы `gdrive` и `telegram` остаются доступными для ручной или неблокирующей проверки. Для них нужны секреты:
 
 - `E2E_GDRIVE_KEY` — ключ для Google Drive source.
 - `E2E_TELEGRAM_TOKEN` — токен Telegram-бота.
 - `E2E_TELEGRAM_CHAT_ID` — id чата для отправки чанков.
 
-Для `s3` в e2e поднимается локальный MinIO в `docker-compose.e2e.yml`, поэтому отдельные CI-секреты для S3 не требуются.
+Для обязательного `s3` CI-run отдельные секреты не требуются.
 При необходимости можно переопределить `E2E_S3_*` переменные окружения и использовать другой S3-compatible endpoint.

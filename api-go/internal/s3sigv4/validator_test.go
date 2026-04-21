@@ -2,6 +2,7 @@ package s3sigv4
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -221,14 +222,13 @@ func TestValidatorPresignExpired(t *testing.T) {
 		t.Fatalf("new request: %v", err)
 	}
 
-	// Validate 2 hours later — should be expired.
-	v := Validator{Now: func() time.Time { return signTime.Add(2 * time.Hour) }}
-	_, err = v.Validate(context.Background(), req, accessKey, secretKey)
-	if err == nil {
-		t.Fatal("expected expired error, got nil")
+	v := Validator{
+		Now:     func() time.Time { return signTime.Add(61 * time.Second) },
+		MaxSkew: 15 * time.Minute,
 	}
-	if err.Error() == "" || !contains([]string{"expired"}, "expired") {
-		// Just verify it's a non-nil error (ErrExpired).
+	_, err = v.Validate(context.Background(), req, accessKey, secretKey)
+	if !errors.Is(err, ErrExpired) {
+		t.Fatalf("expected expired error, got %v", err)
 	}
 }
 
