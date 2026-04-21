@@ -80,9 +80,13 @@ var filesListCmd = &cobra.Command{
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tNAME\tSIZE\tCREATED")
+		if _, err := fmt.Fprintln(w, "ID\tNAME\tSIZE\tCREATED"); err != nil {
+			return err
+		}
 		for _, f := range files {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", f.ID, f.Name, humanSize(f.Size), f.CreatedAt)
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", f.ID, f.Name, humanSize(f.Size), f.CreatedAt); err != nil {
+				return err
+			}
 		}
 		return w.Flush()
 	},
@@ -136,7 +140,9 @@ func apiDelete(path string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))

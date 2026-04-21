@@ -25,7 +25,9 @@ func apiGet(path string, out interface{}) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
@@ -53,7 +55,9 @@ func apiPost(path string, body interface{}, out interface{}) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(respBody))
@@ -73,21 +77,23 @@ func apiUpload(path string, filePath string, out interface{}) error {
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	pr, pw := io.Pipe()
 	writer := multipart.NewWriter(pw)
 	go func() {
 		part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 		if err != nil {
-			pw.CloseWithError(err)
+			_ = pw.CloseWithError(err)
 			return
 		}
 		if _, err := io.Copy(part, f); err != nil {
-			pw.CloseWithError(err)
+			_ = pw.CloseWithError(err)
 			return
 		}
-		pw.CloseWithError(writer.Close())
+		_ = pw.CloseWithError(writer.Close())
 	}()
 
 	url := serverURL() + path
@@ -101,7 +107,9 @@ func apiUpload(path string, filePath string, out interface{}) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
@@ -127,7 +135,9 @@ func apiDownload(path string, dest string) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(body))
@@ -136,9 +146,12 @@ func apiDownload(path string, dest string) error {
 	if err != nil {
 		return fmt.Errorf("creating output file: %w", err)
 	}
-	defer out.Close()
 	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
 		return fmt.Errorf("writing file: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("closing output file: %w", err)
 	}
 	return nil
 }
