@@ -305,6 +305,22 @@ func TestWeightedSelectorDefaultWeight(t *testing.T) {
 	}
 }
 
+func TestWeightedSelectorDoesNotAllocateWeightSizedSequence(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID()}
+	s2 := repository.Source{ID: primitive.NewObjectID()}
+	sources := []repository.Source{s1, s2}
+	weights := map[string]int{s1.ID.Hex(): MaxWeightedSourceWeight, s2.ID.Hex(): 1}
+
+	sel := NewWeightedSelector(sources, weights)
+	if len(sel.cumulativeWeights) != len(sources) {
+		t.Fatalf("expected one cumulative weight per source, got %d", len(sel.cumulativeWeights))
+	}
+	if sel.totalWeight != MaxWeightedSourceWeight+1 {
+		t.Fatalf("expected total weight %d, got %d", MaxWeightedSourceWeight+1, sel.totalWeight)
+	}
+}
+
 func TestWeightedSelectorNoSources(t *testing.T) {
 	t.Parallel()
 	sel := NewWeightedSelector(nil, nil)
