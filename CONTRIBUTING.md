@@ -101,8 +101,12 @@ Run the checks that match the area you changed before opening a PR.
 ```bash
 cd api-go
 golangci-lint run
-go test ./...
+make test
 ```
+
+The default `make test` target runs unit tests only. Integration, Go E2E,
+Python E2E, and Docker-backed local E2E suites are available through their
+explicit Make targets when broader validation is needed.
 
 ### Frontend
 
