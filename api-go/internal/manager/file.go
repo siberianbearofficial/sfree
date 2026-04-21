@@ -10,11 +10,8 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/example/sfree/api-go/internal/resilience"
-	"github.com/example/sfree/api-go/internal/s3compat"
-	"github.com/example/sfree/api-go/internal/telegram"
 	"github.com/example/sfree/api-go/internal/telemetry"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.opentelemetry.io/otel/attribute"
@@ -137,40 +134,6 @@ func SelectorForBucket(bucket *repository.Bucket, sources []repository.Source) S
 // to every source client. Zero values use sensible defaults (30s timeout,
 // 5-failure threshold, 30s recovery).
 var ResilienceConfig = resilience.DefaultWrapperConfig()
-
-func NewSourceClient(ctx context.Context, src *repository.Source) (SourceClient, error) {
-	if src == nil {
-		return nil, errors.New("nil source")
-	}
-	var (
-		cli sourceClient
-		err error
-	)
-	switch src.Type {
-	case repository.SourceTypeGDrive:
-		cli, err = gdrive.NewClient(ctx, []byte(src.Key))
-	case repository.SourceTypeTelegram:
-		var tcfg telegram.Config
-		tcfg, err = telegram.ParseConfig(src.Key)
-		if err != nil {
-			return nil, err
-		}
-		cli, err = telegram.NewClient(tcfg)
-	case repository.SourceTypeS3:
-		var scfg s3compat.Config
-		scfg, err = s3compat.ParseConfig(src.Key)
-		if err != nil {
-			return nil, err
-		}
-		cli, err = s3compat.NewClient(ctx, scfg)
-	default:
-		return nil, ErrUnsupportedSourceType
-	}
-	if err != nil {
-		return nil, err
-	}
-	return resilience.Wrap(cli, ResilienceConfig), nil
-}
 
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {
 	return streamFileWithFactory(ctx, f, w, sourceClientFactoryFromRepository(srcRepo))

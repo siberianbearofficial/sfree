@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -317,13 +318,19 @@ func getSourceInfo(repo *repository.SourceRepository, factory manager.SourceClie
 			c.Status(http.StatusNotFound)
 			return
 		}
-		info, err := manager.InspectSource(c.Request.Context(), src, factory)
+		infoClient, err := manager.NewSourceInfoClient(c.Request.Context(), src)
 		if err != nil {
-			if err == manager.ErrUnsupportedSourceType {
+			if errors.Is(err, manager.ErrUnsupportedSourceType) {
 				c.Status(http.StatusBadRequest)
 				return
 			}
-			slog.ErrorContext(ctx, "get source info: inspect source", slog.String("error", err.Error()))
+			slog.ErrorContext(ctx, "get source info: create client", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		info, err := infoClient.Info(c.Request.Context())
+		if err != nil {
+			slog.ErrorContext(ctx, "get source info: load info", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -396,12 +403,19 @@ func downloadSourceFile(sourceRepo *repository.SourceRepository, factory manager
 		}
 
 		filename := fileID
-		body, err := manager.DownloadSourceFile(c.Request.Context(), src, fileID, factory)
+
+		cli, err := manager.NewDirectSourceClient(c.Request.Context(), src)
 		if err != nil {
-			if err == manager.ErrUnsupportedSourceType {
+			if errors.Is(err, manager.ErrSourceDownloadUnsupported) || errors.Is(err, manager.ErrUnsupportedSourceType) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "download not supported for this source type"})
 				return
 			}
+			slog.ErrorContext(c.Request.Context(), "download source file: create client", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		body, err := cli.Download(c.Request.Context(), fileID)
+		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "download source file: download", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
