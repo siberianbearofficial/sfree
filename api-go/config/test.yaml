@@ -6,4 +6,7 @@ mongo:
   database: sfree_test
 upload:
   chunk_size: 5242880
+rate_limit:
+  per_ip: 6000
+  per_key: 6000
 access_secret_key: examplesecret
