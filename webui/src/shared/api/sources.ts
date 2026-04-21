@@ -1,6 +1,4 @@
-import {throwIfNotOk} from "./error";
-
-const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
+import {apiDownload, apiFetch, apiJson} from "./client";
 
 export type Source = {id: string; name: string; type: string; created_at: string};
 
@@ -16,45 +14,29 @@ export type SourceInfo = {
   storage_free: number;
 };
 
-import { getAuthHeader, getCredentialsOption } from "../lib/auth";
-
-function authHeader(): Record<string, string> {
-  return getAuthHeader();
-}
-
-function credentials(): RequestCredentials | undefined {
-  return getCredentialsOption();
-}
-
 export async function listSources(): Promise<Source[]> {
-  const res = await fetch(`${API_BASE}/sources`, {
-    headers: authHeader(),
-    credentials: credentials(),
-  });
-  await throwIfNotOk(res, "Failed to list sources");
-  return res.json() as Promise<Source[]>;
+  return apiJson<Source[]>("/sources", "Failed to list sources");
 }
 
-export async function createGDriveSource(name: string, key: string): Promise<Source> {
-  const res = await fetch(`${API_BASE}/sources/gdrive`, {
+export async function createGDriveSource(
+  name: string,
+  key: string,
+): Promise<Source> {
+  return apiJson<Source>("/sources/gdrive", "Failed to create source", {
     method: "POST",
-    headers: {"Content-Type": "application/json", ...authHeader()},
-    credentials: credentials(),
-    body: JSON.stringify({name, key}),
+    json: {name, key},
   });
-  await throwIfNotOk(res, "Failed to create source");
-  return res.json();
 }
 
-export async function createTelegramSource(name: string, token: string, chatId: string): Promise<Source> {
-  const res = await fetch(`${API_BASE}/sources/telegram`, {
+export async function createTelegramSource(
+  name: string,
+  token: string,
+  chatId: string,
+): Promise<Source> {
+  return apiJson<Source>("/sources/telegram", "Failed to create source", {
     method: "POST",
-    headers: {"Content-Type": "application/json", ...authHeader()},
-    credentials: credentials(),
-    body: JSON.stringify({name, token, chat_id: chatId}),
+    json: {name, token, chat_id: chatId},
   });
-  await throwIfNotOk(res, "Failed to create source");
-  return res.json();
 }
 
 export type CreateS3SourceParams = {
@@ -67,46 +49,35 @@ export type CreateS3SourceParams = {
   path_style?: boolean;
 };
 
-export async function createS3Source(params: CreateS3SourceParams): Promise<Source> {
-  const res = await fetch(`${API_BASE}/sources/s3`, {
+export async function createS3Source(
+  params: CreateS3SourceParams,
+): Promise<Source> {
+  return apiJson<Source>("/sources/s3", "Failed to create source", {
     method: "POST",
-    headers: {"Content-Type": "application/json", ...authHeader()},
-    credentials: credentials(),
-    body: JSON.stringify(params),
+    json: params,
   });
-  await throwIfNotOk(res, "Failed to create source");
-  return res.json();
 }
 
 export async function getSourceInfo(id: string): Promise<SourceInfo> {
-  const res = await fetch(`${API_BASE}/sources/${id}/info`, {
-    headers: authHeader(),
-    credentials: credentials(),
-  });
-  await throwIfNotOk(res, "Failed to get source info");
-  return res.json();
+  return apiJson<SourceInfo>(
+    `/sources/${id}/info`,
+    "Failed to get source info",
+  );
 }
 
 export async function deleteSource(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/sources/${id}`, {
+  await apiFetch(`/sources/${id}`, "Failed to delete source", {
     method: "DELETE",
-    headers: authHeader(),
-    credentials: credentials(),
   });
-  await throwIfNotOk(res, "Failed to delete source");
 }
 
-export async function downloadFile(sourceId: string, file: SourceFile): Promise<void> {
-  const res = await fetch(`${API_BASE}/sources/${sourceId}/files/${file.id}/download`, {
-    headers: authHeader(),
-    credentials: credentials(),
-  });
-  await throwIfNotOk(res, "Failed to download file");
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = file.name;
-  a.click();
-  window.URL.revokeObjectURL(url);
+export async function downloadFile(
+  sourceId: string,
+  file: SourceFile,
+): Promise<void> {
+  await apiDownload(
+    `/sources/${sourceId}/files/${file.id}/download`,
+    file.name,
+    "Failed to download file",
+  );
 }

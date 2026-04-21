@@ -1,5 +1,6 @@
 import {Button, Card, CardBody, Snippet, useDisclosure} from "@heroui/react";
 import {LoginDialog, RegisterDialog} from "../../../features/auth";
+import {apiUrl} from "../../../shared/api/client";
 import {GoogleDriveIcon, TelegramIcon, S3Icon, GitHubIcon} from "../../../shared/icons";
 
 const GITHUB_URL = "https://github.com/siberianbearofficial/sfree";
@@ -60,7 +61,7 @@ export function LandingPage() {
             color="primary"
             size="lg"
             as="a"
-            href={(import.meta.env.VITE_API_BASE || "/api/v1") + "/auth/github"}
+            href={apiUrl("/auth/github")}
             startContent={<GitHubIcon className="w-5 h-5 fill-current" />}
           >
             Sign in with GitHub
@@ -147,7 +148,7 @@ export function LandingPage() {
             color="primary"
             size="lg"
             as="a"
-            href={(import.meta.env.VITE_API_BASE || "/api/v1") + "/auth/github"}
+            href={apiUrl("/auth/github")}
             startContent={<GitHubIcon className="w-5 h-5 fill-current" />}
           >
             Sign in with GitHub
