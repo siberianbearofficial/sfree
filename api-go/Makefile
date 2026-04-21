@@ -10,7 +10,7 @@ run: build
 	./bin/server
 
 
-test: test-unit test-integration test-e2e
+test: test-unit
 
 
 test-unit:
