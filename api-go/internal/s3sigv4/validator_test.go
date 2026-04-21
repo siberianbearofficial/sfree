@@ -2,7 +2,10 @@ package s3sigv4
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -192,6 +195,72 @@ func TestValidatorPresignS3PutObject(t *testing.T) {
 	}
 }
 
+func TestValidatorHeaderAuthUsesExplicitPayloadHashWithoutReadingBody(t *testing.T) {
+	accessKey := "mybucketkey"
+	secretKey := "mysecretkey123"
+	now := time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC)
+	payload := "streamed object payload"
+	sum := sha256.Sum256([]byte(payload))
+	payloadHash := hex.EncodeToString(sum[:])
+
+	req, err := http.NewRequest("PUT", "https://sfree.example.com/api/s3/mybucket/uploads/doc.pdf", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	body := &readTrackingBody{reader: strings.NewReader(payload)}
+	req.Body = body
+	req.ContentLength = int64(len(payload))
+
+	signedHeaders := []string{"host", "x-amz-content-sha256", "x-amz-date"}
+	signHeaderAuthRequest(t, req, accessKey, secretKey, "us-east-1", "s3", signedHeaders, now, payloadHash)
+
+	v := Validator{Now: func() time.Time { return now }}
+	res, err := v.Validate(context.Background(), req, accessKey, secretKey)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if res.PayloadHash != payloadHash {
+		t.Fatalf("payload hash: expected %s got %s", payloadHash, res.PayloadHash)
+	}
+	if body.reads != 0 {
+		t.Fatalf("expected validator not to read body, read count was %d", body.reads)
+	}
+
+	remaining, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("read remaining body: %v", err)
+	}
+	if string(remaining) != payload {
+		t.Fatalf("body after validate: expected %q got %q", payload, string(remaining))
+	}
+}
+
+func TestValidatorHeaderAuthRejectsBodyWithoutPayloadHash(t *testing.T) {
+	accessKey := "mybucketkey"
+	secretKey := "mysecretkey123"
+	now := time.Date(2026, 4, 13, 10, 0, 0, 0, time.UTC)
+	payload := "streamed object payload"
+
+	req, err := http.NewRequest("PUT", "https://sfree.example.com/api/s3/mybucket/uploads/doc.pdf", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	body := &readTrackingBody{reader: strings.NewReader(payload)}
+	req.Body = body
+	req.ContentLength = int64(len(payload))
+	req.Header.Set("X-Amz-Date", now.Format("20060102T150405Z"))
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+accessKey+"/"+now.Format("20060102")+"/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-date, Signature="+strings.Repeat("a", 64))
+
+	v := Validator{Now: func() time.Time { return now }}
+	_, err = v.Validate(context.Background(), req, accessKey, secretKey)
+	if !errors.Is(err, ErrMissingPayloadHash) {
+		t.Fatalf("expected missing payload hash error, got %v", err)
+	}
+	if body.reads != 0 {
+		t.Fatalf("expected validator not to read unsupported body, read count was %d", body.reads)
+	}
+}
+
 func TestValidatorPresignExpired(t *testing.T) {
 	accessKey := "mybucketkey"
 	secretKey := "mysecretkey123"
@@ -370,4 +439,35 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 	if res.Signature != expectedSig {
 		t.Fatalf("signature mismatch: expected %s got %s", expectedSig, res.Signature)
 	}
+}
+
+type readTrackingBody struct {
+	reader *strings.Reader
+	reads  int
+}
+
+func (b *readTrackingBody) Read(p []byte) (int, error) {
+	b.reads++
+	return b.reader.Read(p)
+}
+
+func (b *readTrackingBody) Close() error {
+	return nil
+}
+
+func signHeaderAuthRequest(t *testing.T, req *http.Request, accessKey, secretKey, region, service string, signedHeaders []string, now time.Time, payloadHash string) {
+	t.Helper()
+
+	req.Header.Set("X-Amz-Date", now.Format("20060102T150405Z"))
+	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+
+	dateStr := now.Format("20060102")
+	scope := dateStr + "/" + region + "/" + service + "/aws4_request"
+	canonReq, _, err := buildCanonicalRequest(req, signedHeaders, payloadHash, false)
+	if err != nil {
+		t.Fatalf("build canonical request: %v", err)
+	}
+	stringToSign := buildStringToSign("AWS4-HMAC-SHA256", now, scope, canonReq)
+	sig := computeSignature(secretKey, dateStr, region, service, stringToSign)
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+accessKey+"/"+scope+", SignedHeaders="+strings.Join(signedHeaders, ";")+", Signature="+sig)
 }

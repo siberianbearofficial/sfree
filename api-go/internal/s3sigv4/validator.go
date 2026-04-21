@@ -1,7 +1,6 @@
 package s3sigv4
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -9,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -30,6 +28,7 @@ var (
 	ErrSignatureMismatch    = errors.New("sigv4: signature mismatch")
 	ErrExpired              = errors.New("sigv4: request expired")
 	ErrClockSkew            = errors.New("sigv4: request time outside allowed skew")
+	ErrMissingPayloadHash   = errors.New("sigv4: missing X-Amz-Content-Sha256 for request body")
 )
 
 type Validator struct {
@@ -197,11 +196,10 @@ func (v *Validator) validateHeaderAuth(ctx context.Context, r *http.Request, acc
 		return nil, fmt.Errorf("%w: SignedHeaders must include host", ErrInvalidSignedHeaders)
 	}
 
-	payloadHash, bodyBytes, err := payloadHashForHeaderAuth(r)
+	payloadHash, err := payloadHashForHeaderAuth(r)
 	if err != nil {
 		return nil, err
 	}
-	restoreBody(r, bodyBytes)
 
 	canonReq, _, err := buildCanonicalRequest(r, signedHeaders, payloadHash, false)
 	if err != nil {
@@ -335,21 +333,17 @@ func (v *Validator) validatePresign(ctx context.Context, r *http.Request, access
 	}
 
 	payloadHash := q.Get("X-Amz-Content-Sha256")
-	var bodyBytes []byte
 	if payloadHash == "" {
 		if h := strings.TrimSpace(r.Header.Get("X-Amz-Content-Sha256")); h != "" {
 			payloadHash = h
 		} else if strings.EqualFold(service, "s3") {
 			payloadHash = "UNSIGNED-PAYLOAD"
 		} else {
-			payloadHash, bodyBytes, err = payloadHashForHeaderAuth(r)
+			payloadHash, err = payloadHashForHeaderAuth(r)
 			if err != nil {
 				return nil, err
 			}
 		}
-	}
-	if bodyBytes != nil {
-		restoreBody(r, bodyBytes)
 	}
 
 	canonReq, _, err := buildCanonicalRequest(r, signedHeaders, payloadHash, true)
@@ -683,29 +677,16 @@ func normalizeAndValidateSignedHeaders(s string) ([]string, error) {
 	return out, nil
 }
 
-func payloadHashForHeaderAuth(r *http.Request) (payloadHash string, bodyBytes []byte, err error) {
+func payloadHashForHeaderAuth(r *http.Request) (string, error) {
 	if h := strings.TrimSpace(r.Header.Get("X-Amz-Content-Sha256")); h != "" {
-		return h, nil, nil
+		return h, nil
 	}
 
-	if r.Body == nil {
+	if r.Body == nil || r.Body == http.NoBody || r.ContentLength == 0 {
 		empty := sha256.Sum256(nil)
-		return hex.EncodeToString(empty[:]), nil, nil
+		return hex.EncodeToString(empty[:]), nil
 	}
-	b, err := io.ReadAll(r.Body)
-	if err != nil {
-		return "", nil, fmt.Errorf("sigv4: read body: %w", err)
-	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), b, nil
-}
-
-func restoreBody(r *http.Request, body []byte) {
-	if body == nil {
-		return
-	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
-	r.ContentLength = int64(len(body))
+	return "", ErrMissingPayloadHash
 }
 
 func buildStringToSign(algorithm string, amzDate time.Time, scope string, canonicalRequest string) string {

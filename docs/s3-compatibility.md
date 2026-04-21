@@ -70,7 +70,7 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| AWS Signature V4 header auth | Implemented | Validates `AWS4-HMAC-SHA256` requests against bucket access credentials. |
+| AWS Signature V4 header auth | Implemented | Validates `AWS4-HMAC-SHA256` requests against bucket access credentials. Requests with bodies must send `X-Amz-Content-Sha256`; otherwise validation rejects the request without buffering the body. |
 | AWS Signature V4 presigned URLs | Implemented | Query-string presign validation supports default S3 unsigned payload behavior and a max TTL of seven days. |
 | AWS Signature V2 | Missing | Legacy clients that require V2 are unsupported. |
 | Anonymous access | Missing | S3 API requests require signed bucket credentials. |
