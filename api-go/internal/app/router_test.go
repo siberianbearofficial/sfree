@@ -104,6 +104,24 @@ func TestOpenAPIJSONRoute(t *testing.T) {
 	}
 }
 
+func TestOpenAPIDocsRouteRedirectsToIndex(t *testing.T) {
+	r, err := SetupRouter(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "/api/docs", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected 301, got %d", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "/api/docs/index.html" {
+		t.Fatalf("expected redirect to /api/docs/index.html, got %q", got)
+	}
+}
+
 func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 	tests := []struct {
 		name string
