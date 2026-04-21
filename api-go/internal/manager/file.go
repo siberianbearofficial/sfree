@@ -456,8 +456,8 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 	idx := 0
 	failoverCount := 0
 	for {
-		n, readErr := r.Read(buf)
-		if readErr != nil && readErr != io.EOF {
+		n, readErr := io.ReadFull(r, buf)
+		if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
 			span.RecordError(readErr)
 			span.SetStatus(codes.Error, "read failed")
 			cleanupUploadedChunks(ctx, chunks, clientCache)
@@ -546,7 +546,7 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 			Checksum: hex.EncodeToString(sum[:]),
 		})
 		idx++
-		if readErr == io.EOF {
+		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
 			break
 		}
 	}
