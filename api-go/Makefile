@@ -1,4 +1,8 @@
-.PHONY: build build-cli run test test-unit test-integration test-e2e lint docker-build test-e2e-local test-e2e-python
+SWAG_VERSION ?= v1.16.4
+SWAG := go run github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION)
+API_DOCS := internal/docs/docs.go
+
+.PHONY: build build-cli run test test-unit test-integration test-e2e lint docs docs-check docker-build test-e2e-local test-e2e-python
 
 build:
 	go build -o bin/server ./cmd/server
@@ -37,6 +41,14 @@ test-e2e-local:
 
 lint:
 	golangci-lint run
+
+
+docs:
+	$(SWAG) init --generalInfo cmd/server/main.go --dir . --output internal/docs --outputTypes go --parseInternal --quiet
+
+
+docs-check: docs
+	git diff --exit-code -- $(API_DOCS)
 
 
 docker-build:

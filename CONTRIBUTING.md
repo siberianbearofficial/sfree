@@ -141,7 +141,9 @@ and executes browser-heavy tests.
 When you add, remove, or change API endpoints in `api-go/`:
 
 - update the Swagger comments in Go source
-- regenerate `api-go/internal/docs/docs.go`
+- regenerate docs with `cd api-go && make docs`
+- check docs freshness with `cd api-go && make docs-check`; Woodpecker runs the
+  same check on API changes
 - avoid committing generated artifacts such as `swagger.json` or `swagger.yaml`
 
 ## Pull Requests

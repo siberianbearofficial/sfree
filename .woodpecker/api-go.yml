@@ -25,6 +25,12 @@ steps:
       - cd api-go
       - go test ./...
 
+  - name: api docs freshness
+    image: public.ecr.aws/docker/library/golang:1.24
+    commands:
+      - cd api-go
+      - make docs-check
+
   - name: e2e tests
     image: public.ecr.aws/docker/library/docker:27-cli
     environment:
