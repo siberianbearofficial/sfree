@@ -41,7 +41,10 @@ test.describe("Error states", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(
-      dialog.getByRole("heading", { name: "Sign Up" }),
+      dialog
+        .locator(":not(button)")
+        .filter({ hasText: /^Sign Up$/ })
+        .first(),
     ).toBeVisible();
 
     await dialog.getByLabel("Username").fill("newuser");
@@ -92,7 +95,7 @@ test.describe("Error states", () => {
 
     // Page must not crash — heading and Add Source button should still be present
     await expect(
-      page.getByRole("heading", { name: "Sources" }),
+      page.getByRole("heading", { name: /^Sources$/, level: 1 }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Add Source" }).first(),
@@ -114,7 +117,9 @@ test.describe("Error states", () => {
 
     await page.goto("/buckets");
 
-    await expect(page.getByRole("heading", { name: "Buckets" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Buckets$/, level: 1 }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Add Bucket" }).first(),
     ).toBeVisible();

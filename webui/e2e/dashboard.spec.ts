@@ -51,7 +51,7 @@ test.describe("Dashboard", () => {
     await page.locator("a, button").filter({ hasText: /^Manage Buckets$/ }).click();
     await expect(page).toHaveURL("/buckets");
     await expect(
-      page.getByRole("heading", { name: "Buckets" }),
+      page.getByRole("heading", { name: /^Buckets$/, level: 1 }),
     ).toBeVisible();
   });
 
@@ -62,7 +62,7 @@ test.describe("Dashboard", () => {
     await page.locator("a, button").filter({ hasText: /^Manage Sources$/ }).click();
     await expect(page).toHaveURL("/sources");
     await expect(
-      page.getByRole("heading", { name: "Sources" }),
+      page.getByRole("heading", { name: /^Sources$/, level: 1 }),
     ).toBeVisible();
   });
 
