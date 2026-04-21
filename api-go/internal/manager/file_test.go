@@ -507,6 +507,31 @@ func TestStreamFileChecksumRejectsOversizedChunk(t *testing.T) {
 	}
 }
 
+func TestStreamFileChecksumRejectsTruncatedChunk(t *testing.T) {
+	t.Parallel()
+	payload := []byte("integrity check")
+	sum := sha256.Sum256(payload)
+	chunk := repository.FileChunk{
+		SourceID: primitive.NewObjectID(),
+		Name:     "chunk0",
+		Order:    0,
+		Size:     int64(len(payload)),
+		Checksum: hex.EncodeToString(sum[:]),
+	}
+	f := &repository.File{Chunks: []repository.FileChunk{chunk}}
+
+	var buf bytes.Buffer
+	err := streamFileWithFactory(context.Background(), f, &buf, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{"chunk0": payload[:len(payload)-1]}}, nil
+	})
+	if !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("expected ErrChecksumMismatch, got %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("expected no bytes written before checksum validation, got %d", buf.Len())
+	}
+}
+
 func TestStreamFileNoChecksumSkipsVerification(t *testing.T) {
 	t.Parallel()
 	payload := []byte("legacy chunk")
