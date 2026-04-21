@@ -10,17 +10,30 @@
 
 ## Development
 
-Install dependencies and run the dev server:
+Install dependencies from the lockfile and run the dev server:
 
 ```bash
-npm install
+cd webui
+npm ci
 npm run dev
 ```
 
-Validation commands:
+For standalone development against a local Go API:
+
+```bash
+VITE_API_BASE=http://localhost:8080/api/v1 npm run dev
+```
+
+Normal local validation:
 
 - `npm run lint`
 - `npm run build`
+
+Playwright/browser E2E is validated in Woodpecker for webui changes. Do not run
+it locally by default unless a maintainer asks for local reproduction.
+
+See [../CONTRIBUTING.md](../CONTRIBUTING.md) and [../docs/ci.md](../docs/ci.md)
+for full repository validation expectations.
 
 ## Backend Configuration
 
