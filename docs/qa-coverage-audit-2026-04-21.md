@@ -2,77 +2,71 @@
 
 Date: 2026-04-21
 
-Scope: `api-go` automated tests, Woodpecker backend validation, recent `origin/main` changes, and open backend PRs as of 2026-04-21 16:25 UTC.
+Scope: `api-go` automated tests, Woodpecker backend validation, recent `origin/main` changes, and open backend PRs as of 2026-04-21 18:55 UTC.
 
 ## Recent Inputs
 
-- `origin/main` now includes focused S3 range GET, ListObjectsV2 pagination, checksum verification, multipart checksum preservation, one-file-per-bucket-object enforcement, S3 GET stream-failure semantics, DeleteObjects support, CopyObject support, SDK CopyObject compatibility coverage, bucket grant route scoping, Woodpecker image-pinning, and the unit-only `api-go` Makefile `test` target.
-- Merged commit `5c4f0a2` (`THE-467`) scopes bucket grant update/delete mutations to the route bucket and adds integration coverage for cross-bucket grant IDs returning 404 without mutating the grant in its real bucket.
-- Merged commit `a5ac19e` (`THE-445`) preserves multipart chunk checksums and adds `TestCompletedMultipartChunksPreservesChecksums`.
-- Merged commit `9895536` (`THE-447`) enforces one file document per bucket object name and adds repository integration coverage for unique bucket/name replacement plus legacy index migration.
-- Merged PR [#196](https://github.com/siberianbearofficial/sfree/pull/196) makes the `api-go` Makefile test target unit-only and documents that integration/E2E suites belong in Woodpecker.
-- Merged PR [#180](https://github.com/siberianbearofficial/sfree/pull/180) adds S3 CopyObject support plus Go E2E coverage for same-bucket copy, cross-bucket copy, response XML fields, unsupported metadata replacement, and copied-object survival after deleting the source object.
-- Merged PR [#178](https://github.com/siberianbearofficial/sfree/pull/178) adds S3 GET stream-failure semantics and handler regression tests for corrupt chunks before success headers/body are emitted.
-- Merged PR [#176](https://github.com/siberianbearofficial/sfree/pull/176) adds S3 DeleteObjects support plus E2E coverage for normal delete, missing-key idempotency, quiet mode, list-after-delete, and oversized XML rejection.
-- Open PR [#202](https://github.com/siberianbearofficial/sfree/pull/202) centralizes source-client construction and adds unit coverage for source-client parsing, wrapping, inspection, download, and stream lifetime behavior.
-- Open PR [#197](https://github.com/siberianbearofficial/sfree/pull/197) redacts SigV4 mismatch diagnostics and adds header-auth plus presigned-url tests that assert submitted signatures, expected signatures, canonical headers, and credentials do not leak in errors.
-- Open PR [#195](https://github.com/siberianbearofficial/sfree/pull/195) fixes cleanup of chunks uploaded before later upload/read failures and adds manager regressions for both paths.
-- Open PR [#191](https://github.com/siberianbearofficial/sfree/pull/191) moves S3 object mutation logic into a manager service and adds unit coverage for PUT, CopyObject, DeleteObject, CompleteMultipartUpload cleanup, and metadata-save failure cleanup.
-- Open PR [#187](https://github.com/siberianbearofficial/sfree/pull/187) adds `api-go` lint enforcement to Woodpecker and updates CI docs.
+- `origin/main` includes the latest S3 range GET, ListObjectsV2 pagination, checksum verification, multipart checksum preservation, one-file-per-bucket-object enforcement, S3 GET stream-failure semantics, DeleteObjects, CopyObject, source-client factory routing, SigV4 redaction, malformed multipart error-shape coverage, S3 helper unit coverage, object mutation manager extraction, unit-only `api-go` Makefile `test`, and Woodpecker lint enforcement.
+- Merged commit `85aac70` (`THE-494`, PR #208) adds pure unit coverage for S3 range parsing, `max-keys`, list pagination, common prefixes, continuation tokens, and `max-keys=0`.
+- Merged commit `b53e8ed` (`THE-449`, PR #187) adds `golangci-lint run` to `.woodpecker/api-go.yml` for `api-go/**` PRs and main pushes.
+- Merged commit `045a8b6` (`THE-486`) adds malformed and unsupported multipart S3 XML error-shape coverage.
+- Merged commit `ea8c5df` (`THE-448`) moves S3 object mutations into `internal/manager/s3_object.go` with focused unit coverage for PUT, CopyObject, DeleteObject, CompleteMultipartUpload cleanup, and failure cleanup.
+- Merged commit `9ca6ce2` (`THE-468`) adds SigV4 mismatch redaction tests for header auth and presigned URLs.
+- Merged commit `672ac1f` (`THE-459`, PR #194) routes source utility operations through the source-client factory and adds manager tests for client selection, wrapping, inspection, download, and stream lifetime behavior.
+- Open PR #214 (`THE-503`) fixes short-read upload chunking and adds a focused `internal/manager/file_test.go` regression for short reads before EOF.
+- Open PR #213 (`THE-500`) speeds up Woodpecker by combining web UI validation steps and aligning the API Go E2E Mongo image tag for reuse.
+- Open PR #212 (`THE-367`) adds OpenAPI documentation routes and router coverage.
+- Open PR #210 (`THE-484`) cleans bucket-owned file metadata, multipart metadata, and unreferenced chunks during bucket deletion. It adds manager unit coverage for successful cleanup and cleanup error propagation.
+- Open PR #209 (`THE-493`) makes multipart part replacement atomic. It adds handler/repository coverage for replaced part chunk selection and one-step repository part replacement.
+- Open PR #207 (`THE-490`) adds Python SDK `head_object` E2E coverage and refreshes this audit document.
+- Open PR #202 (`THE-475`) centralizes source-client construction and keeps streamed source downloads open for callers.
+- Open PR #195 (`THE-458`) cleans already uploaded chunks when a later upload/read failure aborts upload, with manager unit coverage for later upload and read failures.
 
 ## Coverage Map
 
 | Area | Current coverage | Assessment |
 | --- | --- | --- |
-| Object write/read roundtrip | Python E2E and Go S3 E2E cover PUT, LIST, GET, overwrite, DELETE with an S3 source. | Covered for simple objects. |
-| Chunking correctness | `internal/manager/file_test.go` covers round-robin chunking, weighted placement, checksum storage, and failover. | Covered at unit level. |
-| Metadata integrity | File chunk size/checksum metadata is unit-tested, including completed multipart checksum propagation. S3 ETag, range headers, and basic object headers are checked in E2E. | Weak for user metadata and content type because those are not implemented. |
-| Placement logic | Round-robin, weighted selection, and upload failover have unit coverage. | Covered for manager logic. |
-| Reconstruction/retrieval | Manager tests cover checksum-verified streaming, range streaming across chunks, legacy chunks, oversized chunks, truncated chunks, and corruption. S3 E2E covers full-object and ranged download. Handler tests cover S3 full and ranged GET failures before success headers/body are emitted. | Covered for manager logic and pre-commit S3 HTTP error behavior. |
-| Corruption detection | SHA-256 mismatch paths are unit-tested, including short and oversized chunk reads. | Covered at unit level. |
-| Source/backend failure cases | Manager failover and resilience wrappers have tests. S3 GET stream-failure handler coverage is merged on `origin/main`; open PR #202 adds source-client construction and stream lifetime coverage. | Covered for upload/retry logic and pre-commit S3 GET failure behavior. |
-| Critical S3-compatible API behavior | Go E2E covers source/bucket creation, object lifecycle, auth failure, presigned GET/PUT, HEAD, expired presign, range GET, ListObjectsV2 prefix/delimiter/pagination, DeleteObjects, CopyObject, and multipart lifecycle. Python SDK E2E covers ListObjectsV2, range GET, DeleteObjects, CopyObject, and multipart. | Covered for currently implemented core operations; weak for metadata and unsupported/malformed request error shapes. |
-| Recent bug regressions | Recent checksum, ListObjectsV2, range GET, multipart checksum propagation, DeleteObjects, CopyObject, S3 GET stream-failure, file-manager cache, upload retry body replay, upload failure cleanup, source-client factory, one-file-per-object enforcement, and bucket grant route scoping work have focused tests or open test branches. Web UI lockfile fix belongs to web UI CI. | Covered for latest backend regressions once open PRs merge. |
-| Recently changed code paths | Backend CI runs Go unit tests plus Python and Go E2E through Woodpecker for `api-go/**`; `make test` is unit-only on `origin/main`, keeping CPU-heavy integration/E2E work in CI. Open PR #187 adds lint enforcement to the same backend Woodpecker path. | Covered by CI routing. |
+| Object write/read roundtrip | Go S3 E2E covers PUT, LIST, GET, overwrite, DELETE, CopyObject, HEAD, presigned GET/PUT, and multipart lifecycle. Python SDK E2E covers upload/download, overwrite, list, range GET, CopyObject, DeleteObjects, DeleteObject metadata cleanup, and multipart. | Covered for implemented core object flows. |
+| Chunking correctness | `internal/manager/file_test.go` covers round-robin chunking, weighted placement, checksum storage, source-client reuse, failover, cleanup on upload failures in PR #195, checksum-verified streaming, and pending short-read chunk fill behavior in PR #214. | Covered at unit level once PR #195 and PR #214 merge. |
+| Metadata integrity | Repository tests cover one authoritative file document per bucket/object name. Manager/object tests cover overwrite and copy cleanup. HEAD returns stable basic headers in Go E2E, and SDK HEAD is pending PR #207. | Covered for file metadata and basic S3 headers; weak for user metadata and content-type because product behavior is not implemented. |
+| Placement logic | Round-robin, weighted selection, empty-source behavior, default strategy selection, and failover are covered in manager unit tests. | Covered. |
+| Reconstruction/retrieval | Manager tests cover checksum-verified full and ranged streaming, legacy chunks, oversized chunks, truncated chunks, and checksum mismatches. Handler tests cover S3 stream failures before success headers/body are emitted. Go/Python E2E cover full and ranged downloads. | Covered. |
+| Corruption detection | SHA-256 mismatch, short chunk, oversized chunk, and range verification paths are unit-tested. | Covered at unit level. |
+| Source/backend failure cases | Resilience wrappers cover retry, timeout, circuit breaker, upload body replay, and retry exhaustion. Manager upload failover and pending cleanup-on-failure PR #195 cover source failures. | Covered for retry/failover; pending PR #195 closes cleanup gaps. |
+| Critical S3-compatible API behavior | Go E2E covers object lifecycle, auth, presign, HEAD, range GET, ListObjectsV2, DeleteObjects, CopyObject, multipart, and malformed multipart errors. Handler unit tests now cover S3 range and list helper edge cases from `THE-494`. Python SDK E2E covers SDK list/range/copy/delete/multipart and pending SDK HEAD in PR #207. | Strong for implemented API surface; unsupported metadata behavior remains intentionally unresolved. |
+| Recent bug regressions | Recent checksum, list, range, multipart checksum, DeleteObjects, CopyObject, S3 stream failure, file-manager cache, upload retry body replay, source factory, object mutation manager, malformed error-shape, S3 helper edge cases, SigV4 redaction, bucket grant route scoping, and short-read chunking work have focused tests or open test branches. | Covered once open PRs merge. |
+| Recently changed code paths | `.woodpecker/api-go.yml` runs lint, Go unit tests, Python S3 E2E, and Go S3 E2E on `api-go/**` PRs and main pushes. `make test` remains unit-only so CPU-heavy suites stay in Woodpecker. | Covered for backend changes. |
 
 ## Prioritized Missing Tests
 
-1. Add S3 object metadata/header behavior coverage when metadata support is implemented.
-   Acceptance: PUT with `Content-Type` and `x-amz-meta-*` either preserves those values through HEAD/GET or returns an intentional S3-compatible unsupported-feature response.
+1. Add an S3/API integration regression for bucket deletion cleanup after PR #210 merges.
+   Acceptance: create a bucket with at least one object and one multipart upload, delete the bucket through the API, then verify the object is no longer listable/downloadable through S3 behavior or file APIs and cleanup failures surface as a non-success response. Prefer Go E2E or a focused integration test in `api-go`; run it in Woodpecker only.
 
-2. Add S3 malformed/unsupported request error-shape coverage at SDK and raw HTTP levels.
-   Acceptance: unsupported operations and malformed query combinations return XML S3 errors with stable status codes instead of generic JSON or empty responses.
+2. Add failure-path coverage for multipart part replacement preserving the previous part when replacement upload persistence fails, if PR #209 does not already assert that exact behavior.
+   Acceptance: simulate replacement of part N where the new chunk upload succeeds but repository update fails; the previous part remains selected for completion and newly uploaded replacement chunks are cleaned or reported according to the product contract.
 
-3. Add SDK-level HEAD and presigned URL coverage if the Python SDK compatibility suite is expected to be the long-term compatibility matrix rather than a focused SDK smoke branch.
-   Acceptance: aiobotocore `head_object` exposes stable `ContentLength`, `ETag`, and status metadata; generated presigned GET/PUT URLs work without client-specific signing hacks.
+3. Decide product behavior for S3 `Content-Type` and `x-amz-meta-*`, then add tests.
+   Acceptance: PUT with `Content-Type` and `x-amz-meta-*` either preserves those values through HEAD/GET and CopyObject COPY, or returns an intentional S3-compatible unsupported-feature response. This needs a product/engineering decision before QA writes the final assertion.
 
-4. After PR #191 merges, add one handler-level or E2E overwrite regression if manager-only coverage proves insufficient.
-   Acceptance: repeated S3 PUT, CopyObject over an existing destination, and CompleteMultipartUpload over an existing key leave exactly one file document, preserve retrievable latest content, and clean only chunks no longer referenced by any file.
+4. Add web UI API-helper unit coverage if `webui/src/shared/api/client.ts` remains the centralized request path.
+   Acceptance: API helpers consistently attach credentials, parse JSON and empty responses, map non-2xx responses into the shared error type, and preserve user-visible message fallbacks. This likely requires adding a lightweight frontend unit-test harness; do not use Playwright locally.
 
-5. Add a lightweight permission regression for grant listing only if product requirements expect route-bucket scoping symmetry beyond update/delete.
-   Acceptance: listing grants for bucket A never exposes grants from bucket B even when grant IDs or users overlap in setup fixtures.
+5. Add a grant-listing route-scoping regression only if requirements expect symmetry with update/delete grant scoping.
+   Acceptance: listing grants for bucket A never exposes grants from bucket B, even when users or fixture setup overlap.
 
 ## Work Completed In This Audit
 
-- Confirmed `TestS3CompatGetObjectRange` covers valid bounded, open-ended, suffix, invalid, and full-object GET range behavior.
-- Confirmed `TestS3CompatListObjectsV2PrefixDelimiterAndPagination` covers V2 prefix filtering, delimiter common prefixes, continuation-token pagination, and V1 delimiter regression behavior.
-- Confirmed `TestS3CompatMultipartUploadLifecycle` covers create, upload, re-upload part, list parts, complete, GET completed object, abort cleanup, and missing upload IDs.
-- Confirmed merged PR #178 contains focused S3 GET stream-failure tests for full and ranged GETs.
-- Confirmed merged PR #176 contains DeleteObjects E2E coverage and XML body size-limit regression coverage.
-- Confirmed merged PR #180 contains Go E2E coverage for CopyObject and copied-object survival after source deletion.
-- Confirmed the Python SDK suite covers ListObjectsV2 prefix/delimiter/pagination, ranged GetObject, DeleteObjects, CopyObject, and multipart upload flow.
-- Confirmed `origin/THE-437-file-manager-cache` adds focused unit coverage for client-cache reuse across upload and delete paths; the direct cache test covers factory reuse for repeated source IDs.
-- Confirmed REST helper and router split branches include focused unit tests for the extracted request-helper and route-registration behavior.
-- Confirmed `TestCompletedMultipartChunksPreservesChecksums` covers checksum preservation when completed multipart parts are flattened into final file chunks.
-- Confirmed `TestFileRepositoryUniqueBucketNameAndReplace` and `TestFileRepositoryMigratesLegacyBucketNameIndex` cover one authoritative file document per bucket/object name and legacy index migration.
-- Confirmed `TestUpdateGrantRejectsCrossBucketGrantID` and `TestDeleteGrantRejectsCrossBucketGrantID` cover the latest bucket grant route-scoping regression.
-- Confirmed open PR #195 adds manager coverage for uploaded chunk cleanup after both later upload failure and later read failure.
-- Confirmed open PR #197 adds redaction coverage for both header-auth and presigned-url SigV4 mismatch paths.
-- Confirmed open PR #191 adds object-service unit coverage for overwrite cleanup and metadata-save failure cleanup around S3 object mutations.
-- Confirmed open PR #202 adds focused source-client construction coverage and keeps streamed source downloads open for callers.
-- Confirmed `origin/main` now has `make test` scoped to unit tests, matching the QA instruction to leave CPU-heavy suites to Woodpecker.
-- Reviewed `.woodpecker/api-go.yml`; backend PRs and pushes to main run Go unit tests plus S3-backed Python and Go E2E suites in Woodpecker.
+- Refreshed the audit against current `origin/main` and the current open GitHub PR list.
+- Confirmed `THE-486` closes the prior malformed/unsupported multipart S3 error-shape gap with `TestS3CompatMalformedUnsupportedMultipartErrors`.
+- Confirmed `THE-448` closes the prior manager-only S3 object mutation concern with `TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks`, `TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination`, `TestObjectServiceDeleteObjectRemovesMetadataAndUnreferencedChunks`, and `TestObjectServiceCompleteMultipartUploadBuildsFinalFileAndCleansUnusedChunks`.
+- Confirmed `THE-468` adds focused SigV4 mismatch redaction tests for header auth and presigned URLs.
+- Confirmed `THE-459` adds source-client factory and stream lifetime tests in `internal/manager/file_test.go`.
+- Confirmed `THE-449` adds backend lint enforcement to Woodpecker.
+- Confirmed `THE-494` closes S3 helper unit gaps with `TestParseObjectRange`, `TestParseListMaxKeys`, `TestBuildListBucketPageDelimiterCommonPrefixes`, `TestBuildListBucketPageContinuationToken`, and `TestBuildListBucketPageMaxKeysZero`.
+- Confirmed open PR #214 targets short-read upload chunking with a focused manager regression.
+- Confirmed open PR #207 targets SDK-level HEAD coverage.
+- Identified bucket deletion cleanup E2E/API integration as the highest-value remaining regression target because PR #210 currently advertises manager unit coverage but no API-level deletion cleanup proof.
 
 ## Verification
 
-Local CPU-heavy validation was intentionally not run. The backend suite should be executed by Woodpecker for this branch.
+Local CPU-heavy validation was intentionally not run. No Docker, Playwright, `go test`, or lint commands were executed locally; Woodpecker should run backend validation for branches that change `api-go/**`.
