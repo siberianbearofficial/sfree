@@ -476,6 +476,66 @@ func TestObjectServiceDeleteBucketContentsReturnsChunkCleanupError(t *testing.T)
 	}
 }
 
+func TestObjectServiceDeleteBucketContentsReturnsFileMetadataDeleteError(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	deleteErr := errors.New("delete metadata failed")
+	files := newFakeObjectFiles(repository.File{
+		ID:       primitive.NewObjectID(),
+		BucketID: bucketID,
+		Name:     "object.txt",
+		Chunks:   []repository.FileChunk{{SourceID: primitive.NewObjectID(), Name: "delete-me", Size: 3}},
+	})
+	files.deleteErr = deleteErr
+	var deleted []repository.FileChunk
+	svc := testObjectService(files, &deleted)
+
+	_, err := svc.DeleteBucketContents(context.Background(), bucketID)
+	if !errors.Is(err, deleteErr) {
+		t.Fatalf("expected file metadata delete error, got %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].Name != "delete-me" {
+		t.Fatalf("expected chunk cleanup before metadata delete failure, got %#v", deleted)
+	}
+	if _, err := files.GetByName(context.Background(), bucketID, "object.txt"); err != nil {
+		t.Fatalf("expected file metadata to remain after delete failure, got %v", err)
+	}
+}
+
+func TestObjectServiceDeleteBucketContentsReturnsMultipartMetadataDeleteError(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	deleteErr := errors.New("delete multipart metadata failed")
+	files := newFakeObjectFiles(repository.File{
+		ID:       primitive.NewObjectID(),
+		BucketID: bucketID,
+		Name:     "object.txt",
+		Chunks:   []repository.FileChunk{{SourceID: primitive.NewObjectID(), Name: "delete-me", Size: 3}},
+	})
+	uploads := &fakeMultipartUploads{
+		uploads: map[string]repository.MultipartUpload{
+			"delete-upload": {
+				BucketID:  bucketID,
+				ObjectKey: "pending.txt",
+				UploadID:  "delete-upload",
+			},
+		},
+		delErr: deleteErr,
+	}
+	var deleted []repository.FileChunk
+	svc := testObjectService(files, &deleted)
+	svc.multipart = uploads
+
+	_, err := svc.DeleteBucketContents(context.Background(), bucketID)
+	if !errors.Is(err, deleteErr) {
+		t.Fatalf("expected multipart metadata delete error, got %v", err)
+	}
+	if _, err := files.GetByName(context.Background(), bucketID, "object.txt"); !errors.Is(err, mongo.ErrNoDocuments) {
+		t.Fatalf("expected file metadata deleted before multipart delete failure, got %v", err)
+	}
+	if _, err := uploads.GetByUploadID(context.Background(), "delete-upload"); err != nil {
+		t.Fatalf("expected multipart metadata to remain after delete failure, got %v", err)
+	}
+}
+
 func TestObjectServiceCompleteMultipartUploadBuildsFinalFileAndCleansUnusedChunks(t *testing.T) {
 	bucketID := primitive.NewObjectID()
 	oldChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "old-file-chunk", Size: 2}
