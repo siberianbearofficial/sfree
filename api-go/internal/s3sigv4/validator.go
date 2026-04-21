@@ -442,7 +442,7 @@ func awsPercentEncodePath(path string) string {
 		if isUnreserved(c) || c == '/' {
 			b.WriteByte(c)
 		} else {
-			b.WriteString(fmt.Sprintf("%%%02X", c))
+			_, _ = fmt.Fprintf(&b, "%%%02X", c)
 		}
 	}
 	return b.String()
@@ -498,7 +498,7 @@ func awsPercentEncodeQuery(s string) string {
 		if isUnreserved(c) {
 			b.WriteByte(c)
 		} else {
-			b.WriteString(fmt.Sprintf("%%%02X", c))
+			_, _ = fmt.Fprintf(&b, "%%%02X", c)
 		}
 	}
 	return b.String()

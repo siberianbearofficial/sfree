@@ -33,9 +33,13 @@ var sourcesListCmd = &cobra.Command{
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tNAME\tTYPE\tCREATED")
+		if _, err := fmt.Fprintln(w, "ID\tNAME\tTYPE\tCREATED"); err != nil {
+			return err
+		}
 		for _, s := range sources {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.ID, s.Name, s.Type, s.CreatedAt)
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.ID, s.Name, s.Type, s.CreatedAt); err != nil {
+				return err
+			}
 		}
 		return w.Flush()
 	},
