@@ -460,6 +460,7 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		if readErr != nil && readErr != io.EOF {
 			span.RecordError(readErr)
 			span.SetStatus(codes.Error, "read failed")
+			cleanupUploadedChunks(ctx, chunks, clientCache)
 			return nil, readErr
 		}
 		if n == 0 {
@@ -473,6 +474,7 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "source selection failed")
+			cleanupUploadedChunks(ctx, chunks, clientCache)
 			return nil, err
 		}
 
@@ -530,6 +532,7 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 			chunkSpan.End()
 			span.RecordError(uploadErr)
 			span.SetStatus(codes.Error, fmt.Sprintf("chunk %d upload failed on all sources", idx))
+			cleanupUploadedChunks(ctx, chunks, clientCache)
 			return nil, uploadErr
 		}
 		chunkSpan.End()
@@ -552,6 +555,23 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		attribute.Int("chunks.failovers", failoverCount),
 	)
 	return chunks, nil
+}
+
+func cleanupUploadedChunks(ctx context.Context, chunks []repository.FileChunk, clientCache *sourceClientCache) {
+	for _, ch := range chunks {
+		cli, err := clientCache.get(ctx, repository.Source{ID: ch.SourceID})
+		if err != nil {
+			slog.WarnContext(ctx, "upload cleanup: get client", slog.String("error", err.Error()))
+			continue
+		}
+		if err := cli.Delete(ctx, ch.Name); err != nil {
+			slog.WarnContext(ctx, "upload cleanup: delete chunk",
+				slog.String("source_id", ch.SourceID.Hex()),
+				slog.String("chunk", ch.Name),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
 }
 
 // pickSourceClient selects the next source and returns its cached client.

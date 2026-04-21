@@ -19,6 +19,8 @@ import (
 type stubSourceClient struct {
 	uploaded     [][]byte
 	uploadErr    error
+	uploadErrAt  int
+	uploadCalls  int
 	downloadErr  error
 	deleted      []string
 	deleteErr    error
@@ -30,11 +32,27 @@ type stubSourceClient struct {
 	s3Used       int64
 }
 
+type readOnceThenError struct {
+	data []byte
+	err  error
+	done bool
+}
+
+func (r *readOnceThenError) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, r.err
+	}
+	r.done = true
+	return copy(p, r.data), nil
+}
+
 func (c *stubSourceClient) Upload(_ context.Context, _ string, r io.Reader) (string, error) {
-	if c.uploadErr != nil {
+	if c.uploadErr != nil && c.uploadCalls >= c.uploadErrAt {
+		c.uploadCalls++
 		return "", c.uploadErr
 	}
 	data, _ := io.ReadAll(r)
+	c.uploadCalls++
 	c.uploaded = append(c.uploaded, data)
 	return string(data), nil
 }
@@ -192,6 +210,47 @@ func TestUploadFileChunksUploadError(t *testing.T) {
 	}, &RoundRobinSelector{})
 	if !errors.Is(err, uploadErr) {
 		t.Fatalf("expected upload error, got %v", err)
+	}
+}
+
+func TestUploadFileChunksCleansUploadedChunksOnLaterUploadError(t *testing.T) {
+	t.Parallel()
+	uploadErr := errors.New("upload failed")
+	src := repository.Source{ID: primitive.NewObjectID()}
+	stub := &stubSourceClient{uploadErr: uploadErr, uploadErrAt: 1}
+
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader([]byte("abcdef")), []repository.Source{src}, 3, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return stub, nil
+	}, &RoundRobinSelector{})
+	if !errors.Is(err, uploadErr) {
+		t.Fatalf("expected upload error, got %v", err)
+	}
+	if chunks != nil {
+		t.Fatalf("expected no chunks returned, got %+v", chunks)
+	}
+	if len(stub.deleted) != 1 || stub.deleted[0] != "abc" {
+		t.Fatalf("expected uploaded chunk cleanup, got %+v", stub.deleted)
+	}
+}
+
+func TestUploadFileChunksCleansUploadedChunksOnLaterReadError(t *testing.T) {
+	t.Parallel()
+	readErr := errors.New("read failed")
+	src := repository.Source{ID: primitive.NewObjectID()}
+	stub := &stubSourceClient{}
+	reader := &readOnceThenError{data: []byte("abc"), err: readErr}
+
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), reader, []repository.Source{src}, 3, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return stub, nil
+	}, &RoundRobinSelector{})
+	if !errors.Is(err, readErr) {
+		t.Fatalf("expected read error, got %v", err)
+	}
+	if chunks != nil {
+		t.Fatalf("expected no chunks returned, got %+v", chunks)
+	}
+	if len(stub.deleted) != 1 || stub.deleted[0] != "abc" {
+		t.Fatalf("expected uploaded chunk cleanup, got %+v", stub.deleted)
 	}
 }
 
