@@ -88,20 +88,27 @@ func (r *MultipartUploadRepository) ListByBucket(ctx context.Context, bucketID p
 	return uploads, cursor.Err()
 }
 
-// SetPart atomically replaces or inserts a part for the given upload.
-// It removes any existing part with the same part_number, then pushes the new one.
 func (r *MultipartUploadRepository) SetPart(ctx context.Context, uploadID string, part UploadPart) error {
-	// First pull any existing part with this number, then push the new one.
-	_, err := r.coll.UpdateOne(ctx,
-		bson.M{"upload_id": uploadID},
-		bson.M{"$pull": bson.M{"parts": bson.M{"part_number": part.PartNumber}}},
-	)
-	if err != nil {
-		return err
+	partDoc := bson.D{
+		{Key: "part_number", Value: part.PartNumber},
+		{Key: "etag", Value: part.ETag},
+		{Key: "size", Value: part.Size},
+		{Key: "chunks", Value: part.Chunks},
 	}
+	partArrayValue := bson.D{{Key: "$literal", Value: bson.A{partDoc}}}
+	partsOrEmpty := bson.D{{Key: "$ifNull", Value: bson.A{"$parts", bson.A{}}}}
+	otherParts := bson.D{{Key: "$filter", Value: bson.D{
+		{Key: "input", Value: partsOrEmpty},
+		{Key: "as", Value: "part"},
+		{Key: "cond", Value: bson.D{{Key: "$ne", Value: bson.A{"$$part.part_number", part.PartNumber}}}},
+	}}}
+	partsExpr := bson.D{{Key: "$concatArrays", Value: bson.A{otherParts, partArrayValue}}}
+
 	res, err := r.coll.UpdateOne(ctx,
 		bson.M{"upload_id": uploadID},
-		bson.M{"$push": bson.M{"parts": part}},
+		mongo.Pipeline{
+			bson.D{{Key: "$set", Value: bson.D{{Key: "parts", Value: partsExpr}}}},
+		},
 	)
 	if err != nil {
 		return err
