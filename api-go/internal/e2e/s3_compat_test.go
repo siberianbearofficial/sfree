@@ -760,6 +760,19 @@ func TestS3CompatCopyObject(t *testing.T) {
 	if status != http.StatusNotImplemented {
 		t.Fatalf("CopyObject REPLACE: expected 501, got %d: %s", status, body)
 	}
+
+	status, body = s3Do(t, http.MethodDelete, s3URL(sourceBucket, sourceKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNoContent {
+		t.Fatalf("DELETE source after copy: expected 204, got %d: %s", status, body)
+	}
+	status, body = s3Do(t, http.MethodGet, s3URL(sourceBucket, sameBucketKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET same-bucket copy after source delete mismatch: status=%d body=%q", status, body)
+	}
+	status, body = s3Do(t, http.MethodGet, s3URL(destBucket, crossBucketKey), destBucket.AccessKey, destBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET cross-bucket copy after source delete mismatch: status=%d body=%q", status, body)
+	}
 }
 
 func TestS3CompatGetObjectRange(t *testing.T) {

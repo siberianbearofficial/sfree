@@ -57,6 +57,7 @@ type deleteObjectsResult struct {
 
 type copyObjectResult struct {
 	XMLName      xml.Name `xml:"CopyObjectResult"`
+	Xmlns        string   `xml:"xmlns,attr"`
 	ETag         string   `xml:"ETag"`
 	LastModified string   `xml:"LastModified"`
 }
@@ -232,6 +233,28 @@ func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
 }
 
+func deleteFileChunksIfUnreferenced(ctx context.Context, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunks []repository.FileChunk) error {
+	seen := make(map[string]struct{}, len(chunks))
+	for _, chunk := range chunks {
+		ref := chunk.SourceID.Hex() + "/" + chunk.Name
+		if _, ok := seen[ref]; ok {
+			continue
+		}
+		seen[ref] = struct{}{}
+		count, err := fileRepo.CountByChunk(ctx, chunk.SourceID, chunk.Name)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if err := manager.DeleteFileChunks(ctx, sourceRepo, []repository.FileChunk{chunk}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func parseCopySource(raw string) (string, string, bool) {
 	raw = strings.TrimSpace(raw)
 	raw = strings.TrimPrefix(raw, "/")
@@ -265,7 +288,7 @@ func deleteObjectByName(ctx context.Context, sourceRepo *repository.SourceReposi
 		}
 		return false, err
 	}
-	if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
+	if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, fileDoc.Chunks); err != nil {
 		slog.WarnContext(ctx, "delete object: delete chunks", slog.String("error", err.Error()))
 	}
 	return true, nil
@@ -764,7 +787,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		if err := manager.DeleteFileChunks(ctx, sourceRepo, existingFile.Chunks); err != nil {
+		if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); err != nil {
 			slog.WarnContext(ctx, "put object: delete old chunks", slog.String("error", err.Error()))
 		}
 		c.Status(http.StatusOK)
@@ -781,10 +804,10 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [put]
-func CopyObject(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		if bucketRepo == nil || fileRepo == nil {
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -864,8 +887,12 @@ func CopyObject(bucketRepo *repository.BucketRepository, fileRepo *repository.Fi
 				return
 			}
 			copyFile = *updated
+			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); err != nil {
+				slog.WarnContext(ctx, "copy object: delete old chunks", slog.String("error", err.Error()))
+			}
 		}
 		c.XML(http.StatusOK, copyObjectResult{
+			Xmlns:        "http://s3.amazonaws.com/doc/2006-03-01/",
 			ETag:         objectETag(copyFile),
 			LastModified: now.Format(time.RFC3339),
 		})

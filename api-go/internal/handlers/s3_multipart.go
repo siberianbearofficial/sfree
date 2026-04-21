@@ -141,7 +141,7 @@ func PostBucket(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // otherwise → PutObject
 func PutObjectOrPart(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int) gin.HandlerFunc {
 	putHandler := PutObject(bucketRepo, sourceRepo, fileRepo, chunkSize)
-	copyHandler := CopyObject(bucketRepo, fileRepo)
+	copyHandler := CopyObject(bucketRepo, sourceRepo, fileRepo)
 	return func(c *gin.Context) {
 		if c.GetHeader("x-amz-copy-source") != "" {
 			if _, ok := c.GetQuery("uploadId"); ok {
@@ -429,8 +429,7 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		// Clean up old object chunks.
-		if delErr := manager.DeleteFileChunks(ctx, sourceRepo, existingFile.Chunks); delErr != nil {
+		if delErr := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); delErr != nil {
 			slog.WarnContext(ctx, "complete multipart: delete old chunks", slog.String("error", delErr.Error()))
 		}
 	} else {

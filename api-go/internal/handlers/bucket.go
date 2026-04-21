@@ -586,13 +586,13 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusNotFound)
 			return
 		}
-		if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
-			slog.ErrorContext(ctx, "delete file: delete chunk", slog.String("error", err.Error()))
+		if err := fileRepo.Delete(ctx, fileID); err != nil {
+			slog.ErrorContext(ctx, "delete file: delete metadata", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		if err := fileRepo.Delete(ctx, fileID); err != nil {
-			slog.ErrorContext(ctx, "delete file: delete metadata", slog.String("error", err.Error()))
+		if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, fileDoc.Chunks); err != nil {
+			slog.ErrorContext(ctx, "delete file: delete chunk", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
