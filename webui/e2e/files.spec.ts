@@ -118,7 +118,10 @@ test.describe("File listing and download", () => {
 
     // Click the first icon button in the first file row (download)
     const firstRow = page.locator("tbody tr").first();
-    await firstRow.getByRole("button").first().click();
+    const actionCell = firstRow.locator("td").last();
+    const actionButtons = actionCell.getByRole("button");
+    const actionButtonCount = await actionButtons.count();
+    await actionButtons.nth(actionButtonCount === 1 ? 0 : 1).click();
 
     await expect.poll(() => downloadCalled).toBe(true);
   });

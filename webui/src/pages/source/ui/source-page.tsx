@@ -1,5 +1,5 @@
 import {Button, CircularProgress, Spinner} from "@heroui/react";
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {downloadFile, getSourceInfo} from "../../../shared/api/sources";
 import type {SourceInfo} from "../../../shared/api/sources";
@@ -15,7 +15,7 @@ export function SourcePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  function load() {
+  const load = useCallback(() => {
     if (!id) return;
     setIsLoading(true);
     setError(null);
@@ -23,11 +23,11 @@ export function SourcePage() {
       .then(setInfo)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load source"))
       .finally(() => setIsLoading(false));
-  }
+  }, [id]);
 
   useEffect(() => {
     load();
-  }, [id]);
+  }, [load]);
 
   if (isLoading) {
     return (

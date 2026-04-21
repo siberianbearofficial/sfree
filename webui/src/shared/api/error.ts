@@ -15,7 +15,9 @@ export async function throwIfNotOk(res: Response, fallback: string) {
     const body = await res.json();
     if (body.error) message = body.error;
     else if (body.message) message = body.message;
-  } catch {}
+  } catch {
+    message = fallback;
+  }
   throw new ApiError(res.status, message);
 }
 
