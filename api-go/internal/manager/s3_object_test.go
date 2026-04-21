@@ -71,6 +71,15 @@ func (f *fakeObjectFiles) GetByName(_ context.Context, bucketID primitive.Object
 	return &file, nil
 }
 
+func (f *fakeObjectFiles) GetByID(_ context.Context, id primitive.ObjectID) (*repository.File, error) {
+	for _, file := range f.byName {
+		if file.ID == id {
+			return &file, nil
+		}
+	}
+	return nil, mongo.ErrNoDocuments
+}
+
 func (f *fakeObjectFiles) Delete(_ context.Context, id primitive.ObjectID) error {
 	if f.deleteErr != nil {
 		return f.deleteErr
@@ -533,6 +542,28 @@ func TestObjectServiceDeleteBucketContentsReturnsMultipartMetadataDeleteError(t 
 	}
 	if _, err := uploads.GetByUploadID(context.Background(), "delete-upload"); err != nil {
 		t.Fatalf("expected multipart metadata to remain after delete failure, got %v", err)
+	}
+}
+
+func TestObjectServiceDeleteObjectByIDRejectsWrongBucket(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	fileID := primitive.NewObjectID()
+	files := newFakeObjectFiles(repository.File{ID: fileID, BucketID: bucketID, Name: "object.txt"})
+	var deleted []repository.FileChunk
+	svc := testObjectService(files, &deleted)
+
+	result, err := svc.DeleteObjectByID(context.Background(), primitive.NewObjectID(), fileID)
+	if !errors.Is(err, ErrObjectNotFound) {
+		t.Fatalf("expected object not found, got %v", err)
+	}
+	if result.Deleted {
+		t.Fatal("expected no deletion")
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("expected no chunk cleanup, got %#v", deleted)
+	}
+	if _, err := files.GetByID(context.Background(), fileID); err != nil {
+		t.Fatalf("expected file to remain, got %v", err)
 	}
 }
 
