@@ -241,6 +241,35 @@ class SFreeClient:
         ) as s3_client:
             await s3_client.delete_object(Bucket=bucket_key, Key=object_key)
 
+    async def copy_object_s3(
+        self,
+        access_key: str,
+        access_secret: str,
+        source_bucket_key: str,
+        source_object_key: str,
+        dest_bucket_key: str,
+        dest_object_key: str,
+        metadata_directive: str | None = None,
+    ) -> dict[str, Any]:
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            **self._s3_client_kwargs(
+                region="us-east-1",
+                endpoint=self.config.s3_url,
+                access_key=access_key,
+                access_secret=access_secret,
+            ),
+        ) as s3_client:
+            payload: dict[str, Any] = {
+                "Bucket": dest_bucket_key,
+                "Key": dest_object_key,
+                "CopySource": {"Bucket": source_bucket_key, "Key": source_object_key},
+            }
+            if metadata_directive is not None:
+                payload["MetadataDirective"] = metadata_directive
+            return await s3_client.copy_object(**payload)
+
     async def download_file_s3(self, access_key: str, access_secret: str, bucket_key: str, object_key: str) -> bytes:
         response = await self.get_object_s3(
             access_key=access_key,

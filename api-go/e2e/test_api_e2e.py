@@ -1,5 +1,8 @@
 from uuid import uuid4
 
+import pytest
+from botocore.exceptions import ClientError
+
 
 async def test_sources_lifecycle(client, e2e_context):
     sources = await client.list_sources(e2e_context.auth)
@@ -223,6 +226,95 @@ async def test_s3_sdk_get_object_range_returns_partial_content(client, e2e_conte
     assert response["ContentLength"] == 5
     assert response["ContentRange"] == "bytes 2-6/26"
     assert response["AcceptRanges"] == "bytes"
+
+
+async def test_s3_sdk_copy_object_compatibility(client, e2e_context):
+    suffix = uuid4().hex[:8]
+    source_key = f"e2e-sdk-copy-source-{suffix}.txt"
+    same_bucket_key = f"e2e-sdk-copy-same-{suffix}.txt"
+    cross_bucket_key = f"e2e-sdk-copy-cross-{suffix}.txt"
+    payload = b"sfree sdk copy payload"
+    dest_bucket_key = f"e2e-copy-dest-{suffix}"
+    dest_bucket = await client.create_bucket(
+        auth=e2e_context.auth,
+        key=dest_bucket_key,
+        source_ids=[e2e_context.source_id],
+    )
+    buckets = await client.list_buckets(e2e_context.auth)
+    dest_bucket_id = next(item["id"] for item in buckets if item["key"] == dest_bucket_key)
+
+    try:
+        await client.upload_file_s3(
+            access_key=e2e_context.access_key,
+            access_secret=e2e_context.access_secret,
+            bucket_key=e2e_context.bucket_key,
+            object_key=source_key,
+            content=payload,
+        )
+
+        same_bucket_response = await client.copy_object_s3(
+            access_key=e2e_context.access_key,
+            access_secret=e2e_context.access_secret,
+            source_bucket_key=e2e_context.bucket_key,
+            source_object_key=source_key,
+            dest_bucket_key=e2e_context.bucket_key,
+            dest_object_key=same_bucket_key,
+        )
+        assert same_bucket_response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert same_bucket_response["CopyObjectResult"]["ETag"]
+        assert same_bucket_response["CopyObjectResult"]["LastModified"]
+        assert await client.download_file_s3(
+            access_key=e2e_context.access_key,
+            access_secret=e2e_context.access_secret,
+            bucket_key=e2e_context.bucket_key,
+            object_key=same_bucket_key,
+        ) == payload
+
+        cross_bucket_response = await client.copy_object_s3(
+            access_key=dest_bucket["access_key"],
+            access_secret=dest_bucket["access_secret"],
+            source_bucket_key=e2e_context.bucket_key,
+            source_object_key=source_key,
+            dest_bucket_key=dest_bucket_key,
+            dest_object_key=cross_bucket_key,
+        )
+        assert cross_bucket_response["ResponseMetadata"]["HTTPStatusCode"] == 200
+        assert await client.download_file_s3(
+            access_key=dest_bucket["access_key"],
+            access_secret=dest_bucket["access_secret"],
+            bucket_key=dest_bucket_key,
+            object_key=cross_bucket_key,
+        ) == payload
+
+        with pytest.raises(ClientError) as missing_source:
+            await client.copy_object_s3(
+                access_key=e2e_context.access_key,
+                access_secret=e2e_context.access_secret,
+                source_bucket_key=e2e_context.bucket_key,
+                source_object_key=f"missing-{suffix}.txt",
+                dest_bucket_key=e2e_context.bucket_key,
+                dest_object_key=f"e2e-sdk-copy-missing-{suffix}.txt",
+            )
+        assert missing_source.value.response["ResponseMetadata"]["HTTPStatusCode"] == 404
+        assert missing_source.value.response["Error"]["Code"] == "NoSuchKey"
+
+        with pytest.raises(ClientError) as replace_directive:
+            await client.copy_object_s3(
+                access_key=e2e_context.access_key,
+                access_secret=e2e_context.access_secret,
+                source_bucket_key=e2e_context.bucket_key,
+                source_object_key=source_key,
+                dest_bucket_key=e2e_context.bucket_key,
+                dest_object_key=f"e2e-sdk-copy-replace-{suffix}.txt",
+                metadata_directive="REPLACE",
+            )
+        assert replace_directive.value.response["ResponseMetadata"]["HTTPStatusCode"] == 501
+        assert replace_directive.value.response["Error"]["Code"] == "NotImplemented"
+    finally:
+        files = await client.list_files(e2e_context.auth, dest_bucket_id)
+        for file_doc in files:
+            await client.delete_file(e2e_context.auth, dest_bucket_id, file_doc["id"])
+        await client.delete_bucket(e2e_context.auth, dest_bucket_id)
 
 
 async def test_s3_sdk_delete_objects_removes_multiple_keys(client, e2e_context):
