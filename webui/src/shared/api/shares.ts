@@ -1,14 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
-
-import { getAuthHeader, getCredentialsOption } from "../lib/auth";
-
-function authHeader(): Record<string, string> {
-  return getAuthHeader();
-}
-
-function credentials(): RequestCredentials | undefined {
-  return getCredentialsOption();
-}
+import {apiFetch, apiJson} from "./client";
 
 export type ShareLinkInfo = {
   id: string;
@@ -25,42 +15,28 @@ export async function createShareLink(
   fileId: string,
   expiresIn?: number,
 ): Promise<ShareLinkInfo> {
-  const res = await fetch(
-    `${API_BASE}/buckets/${bucketId}/files/${fileId}/share`,
+  return apiJson<ShareLinkInfo>(
+    `/buckets/${bucketId}/files/${fileId}/share`,
+    "Failed to create share link",
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeader(),
-      },
-      credentials: credentials(),
-      body: JSON.stringify(expiresIn ? { expires_in: expiresIn } : {}),
+      json: expiresIn ? {expires_in: expiresIn} : {},
     },
   );
-  if (!res.ok) throw new Error("failed to create share link");
-  return res.json();
 }
 
 export async function listShareLinks(
   bucketId: string,
   fileId: string,
 ): Promise<ShareLinkInfo[]> {
-  const res = await fetch(
-    `${API_BASE}/buckets/${bucketId}/files/${fileId}/shares`,
-    {
-      headers: authHeader(),
-      credentials: credentials(),
-    },
+  return apiJson<ShareLinkInfo[]>(
+    `/buckets/${bucketId}/files/${fileId}/shares`,
+    "Failed to list share links",
   );
-  if (!res.ok) throw new Error("failed to list share links");
-  return res.json();
 }
 
 export async function deleteShareLink(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/shares/${id}`, {
+  await apiFetch(`/shares/${id}`, "Failed to delete share link", {
     method: "DELETE",
-    headers: authHeader(),
-    credentials: credentials(),
   });
-  if (!res.ok) throw new Error("failed to delete share link");
 }

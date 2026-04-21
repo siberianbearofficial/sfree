@@ -1,11 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "/api/v1";
-
-import { getAuthHeader } from "../lib/auth";
-import { throwIfNotOk } from "./error";
-
-function authHeader(): Record<string, string> {
-  return getAuthHeader();
-}
+import {apiFetch, apiJson} from "./client";
 
 export type BucketGrant = {
   id: string;
@@ -22,24 +15,21 @@ export async function createGrant(
   username: string,
   role: "owner" | "editor" | "viewer",
 ): Promise<BucketGrant> {
-  const res = await fetch(`${API_BASE}/buckets/${bucketId}/grants`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader(),
+  return apiJson<BucketGrant>(
+    `/buckets/${bucketId}/grants`,
+    "Failed to grant access",
+    {
+      method: "POST",
+      json: {username, role},
     },
-    body: JSON.stringify({ username, role }),
-  });
-  await throwIfNotOk(res, "Failed to grant access");
-  return res.json();
+  );
 }
 
 export async function listGrants(bucketId: string): Promise<BucketGrant[]> {
-  const res = await fetch(`${API_BASE}/buckets/${bucketId}/grants`, {
-    headers: authHeader(),
-  });
-  await throwIfNotOk(res, "Failed to list grants");
-  return res.json();
+  return apiJson<BucketGrant[]>(
+    `/buckets/${bucketId}/grants`,
+    "Failed to list grants",
+  );
 }
 
 export async function updateGrant(
@@ -47,24 +37,23 @@ export async function updateGrant(
   grantId: string,
   role: "owner" | "editor" | "viewer",
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/buckets/${bucketId}/grants/${grantId}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeader(),
+  await apiFetch(
+    `/buckets/${bucketId}/grants/${grantId}`,
+    "Failed to update grant",
+    {
+      method: "PATCH",
+      json: {role},
     },
-    body: JSON.stringify({ role }),
-  });
-  await throwIfNotOk(res, "Failed to update grant");
+  );
 }
 
 export async function deleteGrant(
   bucketId: string,
   grantId: string,
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/buckets/${bucketId}/grants/${grantId}`, {
-    method: "DELETE",
-    headers: authHeader(),
-  });
-  await throwIfNotOk(res, "Failed to revoke access");
+  await apiFetch(
+    `/buckets/${bucketId}/grants/${grantId}`,
+    "Failed to revoke access",
+    {method: "DELETE"},
+  );
 }
