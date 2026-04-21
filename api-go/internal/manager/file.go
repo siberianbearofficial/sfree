@@ -42,6 +42,34 @@ type SourceSelector interface {
 	NextSource(sources []repository.Source) (int, repository.Source, error)
 }
 
+type sourceClientCache struct {
+	factory SourceClientFactory
+	clients map[primitive.ObjectID]sourceClient
+}
+
+func newSourceClientCache(factory SourceClientFactory) *sourceClientCache {
+	if factory == nil {
+		factory = NewSourceClient
+	}
+	return &sourceClientCache{
+		factory: factory,
+		clients: make(map[primitive.ObjectID]sourceClient),
+	}
+}
+
+func (c *sourceClientCache) get(ctx context.Context, src repository.Source) (sourceClient, error) {
+	cli, ok := c.clients[src.ID]
+	if ok {
+		return cli, nil
+	}
+	cli, err := c.factory(ctx, &src)
+	if err != nil {
+		return nil, err
+	}
+	c.clients[src.ID] = cli
+	return cli, nil
+}
+
 type RoundRobinSelector struct {
 	next int
 }
@@ -143,27 +171,21 @@ func NewSourceClient(ctx context.Context, src *repository.Source) (sourceClient,
 }
 
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {
-	// Wrap the real source repo lookup in a SourceClientFactory so the core
-	// streaming logic can be tested without a live repository.
-	factory := func(ctx context.Context, src *repository.Source) (sourceClient, error) {
-		fullSrc, err := srcRepo.GetByID(ctx, src.ID)
-		if err != nil {
-			return nil, err
-		}
-		return NewSourceClient(ctx, fullSrc)
-	}
-	return streamFileWithFactory(ctx, f, w, factory)
+	return streamFileWithFactory(ctx, f, w, sourceClientFactoryFromRepository(srcRepo))
 }
 
 func StreamFileRange(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer, start, end int64) error {
-	factory := func(ctx context.Context, src *repository.Source) (sourceClient, error) {
+	return streamFileRangeWithFactory(ctx, f, w, start, end, sourceClientFactoryFromRepository(srcRepo))
+}
+
+func sourceClientFactoryFromRepository(srcRepo *repository.SourceRepository) SourceClientFactory {
+	return func(ctx context.Context, src *repository.Source) (sourceClient, error) {
 		fullSrc, err := srcRepo.GetByID(ctx, src.ID)
 		if err != nil {
 			return nil, err
 		}
 		return NewSourceClient(ctx, fullSrc)
 	}
-	return streamFileRangeWithFactory(ctx, f, w, start, end, factory)
 }
 
 // streamFileWithFactory is the testable core of StreamFile. The factory receives
@@ -178,18 +200,13 @@ func streamFileWithFactory(ctx context.Context, f *repository.File, w io.Writer,
 	)
 	defer span.End()
 
-	clients := make(map[primitive.ObjectID]sourceClient)
+	clientCache := newSourceClientCache(factory)
 	for i, ch := range f.Chunks {
-		cli, ok := clients[ch.SourceID]
-		if !ok {
-			var err error
-			cli, err = factory(ctx, &repository.Source{ID: ch.SourceID})
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "client creation failed")
-				return err
-			}
-			clients[ch.SourceID] = cli
+		cli, err := clientCache.get(ctx, repository.Source{ID: ch.SourceID})
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "client creation failed")
+			return err
 		}
 
 		_, chunkSpan := tracer.Start(ctx, "DownloadChunk",
@@ -255,7 +272,7 @@ func streamFileRangeWithFactory(ctx context.Context, f *repository.File, w io.Wr
 	)
 	defer span.End()
 
-	clients := make(map[primitive.ObjectID]sourceClient)
+	clientCache := newSourceClientCache(factory)
 	var offset int64
 	for i, ch := range f.Chunks {
 		chunkStart := offset
@@ -274,16 +291,11 @@ func streamFileRangeWithFactory(ctx context.Context, f *repository.File, w io.Wr
 			continue
 		}
 
-		cli, ok := clients[ch.SourceID]
-		if !ok {
-			var err error
-			cli, err = factory(ctx, &repository.Source{ID: ch.SourceID})
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "client creation failed")
-				return err
-			}
-			clients[ch.SourceID] = cli
+		cli, err := clientCache.get(ctx, repository.Source{ID: ch.SourceID})
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "client creation failed")
+			return err
 		}
 
 		_, chunkSpan := tracer.Start(ctx, "DownloadChunkRange",
@@ -386,6 +398,10 @@ func maxInt64(a, b int64) int64 {
 }
 
 func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository, chunks []repository.FileChunk) error {
+	return deleteFileChunksWithFactory(ctx, chunks, sourceClientFactoryFromRepository(srcRepo))
+}
+
+func deleteFileChunksWithFactory(ctx context.Context, chunks []repository.FileChunk, factory SourceClientFactory) error {
 	ctx, span := tracer.Start(ctx, "DeleteFileChunks",
 		trace.WithAttributes(
 			attribute.Int("chunks.count", len(chunks)),
@@ -393,23 +409,13 @@ func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository,
 	)
 	defer span.End()
 
-	clients := make(map[primitive.ObjectID]sourceClient)
+	clientCache := newSourceClientCache(factory)
 	for _, ch := range chunks {
-		cli, ok := clients[ch.SourceID]
-		if !ok {
-			src, err := srcRepo.GetByID(ctx, ch.SourceID)
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "source lookup failed")
-				return err
-			}
-			cli, err = NewSourceClient(ctx, src)
-			if err != nil {
-				span.RecordError(err)
-				span.SetStatus(codes.Error, "client creation failed")
-				return err
-			}
-			clients[ch.SourceID] = cli
+		cli, err := clientCache.get(ctx, repository.Source{ID: ch.SourceID})
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "client creation failed")
+			return err
 		}
 		if err := cli.Delete(ctx, ch.Name); err != nil {
 			span.RecordError(err)
@@ -436,16 +442,13 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 	if len(sources) == 0 {
 		return nil, errors.New("no sources")
 	}
-	if factory == nil {
-		factory = NewSourceClient
-	}
 	if selector == nil {
 		selector = &RoundRobinSelector{}
 	}
 	if chunkSize <= 0 {
 		chunkSize = 5 * 1024 * 1024
 	}
-	clients := make(map[primitive.ObjectID]sourceClient)
+	clientCache := newSourceClientCache(factory)
 	chunks := make([]repository.FileChunk, 0)
 	buf := make([]byte, chunkSize)
 	idx := 0
@@ -464,7 +467,7 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		chunkData := make([]byte, n)
 		copy(chunkData, buf[:n])
 
-		src, cli, err := pickSourceClient(ctx, sources, selector, clients, factory)
+		src, cli, err := pickSourceClient(ctx, sources, selector, clientCache)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "source selection failed")
@@ -486,7 +489,7 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 			chunkSpan.RecordError(uploadErr)
 			tried := map[primitive.ObjectID]bool{src.ID: true}
 			for attempt := 0; attempt < len(sources)-1; attempt++ {
-				altSrc, altCli, altErr := pickSourceClient(ctx, sources, selector, clients, factory)
+				altSrc, altCli, altErr := pickSourceClient(ctx, sources, selector, clientCache)
 				if altErr != nil {
 					continue
 				}
@@ -549,20 +552,15 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 	return chunks, nil
 }
 
-// pickSourceClient selects the next source and returns its client, creating
-// the client if needed. It uses the provided selector, client cache, and factory.
-func pickSourceClient(ctx context.Context, sources []repository.Source, selector SourceSelector, clients map[primitive.ObjectID]sourceClient, factory SourceClientFactory) (repository.Source, sourceClient, error) {
+// pickSourceClient selects the next source and returns its cached client.
+func pickSourceClient(ctx context.Context, sources []repository.Source, selector SourceSelector, clientCache *sourceClientCache) (repository.Source, sourceClient, error) {
 	_, src, err := selector.NextSource(sources)
 	if err != nil {
 		return repository.Source{}, nil, err
 	}
-	cli, ok := clients[src.ID]
-	if !ok {
-		cli, err = factory(ctx, &src)
-		if err != nil {
-			return repository.Source{}, nil, err
-		}
-		clients[src.ID] = cli
+	cli, err := clientCache.get(ctx, src)
+	if err != nil {
+		return repository.Source{}, nil, err
 	}
 	return src, cli, nil
 }

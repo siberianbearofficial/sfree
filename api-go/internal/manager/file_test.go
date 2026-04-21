@@ -17,6 +17,7 @@ type stubSourceClient struct {
 	uploaded    [][]byte
 	uploadErr   error
 	downloadErr error
+	deleted     []string
 	deleteErr   error
 }
 
@@ -36,7 +37,35 @@ func (c *stubSourceClient) Download(_ context.Context, name string) (io.ReadClos
 	return io.NopCloser(bytes.NewReader([]byte(name))), nil
 }
 
-func (c *stubSourceClient) Delete(_ context.Context, _ string) error { return c.deleteErr }
+func (c *stubSourceClient) Delete(_ context.Context, name string) error {
+	c.deleted = append(c.deleted, name)
+	return c.deleteErr
+}
+
+func TestSourceClientCacheReusesClients(t *testing.T) {
+	t.Parallel()
+	srcID := primitive.NewObjectID()
+	calls := 0
+	cache := newSourceClientCache(func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		calls++
+		return &stubSourceClient{}, nil
+	})
+
+	first, err := cache.get(context.Background(), repository.Source{ID: srcID})
+	if err != nil {
+		t.Fatalf("first get: %v", err)
+	}
+	second, err := cache.get(context.Background(), repository.Source{ID: srcID})
+	if err != nil {
+		t.Fatalf("second get: %v", err)
+	}
+	if first != second {
+		t.Fatal("expected cached client to be reused")
+	}
+	if calls != 1 {
+		t.Fatalf("expected factory to be called once, got %d", calls)
+	}
+}
 
 func TestUploadFileChunksWithRoundRobinStrategy(t *testing.T) {
 	t.Parallel()
@@ -45,7 +74,9 @@ func TestUploadFileChunksWithRoundRobinStrategy(t *testing.T) {
 	sources := []repository.Source{s1, s2}
 
 	clients := map[primitive.ObjectID]*stubSourceClient{}
+	factoryCalls := map[primitive.ObjectID]int{}
 	factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		factoryCalls[src.ID]++
 		cli := &stubSourceClient{}
 		clients[src.ID] = cli
 		return cli, nil
@@ -67,6 +98,9 @@ func TestUploadFileChunksWithRoundRobinStrategy(t *testing.T) {
 	}
 	if got := len(clients[s2.ID].uploaded); got != 2 {
 		t.Fatalf("unexpected uploads for source2: %d", got)
+	}
+	if factoryCalls[s1.ID] != 1 || factoryCalls[s2.ID] != 1 {
+		t.Fatalf("expected one client per source, got calls: %+v", factoryCalls)
 	}
 }
 
@@ -365,6 +399,34 @@ func TestDeleteFileChunksNoChunks(t *testing.T) {
 	t.Parallel()
 	if err := DeleteFileChunks(context.Background(), nil, []repository.FileChunk{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteFileChunksWithFactoryReusesSourceClient(t *testing.T) {
+	t.Parallel()
+	srcID := primitive.NewObjectID()
+	stub := &stubSourceClient{}
+	factoryCalls := 0
+	chunks := []repository.FileChunk{
+		{SourceID: srcID, Name: "chunk0"},
+		{SourceID: srcID, Name: "chunk1"},
+	}
+
+	err := deleteFileChunksWithFactory(context.Background(), chunks, func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		if src.ID != srcID {
+			t.Fatalf("unexpected source id: %s", src.ID.Hex())
+		}
+		factoryCalls++
+		return stub, nil
+	})
+	if err != nil {
+		t.Fatalf("delete chunks: %v", err)
+	}
+	if factoryCalls != 1 {
+		t.Fatalf("expected one client creation, got %d", factoryCalls)
+	}
+	if len(stub.deleted) != 2 || stub.deleted[0] != "chunk0" || stub.deleted[1] != "chunk1" {
+		t.Fatalf("unexpected deleted chunks: %+v", stub.deleted)
 	}
 }
 
