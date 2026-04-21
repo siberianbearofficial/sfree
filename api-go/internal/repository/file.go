@@ -14,6 +14,9 @@ type FileChunk struct {
 	Name     string             `bson:"name"`
 	Order    int                `bson:"order"`
 	Size     int64              `bson:"size"`
+	// Checksum is the hex-encoded SHA-256 hash of the raw chunk bytes, computed
+	// at upload time. Empty for chunks created before checksums were introduced.
+	Checksum string `bson:"checksum,omitempty"`
 }
 
 type File struct {
