@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -550,6 +551,215 @@ func TestS3CompatObjectLifecycle(t *testing.T) {
 	status, _ = s3Do(t, http.MethodGet, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("GET deleted object: expected 404, got %d", status)
+	}
+}
+
+// TestS3CompatDeleteMissingObjectIsIdempotent verifies repeated DELETE on missing object.
+func TestS3CompatDeleteMissingObjectIsIdempotent(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	missingObjectURL := fmt.Sprintf("%s/api/s3/%s/missing-%s.txt", ts.URL, bucket.Key, suffix)
+
+	status, _ := s3Do(t, http.MethodDelete, missingObjectURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNoContent {
+		t.Fatalf("first DELETE missing object: expected 204, got %d", status)
+	}
+
+	status, _ = s3Do(t, http.MethodDelete, missingObjectURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNoContent {
+		t.Fatalf("second DELETE missing object: expected 204, got %d", status)
+	}
+}
+
+// TestS3CompatMalformedObjectPathVariants validates malformed object key path handling.
+func TestS3CompatMalformedObjectPathVariants(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	baseURL := fmt.Sprintf("%s/api/s3/%s", ts.URL, bucket.Key)
+
+	// Empty object path should be rejected by signed PUT.
+	emptyObjectURL := baseURL + "/"
+	status, body := s3Do(t, http.MethodPut, emptyObjectURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusBadRequest {
+		t.Fatalf("empty-object PUT: expected 400, got %d: %s", status, body)
+	}
+	var emptyObjErr s3ErrorXML
+	if err := xml.Unmarshal(body, &emptyObjErr); err != nil {
+		t.Fatalf("decode empty-object PUT error: %v", err)
+	}
+	if emptyObjErr.Code != "InvalidRequest" {
+		t.Fatalf("empty-object PUT: expected InvalidRequest, got %q", emptyObjErr.Code)
+	}
+
+	// Double-slash object key should remain stable for object operations.
+	doubleSlashObject := "folder//nested//object.txt"
+	doubleSlashURL := fmt.Sprintf("%s/%s", baseURL, doubleSlashObject)
+	content := []byte("double slash object content")
+
+	status, body = s3Do(t, http.MethodPut, doubleSlashURL, bucket.AccessKey, bucket.AccessSecret, env.Region, content)
+	if status != http.StatusOK {
+		t.Fatalf("double-slash PUT: expected 200, got %d: %s", status, body)
+	}
+
+	status, body = s3Do(t, http.MethodGet, doubleSlashURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK {
+		t.Fatalf("double-slash GET: expected 200, got %d: %s", status, body)
+	}
+	if !bytes.Equal(body, content) {
+		t.Fatalf("double-slash GET: content mismatch; want %q got %q", content, body)
+	}
+
+	status, body = s3Do(t, http.MethodDelete, doubleSlashURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNoContent {
+		t.Fatalf("double-slash DELETE: expected 204, got %d: %s", status, body)
+	}
+}
+
+// listBucketResultXML models the subset of list response needed for KeyCount assertions.
+type listBucketResultXML struct {
+	XMLName  xml.Name `xml:"ListBucketResult"`
+	KeyCount int      `xml:"KeyCount"`
+}
+
+// TestS3CompatListEmptyBucketReturnsZeroKeyCount verifies empty listing semantics.
+func TestS3CompatListEmptyBucketReturnsZeroKeyCount(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	listURL := ts.URL + "/api/s3/" + bucket.Key
+	status, body := s3Do(t, http.MethodGet, listURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK {
+		t.Fatalf("list empty bucket: expected 200, got %d: %s", status, body)
+	}
+
+	var result listBucketResultXML
+	if err := xml.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if result.KeyCount != 0 {
+		t.Fatalf("list empty bucket: expected KeyCount 0, got %d", result.KeyCount)
+	}
+}
+
+type s3ErrorXML struct {
+	XMLName xml.Name `xml:"Error"`
+	Code    string   `xml:"Code"`
+}
+
+// TestS3CompatGetFromMissingBucketReturnsNoSuchBucket verifies missing bucket error handling.
+func TestS3CompatGetFromMissingBucketReturnsNoSuchBucket(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	missingBucketURL := fmt.Sprintf("%s/api/s3/%s-does-not-exist/object-%s", ts.URL, bucket.Key, suffix)
+	status, body := s3Do(t, http.MethodGet, missingBucketURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNotFound {
+		t.Fatalf("missing bucket: expected 404, got %d", status)
+	}
+
+	var errResp s3ErrorXML
+	if err := xml.Unmarshal(body, &errResp); err != nil {
+		t.Fatalf("decode missing bucket error: %v", err)
+	}
+	if errResp.Code != "NoSuchBucket" {
+		t.Fatalf("missing bucket: expected NoSuchBucket, got %q", errResp.Code)
+	}
+}
+
+// TestS3CompatListMissingBucketReturnsNoSuchBucket verifies list endpoint returns structured S3 errors.
+func TestS3CompatListMissingBucketReturnsNoSuchBucket(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	missingBucketURL := fmt.Sprintf("%s/api/s3/%s-does-not-exist", ts.URL, bucket.Key)
+	status, body := s3Do(t, http.MethodGet, missingBucketURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNotFound {
+		t.Fatalf("missing bucket list: expected 404, got %d", status)
+	}
+
+	var errResp s3ErrorXML
+	if err := xml.Unmarshal(body, &errResp); err != nil {
+		t.Fatalf("decode missing bucket list error: %v", err)
+	}
+	if errResp.Code != "NoSuchBucket" {
+		t.Fatalf("missing bucket list: expected NoSuchBucket, got %q", errResp.Code)
 	}
 }
 

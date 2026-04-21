@@ -7,8 +7,8 @@ Actions workflows to this repository.
 
 | Pipeline | Paths | `pull_request` | `push` to `main` | Behavior |
 | --- | --- | --- | --- | --- |
-| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs Go unit tests plus Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
-| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs `npm ci --include=dev`, `npm run lint`, and `npm run build`. Pushes to `main` also publish the frontend image. |
+| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs dependency/security checks (`go mod verify`, `govulncheck`), unit tests, Python S3 e2e (`E2E_SOURCE_TYPE=s3`), and Go S3 e2e suites. Pushes to `main` also publish the backend image. |
+| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs `npm ci --include=dev`, `npm audit` (high+ findings fail), `npm run lint`, and `npm run build`. Pushes to `main` also publish the frontend image. |
 
 ## Required Secrets
 

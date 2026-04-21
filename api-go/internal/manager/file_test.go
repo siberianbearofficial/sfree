@@ -115,6 +115,45 @@ func TestUploadFileChunksNoSources(t *testing.T) {
 	}
 }
 
+func TestUploadFileChunksDefaultChunkSize(t *testing.T) {
+	t.Parallel()
+	payload := bytes.Repeat([]byte("x"), 5*1024*1024+123)
+	source := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	for _, tc := range []struct {
+		name      string
+		chunkSize int
+	}{
+		{name: "zero", chunkSize: 0},
+		{name: "negative", chunkSize: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clients := map[primitive.ObjectID]*stubSourceClient{}
+			factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+				cli := &stubSourceClient{}
+				clients[src.ID] = cli
+				return cli, nil
+			}
+
+			chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), []repository.Source{source}, tc.chunkSize, factory, &RoundRobinSelector{})
+			if err != nil {
+				t.Fatalf("upload: %v", err)
+			}
+			if len(chunks) != 2 {
+				t.Fatalf("expected 2 chunks from default chunk size fallback, got %d", len(chunks))
+			}
+			if got := len(clients[source.ID].uploaded); got != 2 {
+				t.Fatalf("expected 2 uploads, got %d", got)
+			}
+			if chunks[0].Size != 5*1024*1024 {
+				t.Fatalf("expected first chunk size %d, got %d", 5*1024*1024, chunks[0].Size)
+			}
+			if chunks[1].Size != 123 {
+				t.Fatalf("expected second chunk size 123, got %d", chunks[1].Size)
+			}
+		})
+	}
+}
+
 func TestUploadFileChunksFactoryError(t *testing.T) {
 	t.Parallel()
 	factoryErr := errors.New("factory failed")

@@ -13,6 +13,13 @@ when:
         - api-go/**
 
 steps:
+  - name: dependency and security audit
+    image: golang:1.24
+    commands:
+      - cd api-go
+      - go mod verify
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   - name: unit tests
     image: golang:1.24
     commands:
