@@ -23,21 +23,32 @@ test.describe("Dashboard", () => {
     await injectAuth(page);
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    const summaryCards = page.locator(".grid.gap-4.grid-cols-2.lg\\:grid-cols-4");
+    await expect(summaryCards.getByText("Sources", { exact: true })).toBeVisible();
+    await expect(summaryCards.getByText("Buckets", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("Buckets", { exact: true }).first(),
+      summaryCards.getByText("Files", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Sources", { exact: true }).first(),
+      summaryCards.getByText("Storage Used", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("Manage storage buckets")).toBeVisible();
-    await expect(page.getByText("Configure data sources")).toBeVisible();
+    await expect(
+      page
+        .locator("a, button")
+        .filter({ hasText: /^Manage Sources$/ }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator("a, button")
+        .filter({ hasText: /^Manage Buckets$/ }),
+    ).toBeVisible();
   });
 
   test("Manage Buckets button navigates to /buckets", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await page.goto("/dashboard");
-    await page.getByText("Manage Buckets", { exact: true }).click();
+    await page.locator("a, button").filter({ hasText: /^Manage Buckets$/ }).click();
     await expect(page).toHaveURL("/buckets");
     await expect(
       page.getByRole("heading", { name: "Buckets" }),
@@ -48,7 +59,7 @@ test.describe("Dashboard", () => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/dashboard");
-    await page.getByText("Manage Sources", { exact: true }).click();
+    await page.locator("a, button").filter({ hasText: /^Manage Sources$/ }).click();
     await expect(page).toHaveURL("/sources");
     await expect(
       page.getByRole("heading", { name: "Sources" }),

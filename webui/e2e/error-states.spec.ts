@@ -41,7 +41,7 @@ test.describe("Error states", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(
-      dialog.getByText("Sign Up"),
+      dialog.getByRole("heading", { name: "Sign Up" }),
     ).toBeVisible();
 
     await dialog.getByLabel("Username").fill("newuser");
@@ -97,8 +97,11 @@ test.describe("Error states", () => {
     await expect(
       page.getByRole("button", { name: "Add Source" }).first(),
     ).toBeVisible();
-    // Shows empty state (error silently results in empty list)
-    await expect(page.getByText("No sources yet")).toBeVisible();
+    // API errors should show the dedicated empty state title and retry action
+    await expect(
+      page.getByRole("heading", { name: "Failed to load sources" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 
   test("buckets page renders without crashing when API returns error", async ({
@@ -115,6 +118,9 @@ test.describe("Error states", () => {
     await expect(
       page.getByRole("button", { name: "Add Bucket" }).first(),
     ).toBeVisible();
-    await expect(page.getByText("No buckets yet")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Failed to load buckets" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
 });
