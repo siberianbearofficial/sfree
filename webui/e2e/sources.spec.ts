@@ -26,10 +26,12 @@ test.describe("Source creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/sources");
-    await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", {name: "Sources", level: 1}),
+    ).toBeVisible();
     await expect(page.getByText("No sources yet")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Source" }),
+      page.getByRole("button", {name: "Add Source"}).first(),
     ).toBeVisible();
   });
 
@@ -37,7 +39,7 @@ test.describe("Source creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/sources");
-    await page.getByRole("button", { name: "Add Source" }).click();
+    await page.getByRole("button", {name: "Add Source"}).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Create Source" }),
@@ -69,7 +71,7 @@ test.describe("Source creation flow", () => {
     await expect(page.getByText("No sources yet")).toBeVisible();
 
     // Open dialog
-    await page.getByRole("button", { name: "Add Source" }).click();
+    await page.getByRole("button", {name: "Add Source"}).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
     // Fill form
