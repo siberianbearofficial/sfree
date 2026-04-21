@@ -1,6 +1,10 @@
 package repository
 
-import "testing"
+import (
+	"testing"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
+)
 
 func TestValidRole(t *testing.T) {
 	t.Parallel()
@@ -47,5 +51,23 @@ func TestRoleAtLeast(t *testing.T) {
 		if got := RoleAtLeast(tt.have, tt.required); got != tt.want {
 			t.Errorf("RoleAtLeast(%q, %q) = %v, want %v", tt.have, tt.required, got, tt.want)
 		}
+	}
+}
+
+func TestBucketGrantDocumentFilterScopesToBucketAndID(t *testing.T) {
+	t.Parallel()
+	bucketID := primitive.NewObjectID()
+	grantID := primitive.NewObjectID()
+
+	filter := bucketGrantDocumentFilter(bucketID, grantID)
+
+	if len(filter) != 2 {
+		t.Fatalf("expected two filter fields, got %d", len(filter))
+	}
+	if filter["bucket_id"] != bucketID {
+		t.Fatalf("expected bucket_id %s, got %v", bucketID.Hex(), filter["bucket_id"])
+	}
+	if filter["_id"] != grantID {
+		t.Fatalf("expected _id %s, got %v", grantID.Hex(), filter["_id"])
 	}
 }
