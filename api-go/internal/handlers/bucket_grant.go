@@ -7,7 +7,6 @@ import (
 
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -84,8 +83,10 @@ func CreateGrant(bucketRepo *repository.BucketRepository, grantRepo *repository.
 			return
 		}
 
-		userIDHex := c.GetString("userID")
-		granterID, _ := primitive.ObjectIDFromHex(userIDHex)
+		granterID, ok := authenticatedUserID(c)
+		if !ok {
+			return
+		}
 
 		grant := repository.BucketGrant{
 			BucketID:  acc.Bucket.ID,
@@ -191,9 +192,8 @@ func UpdateGrant(bucketRepo *repository.BucketRepository, grantRepo *repository.
 			return
 		}
 
-		grantID, err := primitive.ObjectIDFromHex(c.Param("grant_id"))
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		grantID, ok := routeObjectID(c, "grant_id")
+		if !ok {
 			return
 		}
 
@@ -243,9 +243,8 @@ func DeleteGrant(bucketRepo *repository.BucketRepository, grantRepo *repository.
 			return
 		}
 
-		grantID, err := primitive.ObjectIDFromHex(c.Param("grant_id"))
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		grantID, ok := routeObjectID(c, "grant_id")
+		if !ok {
 			return
 		}
 

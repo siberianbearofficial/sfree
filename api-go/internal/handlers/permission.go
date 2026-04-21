@@ -5,7 +5,6 @@ import (
 
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -25,20 +24,12 @@ func requireBucketAccess(
 	grantRepo *repository.BucketGrantRepository,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
-	idHex := c.Param("id")
-	bucketID, err := primitive.ObjectIDFromHex(idHex)
-	if err != nil {
-		c.Status(http.StatusBadRequest)
+	bucketID, ok := routeObjectID(c, "id")
+	if !ok {
 		return nil
 	}
-	userIDHex := c.GetString("userID")
-	if userIDHex == "" {
-		c.Status(http.StatusUnauthorized)
-		return nil
-	}
-	userID, err := primitive.ObjectIDFromHex(userIDHex)
-	if err != nil {
-		c.Status(http.StatusUnauthorized)
+	userID, ok := authenticatedUserID(c)
+	if !ok {
 		return nil
 	}
 

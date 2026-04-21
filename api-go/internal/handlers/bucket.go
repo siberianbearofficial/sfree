@@ -71,14 +71,8 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
 		if secretKey == "" {
@@ -177,14 +171,8 @@ func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.Bucket
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
 
@@ -505,10 +493,8 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 		}
 		bucketID := acc.Bucket.ID
 
-		fileHex := c.Param("file_id")
-		fileID, err := primitive.ObjectIDFromHex(fileHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		fileID, ok := routeObjectID(c, "file_id")
+		if !ok {
 			return
 		}
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
@@ -566,10 +552,8 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		bucketID := acc.Bucket.ID
 
-		fileHex := c.Param("file_id")
-		fileID, err := primitive.ObjectIDFromHex(fileHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		fileID, ok := routeObjectID(c, "file_id")
+		if !ok {
 			return
 		}
 		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)

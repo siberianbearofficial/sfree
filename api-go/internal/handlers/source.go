@@ -12,7 +12,6 @@ import (
 	"github.com/example/sfree/api-go/internal/s3compat"
 	"github.com/example/sfree/api-go/internal/telegram"
 	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -157,14 +156,8 @@ func saveSource(c *gin.Context, repo *repository.SourceRepository, sourceType re
 		c.Status(http.StatusServiceUnavailable)
 		return
 	}
-	userIDHex := c.GetString("userID")
-	if userIDHex == "" {
-		c.Status(http.StatusUnauthorized)
-		return
-	}
-	userID, err := primitive.ObjectIDFromHex(userIDHex)
-	if err != nil {
-		c.Status(http.StatusUnauthorized)
+	userID, ok := authenticatedUserID(c)
+	if !ok {
 		return
 	}
 	source := repository.Source{
@@ -205,14 +198,8 @@ func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
 		sources, err := repo.ListByUser(c.Request.Context(), userID)
@@ -254,20 +241,12 @@ func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.Buck
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		idHex := c.Param("id")
-		id, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		id, ok := routeObjectID(c, "id")
+		if !ok {
 			return
 		}
 		inUse, err := bucketRepo.HasSourceReference(c.Request.Context(), userID, id)
@@ -312,20 +291,12 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		idHex := c.Param("id")
-		id, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		id, ok := routeObjectID(c, "id")
+		if !ok {
 			return
 		}
 		src, err := repo.GetByID(c.Request.Context(), id)
@@ -443,20 +414,12 @@ func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		userIDHex := c.GetString("userID")
-		if userIDHex == "" {
-			c.Status(http.StatusUnauthorized)
+		userID, ok := authenticatedUserID(c)
+		if !ok {
 			return
 		}
-		userID, err := primitive.ObjectIDFromHex(userIDHex)
-		if err != nil {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		idHex := c.Param("id")
-		id, err := primitive.ObjectIDFromHex(idHex)
-		if err != nil {
-			c.Status(http.StatusBadRequest)
+		id, ok := routeObjectID(c, "id")
+		if !ok {
 			return
 		}
 		fileID := c.Param("file_id")
