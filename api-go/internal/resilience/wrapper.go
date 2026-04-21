@@ -160,6 +160,49 @@ func (w *wrapper) Download(ctx context.Context, name string) (io.ReadCloser, err
 	return nil, lastErr
 }
 
+func (w *wrapper) DownloadStream(ctx context.Context, name string) (io.ReadCloser, error) {
+	if err := w.cb.Allow(); err != nil {
+		return nil, err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying streamed download",
+				slog.String("name", name),
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return nil, ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return nil, err
+			}
+		}
+
+		reqCtx, cancel := context.WithCancel(ctx)
+		rc, err := w.inner.Download(reqCtx, name)
+		if err == nil {
+			w.cb.RecordSuccess()
+			return &cancelOnCloseReadCloser{ReadCloser: rc, cancel: cancel}, nil
+		}
+		cancel()
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return nil, lastErr
+}
+
 func (w *wrapper) Delete(ctx context.Context, name string) error {
 	if err := w.cb.Allow(); err != nil {
 		return err
@@ -202,6 +245,17 @@ func (w *wrapper) Delete(ctx context.Context, name string) error {
 
 	w.cb.RecordFailure()
 	return lastErr
+}
+
+type cancelOnCloseReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (r *cancelOnCloseReadCloser) Close() error {
+	err := r.ReadCloser.Close()
+	r.cancel()
+	return err
 }
 
 func (w *wrapper) ListFiles(ctx context.Context) ([]gdrive.File, error) {

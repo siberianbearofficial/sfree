@@ -11,6 +11,7 @@ import (
 
 	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/resilience"
 	"github.com/example/sfree/api-go/internal/s3compat"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -492,6 +493,64 @@ func TestDownloadSourceFileUsesFactory(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("expected factory to be called once, got %d", calls)
 	}
+}
+
+func TestDownloadSourceFileKeepsWrappedStreamContextOpen(t *testing.T) {
+	t.Parallel()
+	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeS3}
+	factory := func(_ context.Context, _ *repository.Source) (SourceClient, error) {
+		cfg := resilience.DefaultWrapperConfig()
+		cfg.MaxRetries = 0
+		return resilience.Wrap(&contextAwareDownloadClient{payload: []byte("streamed-data")}, cfg), nil
+	}
+
+	rc, err := DownloadSourceFile(context.Background(), src, "source-object", factory)
+	if err != nil {
+		t.Fatalf("download source file: %v", err)
+	}
+	data, readErr := io.ReadAll(rc)
+	closeErr := rc.Close()
+	if readErr != nil {
+		t.Fatalf("read download: %v", readErr)
+	}
+	if closeErr != nil {
+		t.Fatalf("close download: %v", closeErr)
+	}
+	if string(data) != "streamed-data" {
+		t.Fatalf("unexpected body %q", data)
+	}
+}
+
+type contextAwareDownloadClient struct {
+	payload []byte
+}
+
+func (c *contextAwareDownloadClient) Upload(_ context.Context, _ string, _ io.Reader) (string, error) {
+	return "", nil
+}
+
+func (c *contextAwareDownloadClient) Download(ctx context.Context, _ string) (io.ReadCloser, error) {
+	return &contextAwareReadCloser{ctx: ctx, reader: bytes.NewReader(c.payload)}, nil
+}
+
+func (c *contextAwareDownloadClient) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+type contextAwareReadCloser struct {
+	ctx    context.Context
+	reader *bytes.Reader
+}
+
+func (r *contextAwareReadCloser) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+func (r *contextAwareReadCloser) Close() error {
+	return nil
 }
 
 func TestStreamFileNoChunks(t *testing.T) {

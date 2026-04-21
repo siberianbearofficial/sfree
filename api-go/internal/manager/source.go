@@ -90,6 +90,11 @@ func DownloadSourceFile(ctx context.Context, src *repository.Source, fileID stri
 		if err != nil {
 			return nil, err
 		}
+		if streamClient, ok := cli.(interface {
+			DownloadStream(context.Context, string) (io.ReadCloser, error)
+		}); ok {
+			return streamClient.DownloadStream(ctx, fileID)
+		}
 		return cli.Download(ctx, fileID)
 	default:
 		return nil, ErrUnsupportedSourceType
