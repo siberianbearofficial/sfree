@@ -114,7 +114,8 @@ npm run build    # TypeScript type-check + Vite production build
 ```
 
 Both `lint` and `build` must pass — this matches what Woodpecker CI runs on
-pull requests (see [docs/ci.md](docs/ci.md)).
+pull requests before the CI-only Playwright browser E2E step (see
+[docs/ci.md](docs/ci.md)).
 
 ### Optional: E2E Tests
 
@@ -126,6 +127,10 @@ make test-e2e-local
 `make test-e2e-local` uses `docker-compose.e2e.yml`. The `s3` E2E flow works
 with the bundled MinIO service. The Google Drive and Telegram flows require
 their corresponding credentials.
+
+Frontend Playwright E2E is a required Woodpecker check for webui changes, but
+contributors should not run it locally by default because it installs Chromium
+and executes browser-heavy tests.
 
 ## API Changes
 

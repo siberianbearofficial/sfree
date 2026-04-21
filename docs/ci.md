@@ -8,7 +8,7 @@ Actions workflows to this repository.
 | Pipeline | Paths | `pull_request` | `push` to `main` | Behavior |
 | --- | --- | --- | --- | --- |
 | `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs Go unit tests plus Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
-| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs `npm ci --include=dev`, `npm run lint`, and `npm run build`. Pushes to `main` also publish the frontend image. |
+| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs frontend dependency install, lint, production build, and Chromium Playwright E2E validation with `npm run test:e2e`. Pushes to `main` also publish the frontend image. |
 | `.woodpecker/smoke.yml` | `.woodpecker/smoke.yml`, `docker-compose.yml`, `scripts/woodpecker-smoke.sh`, `api-go/**`, `webui/**` | Yes | Yes | Starts the root Compose stack in Woodpecker, creates a user and MinIO-backed source, creates a bucket, uploads and downloads a file with the CLI, and verifies S3-compatible credential download bytes. |
 
 ## Required Secrets
@@ -20,6 +20,18 @@ Actions workflows to this repository.
 Frontend validation and backend pull-request validation do not need live source
 E2E secrets. The backend E2E gate uses the local MinIO source so external Google
 Drive or Telegram availability cannot block otherwise healthy PRs.
+
+## Web UI E2E
+
+The webui pipeline has two required validation steps in Woodpecker:
+
+- `validate`: runs `npm ci --include=dev`, `npm run lint`, and `npm run build`.
+- `e2e tests`: runs `npm ci --include=dev`, `npm run build`,
+  `npx playwright install --with-deps chromium`, and `npm run test:e2e`.
+
+Playwright browser installation and browser-heavy E2E execution belong in
+Woodpecker. Local frontend validation should normally stop at lint and build
+unless a maintainer explicitly asks for local browser reproduction.
 
 ## Live Source E2E
 
