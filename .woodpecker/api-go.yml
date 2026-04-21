@@ -13,6 +13,12 @@ when:
         - api-go/**
 
 steps:
+  - name: lint
+    image: golangci/golangci-lint:v2.11.4-alpine
+    commands:
+      - cd api-go
+      - golangci-lint run
+
   - name: unit tests
     image: public.ecr.aws/docker/library/golang:1.24
     commands:
