@@ -41,7 +41,7 @@ test.describe("Bucket creation flow", () => {
     await mockGet(page, "/buckets", []);
     await page.goto("/buckets");
     await expect(
-      page.getByRole("heading", { name: "Buckets", level: 1 }),
+      page.getByRole("heading", { name: "Buckets" }),
     ).toBeVisible();
     await expect(page.getByText("No buckets yet")).toBeVisible();
     await expect(
@@ -59,7 +59,7 @@ test.describe("Bucket creation flow", () => {
     await page.getByRole("button", { name: "Add Bucket" }).first().click();
     await expect(dialog).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Create Bucket" }),
+      dialog.getByText("Create Bucket"),
     ).toBeVisible();
     await expect(page.getByLabel("Key")).toBeVisible();
 

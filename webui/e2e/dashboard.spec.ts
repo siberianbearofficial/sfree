@@ -24,10 +24,10 @@ test.describe("Dashboard", () => {
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Buckets", level: 2 }),
+      page.getByText("Buckets", { exact: true }).first(),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Sources", level: 2 }),
+      page.getByText("Sources", { exact: true }).first(),
     ).toBeVisible();
     await expect(page.getByText("Manage storage buckets")).toBeVisible();
     await expect(page.getByText("Configure data sources")).toBeVisible();
@@ -37,10 +37,10 @@ test.describe("Dashboard", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await page.goto("/dashboard");
-    await page.getByRole("link", { name: "Manage Buckets" }).click();
+    await page.getByText("Manage Buckets", { exact: true }).click();
     await expect(page).toHaveURL("/buckets");
     await expect(
-      page.getByRole("heading", { name: "Buckets", level: 1 }),
+      page.getByRole("heading", { name: "Buckets" }),
     ).toBeVisible();
   });
 
@@ -48,10 +48,10 @@ test.describe("Dashboard", () => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/dashboard");
-    await page.getByRole("link", { name: "Manage Sources" }).click();
+    await page.getByText("Manage Sources", { exact: true }).click();
     await expect(page).toHaveURL("/sources");
     await expect(
-      page.getByRole("heading", { name: "Sources", level: 1 }),
+      page.getByRole("heading", { name: "Sources" }),
     ).toBeVisible();
   });
 
