@@ -203,7 +203,7 @@ func (v *Validator) validateHeaderAuth(ctx context.Context, r *http.Request, acc
 	}
 	restoreBody(r, bodyBytes)
 
-	canonReq, canonHeaders, err := buildCanonicalRequest(r, signedHeaders, payloadHash, false)
+	canonReq, _, err := buildCanonicalRequest(r, signedHeaders, payloadHash, false)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +212,7 @@ func (v *Validator) validateHeaderAuth(ctx context.Context, r *http.Request, acc
 	expectedSig := computeSignature(secretKey, date, region, service, stringToSign)
 
 	if !constantTimeHexEquals(expectedSig, signature) {
-		return nil, fmt.Errorf("%w: expected %s got %s; canonicalHeaders=%q", ErrSignatureMismatch, expectedSig, signature, canonHeaders)
+		return nil, ErrSignatureMismatch
 	}
 
 	return &ValidatedRequest{
@@ -352,7 +352,7 @@ func (v *Validator) validatePresign(ctx context.Context, r *http.Request, access
 		restoreBody(r, bodyBytes)
 	}
 
-	canonReq, canonHeaders, err := buildCanonicalRequest(r, signedHeaders, payloadHash, true)
+	canonReq, _, err := buildCanonicalRequest(r, signedHeaders, payloadHash, true)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +361,7 @@ func (v *Validator) validatePresign(ctx context.Context, r *http.Request, access
 	expectedSig := computeSignature(secretKey, date, region, service, stringToSign)
 
 	if !constantTimeHexEquals(expectedSig, signature) {
-		return nil, fmt.Errorf("%w: expected %s got %s; canonicalHeaders=%q", ErrSignatureMismatch, expectedSig, signature, canonHeaders)
+		return nil, ErrSignatureMismatch
 	}
 
 	return &ValidatedRequest{

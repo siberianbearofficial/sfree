@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -267,6 +268,68 @@ func TestValidatorPresignTTLExceedsMax(t *testing.T) {
 	_, err = v.Validate(context.Background(), req, accessKey, secretKey)
 	if err == nil {
 		t.Fatal("expected TTL error, got nil")
+	}
+}
+
+func TestValidatorHeaderAuthSignatureMismatchDoesNotLeakSigningMaterial(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://iam.amazonaws.com/?Action=ListUsers&Version=2010-05-08", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	submittedSig := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	expectedSig := "5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+	req.Header.Set("X-Amz-Date", "20150830T123600Z")
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature="+submittedSig)
+
+	v := Validator{Now: func() time.Time { return time.Date(2015, 8, 30, 12, 36, 0, 0, time.UTC) }}
+
+	_, err = v.Validate(context.Background(), req, "AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
+	if !errors.Is(err, ErrSignatureMismatch) {
+		t.Fatalf("expected signature mismatch error, got %v", err)
+	}
+	assertNoSignatureMismatchLeak(t, err, expectedSig, submittedSig)
+}
+
+func TestValidatorPresignSignatureMismatchDoesNotLeakSigningMaterial(t *testing.T) {
+	submittedSig := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	expectedSig := "63613d9c6a68b0e499ed9beeeabe0c4f3295742554209d6f109fe3c9563f56c3"
+	req, err := http.NewRequest("GET", "https://iam.amazonaws.com/?Action=ListUsers&Version=2010-05-08&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIDEXAMPLE%2F20150830%2Fus-east-1%2Fiam%2Faws4_request&X-Amz-Date=20150830T123600Z&X-Amz-Expires=60&X-Amz-SignedHeaders=content-type%3Bhost%3Bx-amz-date&X-Amz-Signature="+submittedSig, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+	req.Header.Set("X-Amz-Date", "20150830T123600Z")
+
+	v := Validator{Now: func() time.Time { return time.Date(2015, 8, 30, 12, 36, 0, 0, time.UTC) }}
+
+	_, err = v.Validate(context.Background(), req, "AKIDEXAMPLE", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY")
+	if !errors.Is(err, ErrSignatureMismatch) {
+		t.Fatalf("expected signature mismatch error, got %v", err)
+	}
+	assertNoSignatureMismatchLeak(t, err, expectedSig, submittedSig)
+}
+
+func assertNoSignatureMismatchLeak(t *testing.T, err error, expectedSig, submittedSig string) {
+	t.Helper()
+
+	errText := err.Error()
+	for _, leaked := range []string{
+		expectedSig,
+		submittedSig,
+		"canonicalHeaders",
+		"content-type:application/x-www-form-urlencoded; charset=utf-8",
+		"host:iam.amazonaws.com",
+		"Action=ListUsers&Version=2010-05-08",
+	} {
+		if strings.Contains(errText, leaked) {
+			t.Fatalf("signature mismatch error leaked %q in %q", leaked, errText)
+		}
+	}
+	if errText != ErrSignatureMismatch.Error() {
+		t.Fatalf("expected stable low-sensitivity error %q, got %q", ErrSignatureMismatch.Error(), errText)
 	}
 }
 
