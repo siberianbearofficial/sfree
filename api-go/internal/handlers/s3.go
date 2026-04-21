@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,13 @@ type deleteObjectsResult struct {
 	Xmlns   string                `xml:"xmlns,attr"`
 	Deleted []deletedObjectResult `xml:"Deleted,omitempty"`
 	Errors  []deleteObjectError   `xml:"Error,omitempty"`
+}
+
+type copyObjectResult struct {
+	XMLName      xml.Name `xml:"CopyObjectResult"`
+	Xmlns        string   `xml:"xmlns,attr"`
+	ETag         string   `xml:"ETag"`
+	LastModified string   `xml:"LastModified"`
 }
 
 type deletedObjectResult struct {
@@ -225,6 +233,47 @@ func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
 }
 
+func deleteFileChunksIfUnreferenced(ctx context.Context, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunks []repository.FileChunk) error {
+	seen := make(map[string]struct{}, len(chunks))
+	for _, chunk := range chunks {
+		ref := chunk.SourceID.Hex() + "/" + chunk.Name
+		if _, ok := seen[ref]; ok {
+			continue
+		}
+		seen[ref] = struct{}{}
+		count, err := fileRepo.CountByChunk(ctx, chunk.SourceID, chunk.Name)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if err := manager.DeleteFileChunks(ctx, sourceRepo, []repository.FileChunk{chunk}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func parseCopySource(raw string) (string, string, bool) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "/")
+	raw, _, _ = strings.Cut(raw, "?")
+	parts := strings.SplitN(raw, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	bucket, err := url.PathUnescape(parts[0])
+	if err != nil || bucket == "" {
+		return "", "", false
+	}
+	key, err := url.PathUnescape(parts[1])
+	if err != nil || key == "" {
+		return "", "", false
+	}
+	return bucket, key, true
+}
+
 func deleteObjectByName(ctx context.Context, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, bucketID primitive.ObjectID, name string) (bool, error) {
 	fileDoc, err := fileRepo.GetByName(ctx, bucketID, name)
 	if err != nil {
@@ -239,7 +288,7 @@ func deleteObjectByName(ctx context.Context, sourceRepo *repository.SourceReposi
 		}
 		return false, err
 	}
-	if err := manager.DeleteFileChunks(ctx, sourceRepo, fileDoc.Chunks); err != nil {
+	if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, fileDoc.Chunks); err != nil {
 		slog.WarnContext(ctx, "delete object: delete chunks", slog.String("error", err.Error()))
 	}
 	return true, nil
@@ -738,10 +787,115 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		if err := manager.DeleteFileChunks(ctx, sourceRepo, existingFile.Chunks); err != nil {
+		if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); err != nil {
 			slog.WarnContext(ctx, "put object: delete old chunks", slog.String("error", err.Error()))
 		}
 		c.Status(http.StatusOK)
+	}
+}
+
+// CopyObject godoc
+// @Summary Copy object
+// @Tags s3
+// @Param bucket path string true "Destination bucket key"
+// @Param object path string true "Destination object key"
+// @Success 200 {string} string ""
+// @Failure 400 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Router /api/s3/{bucket}/{object} [put]
+func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		destBucket, ok := lookupBucket(c, bucketRepo)
+		if !ok {
+			return
+		}
+		destKey := strings.TrimPrefix(c.Param("object"), "/")
+		if destKey == "" {
+			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "empty destination object key")
+			return
+		}
+		directive := strings.ToUpper(strings.TrimSpace(c.GetHeader("x-amz-metadata-directive")))
+		if directive == "" {
+			directive = "COPY"
+		}
+		if directive != "COPY" {
+			writeS3Error(c, http.StatusNotImplemented, "NotImplemented", "x-amz-metadata-directive REPLACE is not supported")
+			return
+		}
+		sourceBucketKey, sourceKey, ok := parseCopySource(c.GetHeader("x-amz-copy-source"))
+		if !ok {
+			writeS3Error(c, http.StatusBadRequest, "InvalidArgument", "x-amz-copy-source must be /bucket/key")
+			return
+		}
+		sourceBucket, err := bucketRepo.GetByKey(ctx, sourceBucketKey)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+				return
+			}
+			slog.ErrorContext(ctx, "copy object: get source bucket", slog.String("error", err.Error()))
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		if sourceBucket.ID != destBucket.ID && sourceBucket.UserID != destBucket.UserID {
+			writeS3Error(c, http.StatusForbidden, "AccessDenied", "")
+			return
+		}
+		sourceFile, err := fileRepo.GetByName(ctx, sourceBucket.ID, sourceKey)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				writeS3Error(c, http.StatusNotFound, "NoSuchKey", "")
+				return
+			}
+			slog.ErrorContext(ctx, "copy object: get source file", slog.String("error", err.Error()))
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+
+		now := time.Now().UTC()
+		chunks := append([]repository.FileChunk(nil), sourceFile.Chunks...)
+		copyFile := repository.File{BucketID: destBucket.ID, Name: destKey, CreatedAt: now, Chunks: chunks}
+		existingFile, err := fileRepo.GetByName(ctx, destBucket.ID, destKey)
+		if err != nil && err != mongo.ErrNoDocuments {
+			slog.ErrorContext(ctx, "copy object: get existing file", slog.String("error", err.Error()))
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		if err == mongo.ErrNoDocuments {
+			existingFile = nil
+		}
+		if existingFile == nil {
+			created, err := fileRepo.Create(ctx, copyFile)
+			if err != nil {
+				slog.ErrorContext(ctx, "copy object: create file", slog.String("error", err.Error()))
+				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+				return
+			}
+			copyFile = *created
+		} else {
+			copyFile.ID = existingFile.ID
+			updated, err := fileRepo.UpdateByID(ctx, copyFile)
+			if err != nil {
+				slog.ErrorContext(ctx, "copy object: update file", slog.String("error", err.Error()))
+				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+				return
+			}
+			copyFile = *updated
+			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, existingFile.Chunks); err != nil {
+				slog.WarnContext(ctx, "copy object: delete old chunks", slog.String("error", err.Error()))
+			}
+		}
+		c.XML(http.StatusOK, copyObjectResult{
+			Xmlns:        "http://s3.amazonaws.com/doc/2006-03-01/",
+			ETag:         objectETag(copyFile),
+			LastModified: now.Format(time.RFC3339),
+		})
 	}
 }
 

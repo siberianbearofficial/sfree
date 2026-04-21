@@ -53,3 +53,19 @@ func TestDecodeDeleteObjectsRequestRejectsMalformedRoot(t *testing.T) {
 		t.Fatalf("expected malformed XML error, got %v", err)
 	}
 }
+
+func TestParseCopySource(t *testing.T) {
+	t.Parallel()
+
+	bucket, key, ok := parseCopySource("/bucket/a%20b/c.txt")
+	if !ok {
+		t.Fatal("expected copy source to parse")
+	}
+	if bucket != "bucket" || key != "a b/c.txt" {
+		t.Fatalf("unexpected copy source: bucket=%q key=%q", bucket, key)
+	}
+
+	if _, _, ok := parseCopySource("/bucket"); ok {
+		t.Fatal("expected missing key to fail")
+	}
+}

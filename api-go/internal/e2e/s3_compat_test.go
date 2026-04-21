@@ -685,6 +685,96 @@ func TestS3CompatObjectLifecycle(t *testing.T) {
 	}
 }
 
+func TestS3CompatCopyObject(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	sourceBucket := createBucket(t, ts, username, password, "src-bkt-"+suffix, sourceID)
+	destBucket := createBucket(t, ts, username, password, "dst-bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+destBucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/buckets/"+sourceBucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	sourceKey := "copy-source-" + suffix + ".txt"
+	sameBucketKey := "copy-same-" + suffix + ".txt"
+	crossBucketKey := "copy-cross-" + suffix + ".txt"
+	objectContent := []byte("copy me without duplicating chunks")
+	s3URL := func(bucket createBucketResult, key string) string {
+		return fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, key)
+	}
+
+	status, body := s3Do(t, http.MethodPut, s3URL(sourceBucket, sourceKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, objectContent)
+	if status != http.StatusOK {
+		t.Fatalf("PUT source object: expected 200, got %d: %s", status, body)
+	}
+
+	copyHeaders := map[string]string{"x-amz-copy-source": "/" + sourceBucket.Key + "/" + sourceKey}
+	status, _, body = s3DoWithHeaders(t, http.MethodPut, s3URL(sourceBucket, sameBucketKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil, copyHeaders)
+	if status != http.StatusOK {
+		t.Fatalf("CopyObject same bucket: expected 200, got %d: %s", status, body)
+	}
+	var result struct {
+		ETag         string `xml:"ETag"`
+		LastModified string `xml:"LastModified"`
+	}
+	if err := xml.Unmarshal(body, &result); err != nil {
+		t.Fatalf("decode CopyObject result: %v body=%s", err, body)
+	}
+	if result.ETag == "" || result.LastModified == "" {
+		t.Fatalf("CopyObject result missing ETag or LastModified: %+v body=%s", result, body)
+	}
+	status, body = s3Do(t, http.MethodGet, s3URL(sourceBucket, sameBucketKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET same-bucket copy mismatch: status=%d body=%q", status, body)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodPut, s3URL(destBucket, crossBucketKey), destBucket.AccessKey, destBucket.AccessSecret, env.Region, nil, copyHeaders)
+	if status != http.StatusOK {
+		t.Fatalf("CopyObject cross bucket: expected 200, got %d: %s", status, body)
+	}
+	status, body = s3Do(t, http.MethodGet, s3URL(destBucket, crossBucketKey), destBucket.AccessKey, destBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET cross-bucket copy mismatch: status=%d body=%q", status, body)
+	}
+
+	replaceHeaders := map[string]string{
+		"x-amz-copy-source":        "/" + sourceBucket.Key + "/" + sourceKey,
+		"x-amz-metadata-directive": "REPLACE",
+	}
+	status, body = s3Do(t, http.MethodPut, s3URL(sourceBucket, "copy-replace-"+suffix+".txt"), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK {
+		t.Fatalf("PUT replace-control object: expected 200, got %d: %s", status, body)
+	}
+	status, _, body = s3DoWithHeaders(t, http.MethodPut, s3URL(sourceBucket, "copy-replace-"+suffix+".txt"), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil, replaceHeaders)
+	if status != http.StatusNotImplemented {
+		t.Fatalf("CopyObject REPLACE: expected 501, got %d: %s", status, body)
+	}
+
+	status, body = s3Do(t, http.MethodDelete, s3URL(sourceBucket, sourceKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNoContent {
+		t.Fatalf("DELETE source after copy: expected 204, got %d: %s", status, body)
+	}
+	status, body = s3Do(t, http.MethodGet, s3URL(sourceBucket, sameBucketKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET same-bucket copy after source delete mismatch: status=%d body=%q", status, body)
+	}
+	status, body = s3Do(t, http.MethodGet, s3URL(destBucket, crossBucketKey), destBucket.AccessKey, destBucket.AccessSecret, env.Region, nil)
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET cross-bucket copy after source delete mismatch: status=%d body=%q", status, body)
+	}
+}
+
 func TestS3CompatGetObjectRange(t *testing.T) {
 	env, ok := loadS3E2EEnv()
 	if !ok {

@@ -80,6 +80,15 @@ func (r *FileRepository) GetByName(ctx context.Context, bucketID primitive.Objec
 	return &f, nil
 }
 
+func (r *FileRepository) CountByChunk(ctx context.Context, sourceID primitive.ObjectID, name string) (int64, error) {
+	return r.coll.CountDocuments(ctx, bson.M{
+		"chunks": bson.M{"$elemMatch": bson.M{
+			"source_id": sourceID,
+			"name":      name,
+		}},
+	})
+}
+
 func (r *FileRepository) ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]File, error) {
 	return r.ListByBucketWithPrefix(ctx, bucketID, "")
 }
