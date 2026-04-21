@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -67,6 +69,19 @@ type objectRange struct {
 }
 
 const listCommonPrefixSkipSuffix = "\U0010FFFF"
+
+var (
+	streamS3Object      = manager.StreamFile
+	streamS3ObjectRange = manager.StreamFileRange
+)
+
+type objectBucketReader interface {
+	GetByKey(ctx context.Context, key string) (*repository.Bucket, error)
+}
+
+type objectFileReader interface {
+	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
+}
 
 func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
@@ -330,9 +345,7 @@ func ListObjectsV2(bucketRepo *repository.BucketRepository, fileRepo *repository
 	}
 }
 
-// lookupObject resolves the bucket and file from the request context.
-// Returns the file document and total size, or writes an S3 error and returns false.
-func lookupObject(c *gin.Context, bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) (*repository.File, int64, bool) {
+func lookupObject(c *gin.Context, bucketRepo objectBucketReader, fileRepo objectFileReader) (*repository.File, int64, bool) {
 	ctx := c.Request.Context()
 	bucketKey := c.Param("bucket")
 	name := strings.TrimPrefix(c.Param("object"), "/")
@@ -368,14 +381,41 @@ func lookupObject(c *gin.Context, bucketRepo *repository.BucketRepository, fileR
 	return fileDoc, total, true
 }
 
-// setObjectHeaders writes standard S3 object headers (ETag, Last-Modified,
-// Content-Length, Content-Type).
 func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
 	c.Header("Accept-Ranges", "bytes")
 	c.Header("ETag", objectETag(*fileDoc))
 	c.Header("Last-Modified", fileDoc.CreatedAt.UTC().Format(http.TimeFormat))
 	c.Header("Content-Length", strconv.FormatInt(total, 10))
 	c.Header("Content-Type", "application/octet-stream")
+}
+
+func stageObjectBody(stream func(io.Writer) error) (*os.File, error) {
+	tmp, err := os.CreateTemp("", "sfree-s3-get-*")
+	if err != nil {
+		return nil, err
+	}
+	keep := false
+	defer func() {
+		if !keep {
+			name := tmp.Name()
+			_ = tmp.Close()
+			_ = os.Remove(name)
+		}
+	}()
+	if err := stream(tmp); err != nil {
+		return nil, err
+	}
+	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	keep = true
+	return tmp, nil
+}
+
+func closeAndRemove(file *os.File) {
+	name := file.Name()
+	_ = file.Close()
+	_ = os.Remove(name)
 }
 
 // HeadObject godoc
@@ -413,6 +453,15 @@ func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.Fi
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [get]
 func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+		return func(c *gin.Context) {
+			c.Status(http.StatusServiceUnavailable)
+		}
+	}
+	return getObject(bucketRepo, sourceRepo, fileRepo)
+}
+
+func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepository, fileRepo objectFileReader) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
@@ -424,10 +473,19 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		}
 		rangeHeader := c.GetHeader("Range")
 		if rangeHeader == "" {
+			body, err := stageObjectBody(func(w io.Writer) error {
+				return streamS3Object(c.Request.Context(), sourceRepo, fileDoc, w)
+			})
+			if err != nil {
+				slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
+				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+				return
+			}
+			defer closeAndRemove(body)
 			setObjectHeaders(c, fileDoc, total)
 			c.Status(http.StatusOK)
-			if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-				slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
+			if _, err := io.Copy(c.Writer, body); err != nil {
+				slog.ErrorContext(c.Request.Context(), "get object: write failed", slog.String("error", err.Error()))
 			}
 			return
 		}
@@ -439,12 +497,21 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			writeS3Error(c, http.StatusRequestedRangeNotSatisfiable, "InvalidRange", "The requested range is not satisfiable")
 			return
 		}
+		body, err := stageObjectBody(func(w io.Writer) error {
+			return streamS3ObjectRange(c.Request.Context(), sourceRepo, fileDoc, w, objRange.start, objRange.end)
+		})
+		if err != nil {
+			slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			return
+		}
+		defer closeAndRemove(body)
 		setObjectHeaders(c, fileDoc, total)
 		c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
 		c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
 		c.Status(http.StatusPartialContent)
-		if err := manager.StreamFileRange(c.Request.Context(), sourceRepo, fileDoc, c.Writer, objRange.start, objRange.end); err != nil {
-			slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
+		if _, err := io.Copy(c.Writer, body); err != nil {
+			slog.ErrorContext(c.Request.Context(), "get object: write failed", slog.String("error", err.Error()))
 		}
 	}
 }
