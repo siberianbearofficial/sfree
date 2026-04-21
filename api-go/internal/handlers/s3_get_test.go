@@ -62,9 +62,11 @@ func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
 }
 
 func TestGetObjectStreamFailureReturnsS3ErrorBeforeSuccess(t *testing.T) {
-	origStream := streamS3Object
-	t.Cleanup(func() { streamS3Object = origStream })
-	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() { streamS3ObjectRange = origStreamRange })
+	var gotStart, gotEnd int64
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
+		gotStart, gotEnd = start, end
 		_, _ = io.WriteString(w, "partial")
 		return manager.ErrChecksumMismatch
 	}
@@ -82,6 +84,9 @@ func TestGetObjectStreamFailureReturnsS3ErrorBeforeSuccess(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
+	}
+	if gotStart != 0 || gotEnd != 0 {
+		t.Fatalf("expected bounded preflight range 0-0, got %d-%d", gotStart, gotEnd)
 	}
 	if body := w.Body.String(); !strings.Contains(body, "<Code>InternalError</Code>") || strings.Contains(body, "partial") {
 		t.Fatalf("unexpected body: %s", body)
@@ -119,8 +124,8 @@ func TestGetObjectRangeStreamFailureReturnsS3ErrorBeforePartialContent(t *testin
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
-	if gotStart != 2 || gotEnd != 4 {
-		t.Fatalf("expected requested range 2-4, got %d-%d", gotStart, gotEnd)
+	if gotStart != 2 || gotEnd != 2 {
+		t.Fatalf("expected bounded preflight range 2-2, got %d-%d", gotStart, gotEnd)
 	}
 	if body := w.Body.String(); !strings.Contains(body, "<Code>InternalError</Code>") || strings.Contains(body, "par") {
 		t.Fatalf("unexpected body: %s", body)
@@ -130,5 +135,44 @@ func TestGetObjectRangeStreamFailureReturnsS3ErrorBeforePartialContent(t *testin
 	}
 	if got := w.Header().Get("ETag"); got != "" {
 		t.Fatalf("expected no success ETag header, got %q", got)
+	}
+}
+
+func TestGetObjectStreamsBodyAfterBoundedPreflight(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	var gotStart, gotEnd int64
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, start, end int64) error {
+		gotStart, gotEnd = start, end
+		return nil
+	}
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		_, err := io.WriteString(w, "complete")
+		return err
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if gotStart != 0 || gotEnd != 0 {
+		t.Fatalf("expected bounded preflight range 0-0, got %d-%d", gotStart, gotEnd)
+	}
+	if body := w.Body.String(); body != "complete" {
+		t.Fatalf("unexpected body: %s", body)
 	}
 }
