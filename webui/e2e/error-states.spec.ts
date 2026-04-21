@@ -36,7 +36,7 @@ test.describe("Error states", () => {
     });
 
     await page.goto("/");
-    await page.getByRole("button", { name: "Sign Up" }).click();
+    await page.getByRole("button", { name: "Sign Up" }).first().click();
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -48,7 +48,7 @@ test.describe("Error states", () => {
     await dialog.getByRole("button", { name: "Sign Up" }).click();
 
     // Generated password is shown via Snippet
-    await expect(page.getByText("generated-secret-pw")).toBeVisible();
+    await expect(dialog.getByText("generated-secret-pw")).toBeVisible();
 
     // Close button dismisses
     await dialog.getByRole("button", { name: "Close" }).click();
@@ -91,9 +91,11 @@ test.describe("Error states", () => {
     await page.goto("/sources");
 
     // Page must not crash — heading and Add Source button should still be present
-    await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Source" }),
+      page.getByRole("heading", { name: "Sources", level: 1 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Add Source" }).first(),
     ).toBeVisible();
     // Shows empty state (error silently results in empty list)
     await expect(page.getByText("No sources yet")).toBeVisible();
@@ -109,9 +111,11 @@ test.describe("Error states", () => {
 
     await page.goto("/buckets");
 
-    await expect(page.getByRole("heading", { name: "Buckets" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Bucket" }),
+      page.getByRole("heading", { name: "Buckets", level: 1 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Add Bucket" }).first(),
     ).toBeVisible();
     await expect(page.getByText("No buckets yet")).toBeVisible();
   });

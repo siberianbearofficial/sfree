@@ -40,10 +40,12 @@ test.describe("Bucket creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await page.goto("/buckets");
-    await expect(page.getByRole("heading", { name: "Buckets" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Buckets", level: 1 }),
+    ).toBeVisible();
     await expect(page.getByText("No buckets yet")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Bucket" }),
+      page.getByRole("button", { name: "Add Bucket" }).first(),
     ).toBeVisible();
   });
 
@@ -52,16 +54,17 @@ test.describe("Bucket creation flow", () => {
     await mockGet(page, "/buckets", []);
     await mockGet(page, "/sources", [MOCK_SOURCE]);
     await page.goto("/buckets");
+    const dialog = page.getByRole("dialog");
 
-    await page.getByRole("button", { name: "Add Bucket" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: "Add Bucket" }).first().click();
+    await expect(dialog).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Create Bucket" }),
     ).toBeVisible();
     await expect(page.getByLabel("Key")).toBeVisible();
 
     // Source checkbox should appear after sources load
-    await expect(page.getByText("My Drive")).toBeVisible();
+    await expect(dialog.getByText("My Drive", { exact: true })).toBeVisible();
   });
 
   test("creating a bucket shows S3 credentials", async ({ page }) => {
@@ -71,10 +74,12 @@ test.describe("Bucket creation flow", () => {
     await mockPost(page, "/buckets", MOCK_BUCKET_CREDS);
 
     await page.goto("/buckets");
-    await page.getByRole("button", { name: "Add Bucket" }).click();
+    const dialog = page.getByRole("dialog");
+    await page.getByRole("button", { name: "Add Bucket" }).first().click();
+    await expect(dialog).toBeVisible();
 
     // Wait for sources to load in dialog
-    await expect(page.getByText("My Drive")).toBeVisible();
+    await expect(dialog.getByText("My Drive", { exact: true })).toBeVisible();
 
     // Fill key
     await page.getByLabel("Key").fill("my-bucket");
@@ -96,9 +101,9 @@ test.describe("Bucket creation flow", () => {
     ).toBeVisible();
 
     // Close button dismisses the dialog
-    await page
-      .getByRole("dialog")
+    await dialog
       .getByRole("button", { name: "Close" })
+      .last()
       .click();
     await expect(page.getByRole("dialog")).not.toBeVisible();
   });

@@ -23,39 +23,47 @@ test.describe("Dashboard", () => {
     await injectAuth(page);
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-    await expect(page.getByText("Buckets")).toBeVisible();
-    await expect(page.getByText("Sources")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Buckets", level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Sources", level: 2 }),
+    ).toBeVisible();
     await expect(page.getByText("Manage storage buckets")).toBeVisible();
     await expect(page.getByText("Configure data sources")).toBeVisible();
   });
 
-  test("Buckets Open button navigates to /buckets", async ({ page }) => {
+  test("Manage Buckets button navigates to /buckets", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await page.goto("/dashboard");
-    // Two "Open" links; first is Buckets
-    await page.getByRole("link", { name: "Open" }).first().click();
+    await page.getByRole("link", { name: "Manage Buckets" }).click();
     await expect(page).toHaveURL("/buckets");
-    await expect(page.getByRole("heading", { name: "Buckets" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Buckets", level: 1 }),
+    ).toBeVisible();
   });
 
-  test("Sources Open button navigates to /sources", async ({ page }) => {
+  test("Manage Sources button navigates to /sources", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/dashboard");
-    // Second "Open" link is Sources
-    await page.getByRole("link", { name: "Open" }).nth(1).click();
+    await page.getByRole("link", { name: "Manage Sources" }).click();
     await expect(page).toHaveURL("/sources");
-    await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Sources", level: 1 }),
+    ).toBeVisible();
   });
 
   test("unauthenticated user at / sees landing page", async ({ page }) => {
     // No injectAuth — localStorage is empty
     await page.route(`${API_GLOB}/**`, (route) => route.abort());
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "S3aaS" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Sign Up" }),
+      page.getByRole("heading", { name: "Free Distributed Object Storage" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Sign Up" }).first(),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Log In" }),

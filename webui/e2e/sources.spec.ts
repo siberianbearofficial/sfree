@@ -27,11 +27,11 @@ test.describe("Source creation flow", () => {
     await mockGet(page, "/sources", []);
     await page.goto("/sources");
     await expect(
-      page.getByRole("heading", {name: "Sources", level: 1}),
+      page.getByRole("heading", { name: "Sources", level: 1 }),
     ).toBeVisible();
     await expect(page.getByText("No sources yet")).toBeVisible();
     await expect(
-      page.getByRole("button", {name: "Add Source"}).first(),
+      page.getByRole("button", { name: "Add Source" }).first(),
     ).toBeVisible();
   });
 
@@ -39,13 +39,16 @@ test.describe("Source creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/sources");
-    await page.getByRole("button", {name: "Add Source"}).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: "Add Source" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Create Source" }),
+      dialog.getByText("Create Source"),
     ).toBeVisible();
-    await expect(page.getByLabel("Name")).toBeVisible();
-    await expect(page.getByLabel("Key")).toBeVisible();
+    await expect(dialog.getByLabel("Name")).toBeVisible();
+    await expect(
+      dialog.getByLabel("Service Account Key (JSON)"),
+    ).toBeVisible();
   });
 
   test("submitting the dialog creates a source and refreshes the list", async ({
@@ -71,12 +74,14 @@ test.describe("Source creation flow", () => {
     await expect(page.getByText("No sources yet")).toBeVisible();
 
     // Open dialog
-    await page.getByRole("button", {name: "Add Source"}).first().click();
+    await page.getByRole("button", { name: "Add Source" }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
     // Fill form
     await page.getByLabel("Name").fill("My Drive");
-    await page.getByLabel("Key").fill("service-account-key");
+    await page
+      .getByLabel("Service Account Key (JSON)")
+      .fill("service-account-key");
 
     // Submit
     await page
@@ -86,13 +91,15 @@ test.describe("Source creation flow", () => {
 
     // Dialog should close and source should appear
     await expect(page.getByRole("dialog")).not.toBeVisible();
-    await expect(page.getByText("My Drive")).toBeVisible();
+    await expect(page.getByText("My Drive", { exact: true })).toBeVisible();
   });
 
   test("sources page shows existing sources", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/sources", [MOCK_SOURCE]);
     await page.goto("/sources");
-    await expect(page.getByText("My Drive")).toBeVisible();
+    await expect(
+      page.getByText("My Drive", { exact: true }),
+    ).toBeVisible();
   });
 });
