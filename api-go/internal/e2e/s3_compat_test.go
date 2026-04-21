@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -374,6 +375,11 @@ func s3EncodePath(path string) string {
 
 // s3Do makes a signed S3 request and returns status code + body.
 func s3Do(t *testing.T, method, rawURL, accessKey, secretKey, region string, body []byte) (int, []byte) {
+	status, _, respBody := s3DoWithHeaders(t, method, rawURL, accessKey, secretKey, region, body, nil)
+	return status, respBody
+}
+
+func s3DoWithHeaders(t *testing.T, method, rawURL, accessKey, secretKey, region string, body []byte, headers map[string]string) (int, http.Header, []byte) {
 	t.Helper()
 	var reqBody io.Reader
 	if len(body) > 0 {
@@ -382,6 +388,9 @@ func s3Do(t *testing.T, method, rawURL, accessKey, secretKey, region string, bod
 	req, err := http.NewRequest(method, rawURL, reqBody)
 	if err != nil {
 		t.Fatalf("s3Do new request: %v", err)
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
 	}
 	if err := signS3Request(req, accessKey, secretKey, region); err != nil {
 		t.Fatalf("s3Do sign request: %v", err)
@@ -392,7 +401,7 @@ func s3Do(t *testing.T, method, rawURL, accessKey, secretKey, region string, bod
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, respBody
+	return resp.StatusCode, resp.Header.Clone(), respBody
 }
 
 // uniqueSuffix returns a short timestamp-based string for naming test resources.
@@ -551,6 +560,84 @@ func TestS3CompatObjectLifecycle(t *testing.T) {
 	status, _ = s3Do(t, http.MethodGet, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("GET deleted object: expected 404, got %d", status)
+	}
+}
+
+func TestS3CompatGetObjectRange(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	objectKey := "range-" + suffix + ".txt"
+	objectContent := []byte("abcdefghijklmnopqrstuvwxyz")
+	s3URL := fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, objectKey)
+
+	status, body := s3Do(t, http.MethodPut, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, objectContent)
+	if status != http.StatusOK {
+		t.Fatalf("PUT object: expected 200, got %d: %s", status, body)
+	}
+	t.Cleanup(func() {
+		s3Do(t, http.MethodDelete, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	})
+
+	status, headers, body := s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"Range": "bytes=0-4"})
+	if status != http.StatusPartialContent {
+		t.Fatalf("GET range 0-4: expected 206, got %d: %s", status, body)
+	}
+	if got, want := string(body), "abcde"; got != want {
+		t.Fatalf("GET range 0-4 body mismatch: got %q, want %q", got, want)
+	}
+	if got, want := headers.Get("Content-Range"), "bytes 0-4/26"; got != want {
+		t.Fatalf("GET range 0-4 Content-Range mismatch: got %q, want %q", got, want)
+	}
+	if got := headers.Get("Accept-Ranges"); got != "bytes" {
+		t.Fatalf("GET range 0-4 Accept-Ranges mismatch: got %q", got)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"Range": "bytes=20-"})
+	if status != http.StatusPartialContent || string(body) != "uvwxyz" {
+		t.Fatalf("GET open-ended range mismatch: status=%d body=%q", status, body)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"Range": "bytes=-3"})
+	if status != http.StatusPartialContent || string(body) != "xyz" {
+		t.Fatalf("GET suffix range mismatch: status=%d body=%q", status, body)
+	}
+
+	status, headers, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"Range": "bytes=30-40"})
+	if status != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("GET invalid range: expected 416, got %d: %s", status, body)
+	}
+	if got, want := headers.Get("Content-Range"), "bytes */26"; got != want {
+		t.Fatalf("GET invalid range Content-Range mismatch: got %q, want %q", got, want)
+	}
+	if got := headers.Get("Content-Length"); got == strconv.Itoa(len(objectContent)) {
+		t.Fatalf("GET invalid range must not reuse object Content-Length %q", got)
+	}
+
+	status, headers, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("GET full object: expected 200, got %d: %s", status, body)
+	}
+	if !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET full object body mismatch: got %q", body)
+	}
+	if got := headers.Get("Accept-Ranges"); got != "bytes" {
+		t.Fatalf("GET full object Accept-Ranges mismatch: got %q", got)
 	}
 }
 

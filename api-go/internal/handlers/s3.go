@@ -61,6 +61,11 @@ type listBucketPageItem struct {
 	commonPrefix string
 }
 
+type objectRange struct {
+	start int64
+	end   int64
+}
+
 const listCommonPrefixSkipSuffix = "\U0010FFFF"
 
 func writeS3Error(c *gin.Context, status int, code, message string) {
@@ -110,6 +115,46 @@ func fileListBucketEntry(file repository.File) listBucketEntry {
 		Size:         size,
 		StorageClass: "STANDARD",
 	}
+}
+
+func parseObjectRange(raw string, total int64) (objectRange, bool) {
+	if raw == "" {
+		return objectRange{}, false
+	}
+	if total <= 0 || !strings.HasPrefix(raw, "bytes=") || strings.Contains(raw, ",") {
+		return objectRange{}, false
+	}
+	spec := strings.TrimPrefix(raw, "bytes=")
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return objectRange{}, false
+	}
+	if parts[0] == "" {
+		suffixLen, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || suffixLen <= 0 {
+			return objectRange{}, false
+		}
+		if suffixLen >= total {
+			return objectRange{start: 0, end: total - 1}, true
+		}
+		return objectRange{start: total - suffixLen, end: total - 1}, true
+	}
+
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || start < 0 || start >= total {
+		return objectRange{}, false
+	}
+	end := total - 1
+	if parts[1] != "" {
+		end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || end < start {
+			return objectRange{}, false
+		}
+		if end >= total {
+			end = total - 1
+		}
+	}
+	return objectRange{start: start, end: end}, true
 }
 
 func buildListBucketPage(ctx context.Context, fileRepo *repository.FileRepository, bucketID primitive.ObjectID, prefix, delimiter, after string, maxKeys int) ([]listBucketEntry, []listCommonPrefix, bool, string, error) {
@@ -326,6 +371,7 @@ func lookupObject(c *gin.Context, bucketRepo *repository.BucketRepository, fileR
 // setObjectHeaders writes standard S3 object headers (ETag, Last-Modified,
 // Content-Length, Content-Type).
 func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
+	c.Header("Accept-Ranges", "bytes")
 	c.Header("ETag", objectETag(*fileDoc))
 	c.Header("Last-Modified", fileDoc.CreatedAt.UTC().Format(http.TimeFormat))
 	c.Header("Content-Length", strconv.FormatInt(total, 10))
@@ -376,9 +422,28 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		if !ok {
 			return
 		}
+		rangeHeader := c.GetHeader("Range")
+		if rangeHeader == "" {
+			setObjectHeaders(c, fileDoc, total)
+			c.Status(http.StatusOK)
+			if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
+				slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
+			}
+			return
+		}
+
+		objRange, ok := parseObjectRange(rangeHeader, total)
+		if !ok {
+			c.Header("Accept-Ranges", "bytes")
+			c.Header("Content-Range", "bytes */"+strconv.FormatInt(total, 10))
+			writeS3Error(c, http.StatusRequestedRangeNotSatisfiable, "InvalidRange", "The requested range is not satisfiable")
+			return
+		}
 		setObjectHeaders(c, fileDoc, total)
-		c.Status(http.StatusOK)
-		if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
+		c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
+		c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
+		c.Status(http.StatusPartialContent)
+		if err := manager.StreamFileRange(c.Request.Context(), sourceRepo, fileDoc, c.Writer, objRange.start, objRange.end); err != nil {
 			slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
 		}
 	}

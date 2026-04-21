@@ -555,3 +555,54 @@ func TestStreamFileNoChecksumSkipsVerification(t *testing.T) {
 		t.Fatalf("unexpected output: %q", buf.Bytes())
 	}
 }
+
+func TestStreamFileRangeAcrossChunks(t *testing.T) {
+	t.Parallel()
+	srcID := primitive.NewObjectID()
+	chunks := []repository.FileChunk{
+		{SourceID: srcID, Name: "chunk0", Order: 0, Size: 5},
+		{SourceID: srcID, Name: "chunk1", Order: 1, Size: 5},
+		{SourceID: srcID, Name: "chunk2", Order: 2, Size: 5},
+	}
+	f := &repository.File{Chunks: chunks}
+
+	var buf bytes.Buffer
+	err := streamFileRangeWithFactory(context.Background(), f, &buf, 3, 11, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{
+			"chunk0": []byte("abcde"),
+			"chunk1": []byte("fghij"),
+			"chunk2": []byte("klmno"),
+		}}, nil
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got, want := buf.String(), "defghijkl"; got != want {
+		t.Fatalf("range output mismatch: got %q, want %q", got, want)
+	}
+}
+
+func TestStreamFileRangeVerifiesChecksummedChunk(t *testing.T) {
+	t.Parallel()
+	payload := []byte("abcdefghij")
+	sum := sha256.Sum256(payload)
+	chunk := repository.FileChunk{
+		SourceID: primitive.NewObjectID(),
+		Name:     "chunk0",
+		Order:    0,
+		Size:     int64(len(payload)),
+		Checksum: hex.EncodeToString(sum[:]),
+	}
+	f := &repository.File{Chunks: []repository.FileChunk{chunk}}
+
+	var buf bytes.Buffer
+	err := streamFileRangeWithFactory(context.Background(), f, &buf, 2, 6, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{"chunk0": payload}}, nil
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got, want := buf.String(), "cdefg"; got != want {
+		t.Fatalf("range output mismatch: got %q, want %q", got, want)
+	}
+}
