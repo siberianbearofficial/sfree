@@ -208,7 +208,7 @@ func UpdateGrant(bucketRepo *repository.BucketRepository, grantRepo *repository.
 			return
 		}
 
-		if err := grantRepo.UpdateRole(ctx, grantID, role); err != nil {
+		if err := grantRepo.UpdateRole(ctx, acc.Bucket.ID, grantID, role); err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
@@ -248,7 +248,7 @@ func DeleteGrant(bucketRepo *repository.BucketRepository, grantRepo *repository.
 			return
 		}
 
-		if err := grantRepo.Delete(ctx, grantID); err != nil {
+		if err := grantRepo.Delete(ctx, acc.Bucket.ID, grantID); err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return

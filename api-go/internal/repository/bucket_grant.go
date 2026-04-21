@@ -129,8 +129,8 @@ func (r *BucketGrantRepository) ListByUser(ctx context.Context, userID primitive
 	return grants, cursor.Err()
 }
 
-func (r *BucketGrantRepository) UpdateRole(ctx context.Context, id primitive.ObjectID, role BucketRole) error {
-	res, err := r.coll.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{"role": role}})
+func (r *BucketGrantRepository) UpdateRole(ctx context.Context, bucketID, id primitive.ObjectID, role BucketRole) error {
+	res, err := r.coll.UpdateOne(ctx, bucketGrantDocumentFilter(bucketID, id), bson.M{"$set": bson.M{"role": role}})
 	if err != nil {
 		return err
 	}
@@ -140,8 +140,8 @@ func (r *BucketGrantRepository) UpdateRole(ctx context.Context, id primitive.Obj
 	return nil
 }
 
-func (r *BucketGrantRepository) Delete(ctx context.Context, id primitive.ObjectID) error {
-	res, err := r.coll.DeleteOne(ctx, bson.M{"_id": id})
+func (r *BucketGrantRepository) Delete(ctx context.Context, bucketID, id primitive.ObjectID) error {
+	res, err := r.coll.DeleteOne(ctx, bucketGrantDocumentFilter(bucketID, id))
 	if err != nil {
 		return err
 	}
@@ -154,4 +154,8 @@ func (r *BucketGrantRepository) Delete(ctx context.Context, id primitive.ObjectI
 func (r *BucketGrantRepository) DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error {
 	_, err := r.coll.DeleteMany(ctx, bson.M{"bucket_id": bucketID})
 	return err
+}
+
+func bucketGrantDocumentFilter(bucketID, id primitive.ObjectID) bson.M {
+	return bson.M{"bucket_id": bucketID, "_id": id}
 }
