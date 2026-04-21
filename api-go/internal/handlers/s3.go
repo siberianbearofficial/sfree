@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -233,28 +231,6 @@ func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
 }
 
-func deleteFileChunksIfUnreferenced(ctx context.Context, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunks []repository.FileChunk) error {
-	seen := make(map[string]struct{}, len(chunks))
-	for _, chunk := range chunks {
-		ref := chunk.SourceID.Hex() + "/" + chunk.Name
-		if _, ok := seen[ref]; ok {
-			continue
-		}
-		seen[ref] = struct{}{}
-		count, err := fileRepo.CountByChunk(ctx, chunk.SourceID, chunk.Name)
-		if err != nil {
-			return err
-		}
-		if count > 0 {
-			continue
-		}
-		if err := manager.DeleteFileChunks(ctx, sourceRepo, []repository.FileChunk{chunk}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func parseCopySource(raw string) (string, string, bool) {
 	raw = strings.TrimSpace(raw)
 	raw = strings.TrimPrefix(raw, "/")
@@ -272,40 +248,6 @@ func parseCopySource(raw string) (string, string, bool) {
 		return "", "", false
 	}
 	return bucket, key, true
-}
-
-func deleteObjectByName(ctx context.Context, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, bucketID primitive.ObjectID, name string) (bool, error) {
-	fileDoc, err := fileRepo.GetByName(ctx, bucketID, name)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return false, nil
-		}
-		return false, err
-	}
-	if err := fileRepo.Delete(ctx, fileDoc.ID); err != nil {
-		if err == mongo.ErrNoDocuments {
-			return false, nil
-		}
-		return false, err
-	}
-	if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, fileDoc.Chunks); err != nil {
-		slog.WarnContext(ctx, "delete object: delete chunks", slog.String("error", err.Error()))
-	}
-	return true, nil
-}
-
-func objectETag(file repository.File) string {
-	h := sha256.New()
-	_, _ = h.Write([]byte(file.Name))
-	_, _ = h.Write([]byte(file.CreatedAt.UTC().Format(time.RFC3339Nano)))
-	for _, chunk := range file.Chunks {
-		_, _ = h.Write([]byte(chunk.SourceID.Hex()))
-		_, _ = h.Write([]byte(chunk.Name))
-		_, _ = h.Write([]byte(strconv.Itoa(chunk.Order)))
-		_, _ = h.Write([]byte(":"))
-		_, _ = h.Write([]byte(strconv.FormatInt(chunk.Size, 10)))
-	}
-	return "\"" + hex.EncodeToString(h.Sum(nil)) + "\""
 }
 
 func parseListMaxKeys(c *gin.Context) (int, bool) {
@@ -333,7 +275,7 @@ func fileListBucketEntry(file repository.File) listBucketEntry {
 	return listBucketEntry{
 		Key:          file.Name,
 		LastModified: file.CreatedAt.UTC().Format(time.RFC3339),
-		ETag:         objectETag(file),
+		ETag:         manager.ObjectETag(file),
 		Size:         size,
 		StorageClass: "STANDARD",
 	}
@@ -590,7 +532,7 @@ func lookupObject(c *gin.Context, bucketRepo objectBucketReader, fileRepo object
 
 func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
 	c.Header("Accept-Ranges", "bytes")
-	c.Header("ETag", objectETag(*fileDoc))
+	c.Header("ETag", manager.ObjectETag(*fileDoc))
 	c.Header("Last-Modified", fileDoc.CreatedAt.UTC().Format(http.TimeFormat))
 	c.Header("Content-Length", strconv.FormatInt(total, 10))
 	c.Header("Content-Type", "application/octet-stream")
@@ -714,63 +656,34 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [put]
 func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int) gin.HandlerFunc {
+	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketKey := c.Param("bucket")
 		name := strings.TrimPrefix(c.Param("object"), "/")
 		if name == "" {
 			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 			return
 		}
-		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
+		bucketDoc, ok := lookupBucket(c, bucketRepo)
+		if !ok {
+			return
+		}
+		result, err := objectSvc.PutObject(ctx, bucketDoc, name, c.Request.Body, chunkSize)
 		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+			if errors.Is(err, manager.ErrNoSources) {
+				writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 				return
 			}
-			slog.ErrorContext(ctx, "put object: get bucket", slog.String("error", err.Error()))
+			slog.ErrorContext(ctx, "put object: mutate object", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		accessKey := c.GetString("accessKey")
-		if accessKey == "" || bucketDoc.AccessKey != accessKey {
-			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
-			return
-		}
-		sources, err := sourceRepo.ListByIDs(ctx, bucketDoc.SourceIDs)
-		if err != nil {
-			slog.ErrorContext(ctx, "put object: list sources", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		if len(sources) == 0 {
-			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
-			return
-		}
-		selector := manager.SelectorForBucket(bucketDoc, sources)
-		chunks, err := manager.UploadFileChunksWithStrategy(ctx, c.Request.Body, sources, chunkSize, nil, selector)
-		if err != nil {
-			slog.ErrorContext(ctx, "put object: upload chunks", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-
-		fileDoc := repository.File{BucketID: bucketDoc.ID, Name: name, CreatedAt: time.Now().UTC(), Chunks: chunks}
-		_, previousFile, err := fileRepo.ReplaceByName(ctx, fileDoc)
-		if err != nil {
-			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-			slog.ErrorContext(ctx, "put object: save file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		if previousFile != nil {
-			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
-				slog.WarnContext(ctx, "put object: delete old chunks", slog.String("error", err.Error()))
-			}
+		if result.CleanupErr != nil {
+			slog.WarnContext(ctx, "put object: delete old chunks", slog.String("error", result.CleanupErr.Error()))
 		}
 		c.Status(http.StatusOK)
 	}
@@ -787,6 +700,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [put]
 func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -825,39 +739,26 @@ func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-		if sourceBucket.ID != destBucket.ID && sourceBucket.UserID != destBucket.UserID {
-			writeS3Error(c, http.StatusForbidden, "AccessDenied", "")
-			return
-		}
-		sourceFile, err := fileRepo.GetByName(ctx, sourceBucket.ID, sourceKey)
+		result, err := objectSvc.CopyObject(ctx, sourceBucket, destBucket, sourceKey, destKey)
 		if err != nil {
-			if err == mongo.ErrNoDocuments {
+			switch {
+			case errors.Is(err, manager.ErrAccessDenied):
+				writeS3Error(c, http.StatusForbidden, "AccessDenied", "")
+			case errors.Is(err, manager.ErrObjectNotFound):
 				writeS3Error(c, http.StatusNotFound, "NoSuchKey", "")
-				return
+			default:
+				slog.ErrorContext(ctx, "copy object: mutate object", slog.String("error", err.Error()))
+				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			}
-			slog.ErrorContext(ctx, "copy object: get source file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
 		}
-
-		now := time.Now().UTC()
-		chunks := append([]repository.FileChunk(nil), sourceFile.Chunks...)
-		copyFile := repository.File{BucketID: destBucket.ID, Name: destKey, CreatedAt: now, Chunks: chunks}
-		currentFile, previousFile, err := fileRepo.ReplaceByName(ctx, copyFile)
-		if err != nil {
-			slog.ErrorContext(ctx, "copy object: save file", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		if previousFile != nil {
-			if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
-				slog.WarnContext(ctx, "copy object: delete old chunks", slog.String("error", err.Error()))
-			}
+		if result.CleanupErr != nil {
+			slog.WarnContext(ctx, "copy object: delete old chunks", slog.String("error", result.CleanupErr.Error()))
 		}
 		c.XML(http.StatusOK, copyObjectResult{
 			Xmlns:        "http://s3.amazonaws.com/doc/2006-03-01/",
-			ETag:         objectETag(*currentFile),
-			LastModified: now.Format(time.RFC3339),
+			ETag:         manager.ObjectETag(result.File),
+			LastModified: result.File.CreatedAt.UTC().Format(time.RFC3339),
 		})
 	}
 }
@@ -872,6 +773,7 @@ func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [delete]
 func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -899,16 +801,21 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusNoContent)
 			return
 		}
-		if _, err := deleteObjectByName(ctx, sourceRepo, fileRepo, bucketDoc.ID, name); err != nil {
+		result, err := objectSvc.DeleteObject(ctx, bucketDoc.ID, name)
+		if err != nil {
 			slog.ErrorContext(ctx, "delete object: delete file", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
+		}
+		if result.CleanupErr != nil {
+			slog.WarnContext(ctx, "delete object: delete chunks", slog.String("error", result.CleanupErr.Error()))
 		}
 		c.Status(http.StatusNoContent)
 	}
 }
 
 func DeleteObjects(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -950,7 +857,8 @@ func DeleteObjects(bucketRepo *repository.BucketRepository, sourceRepo *reposito
 				})
 				continue
 			}
-			if _, err := deleteObjectByName(ctx, sourceRepo, fileRepo, bucketDoc.ID, key); err != nil {
+			deleteResult, err := objectSvc.DeleteObject(ctx, bucketDoc.ID, key)
+			if err != nil {
 				slog.ErrorContext(ctx, "delete objects: delete file", slog.String("key", key), slog.String("error", err.Error()))
 				result.Errors = append(result.Errors, deleteObjectError{
 					Key:     key,
@@ -958,6 +866,9 @@ func DeleteObjects(bucketRepo *repository.BucketRepository, sourceRepo *reposito
 					Message: "Internal error deleting object",
 				})
 				continue
+			}
+			if deleteResult.CleanupErr != nil {
+				slog.WarnContext(ctx, "delete objects: delete chunks", slog.String("key", key), slog.String("error", deleteResult.CleanupErr.Error()))
 			}
 			if !req.Quiet {
 				result.Deleted = append(result.Deleted, deletedObjectResult{Key: key})
