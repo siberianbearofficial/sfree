@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -16,6 +18,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+)
+
+const (
+	maxDeleteObjects                = 1000
+	maxDeleteObjectsRequestBodySize = 8 * 1024 * 1024
+)
+
+var (
+	errDeleteObjectsMalformedXML = errors.New("malformed delete objects XML")
+	errDeleteObjectsTooMany      = errors.New("too many delete objects")
 )
 
 type s3Error struct {
@@ -50,6 +62,103 @@ type deleteObjectError struct {
 	Key     string `xml:"Key"`
 	Code    string `xml:"Code"`
 	Message string `xml:"Message"`
+}
+
+func decodeDeleteObjectsRequest(r io.Reader) (deleteObjectsRequest, error) {
+	decoder := xml.NewDecoder(r)
+	var req deleteObjectsRequest
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return req, errDeleteObjectsMalformedXML
+			}
+			return req, err
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		if start.Name.Local != "Delete" {
+			return req, errDeleteObjectsMalformedXML
+		}
+		if err := decodeDeleteObjectsElement(decoder, &req); err != nil {
+			return req, err
+		}
+		return req, nil
+	}
+}
+
+func decodeDeleteObjectsElement(decoder *xml.Decoder, req *deleteObjectsRequest) error {
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return errDeleteObjectsMalformedXML
+			}
+			return err
+		}
+		switch tok := token.(type) {
+		case xml.StartElement:
+			switch tok.Name.Local {
+			case "Quiet":
+				if err := decoder.DecodeElement(&req.Quiet, &tok); err != nil {
+					return err
+				}
+			case "Object":
+				if len(req.Objects) >= maxDeleteObjects {
+					return errDeleteObjectsTooMany
+				}
+				obj, err := decodeDeleteObjectElement(decoder)
+				if err != nil {
+					return err
+				}
+				req.Objects = append(req.Objects, obj)
+			default:
+				if err := decoder.Skip(); err != nil {
+					return err
+				}
+			}
+		case xml.EndElement:
+			if tok.Name.Local == "Delete" {
+				return nil
+			}
+		}
+	}
+}
+
+func decodeDeleteObjectElement(decoder *xml.Decoder) (deleteObjectRequest, error) {
+	var obj deleteObjectRequest
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return obj, errDeleteObjectsMalformedXML
+			}
+			return obj, err
+		}
+		switch tok := token.(type) {
+		case xml.StartElement:
+			switch tok.Name.Local {
+			case "Key":
+				if err := decoder.DecodeElement(&obj.Key, &tok); err != nil {
+					return obj, err
+				}
+			case "VersionId":
+				if err := decoder.DecodeElement(&obj.VersionID, &tok); err != nil {
+					return obj, err
+				}
+			default:
+				if err := decoder.Skip(); err != nil {
+					return obj, err
+				}
+			}
+		case xml.EndElement:
+			if tok.Name.Local == "Object" {
+				return obj, nil
+			}
+		}
+	}
 }
 
 type listBucketResult struct {
@@ -648,14 +757,18 @@ func DeleteObjects(bucketRepo *repository.BucketRepository, sourceRepo *reposito
 			return
 		}
 
-		var req deleteObjectsRequest
-		decoder := xml.NewDecoder(c.Request.Body)
-		if err := decoder.Decode(&req); err != nil {
+		req, err := decodeDeleteObjectsRequest(http.MaxBytesReader(c.Writer, c.Request.Body, maxDeleteObjectsRequestBodySize))
+		if err != nil {
+			if errors.Is(err, errDeleteObjectsTooMany) {
+				writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "DeleteObjects supports at most 1000 objects per request")
+				return
+			}
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "DeleteObjects request body is too large")
+				return
+			}
 			writeS3Error(c, http.StatusBadRequest, "MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema")
-			return
-		}
-		if len(req.Objects) > 1000 {
-			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "DeleteObjects supports at most 1000 objects per request")
 			return
 		}
 
