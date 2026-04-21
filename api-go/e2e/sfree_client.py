@@ -304,6 +304,25 @@ class SFreeClient:
             body = await response["Body"].read()
             return {**response, "Body": body}
 
+    async def head_object_s3(
+        self,
+        access_key: str,
+        access_secret: str,
+        bucket_key: str,
+        object_key: str,
+    ) -> dict[str, Any]:
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            **self._s3_client_kwargs(
+                region="us-east-1",
+                endpoint=self.config.s3_url,
+                access_key=access_key,
+                access_secret=access_secret,
+            ),
+        ) as s3_client:
+            return await s3_client.head_object(Bucket=bucket_key, Key=object_key)
+
     async def list_objects_s3(self, access_key: str, access_secret: str, bucket_key: str) -> list[dict[str, Any]]:
         response = await self.list_objects_v2_s3(
             access_key=access_key,
