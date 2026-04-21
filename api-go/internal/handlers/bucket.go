@@ -580,7 +580,7 @@ func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		if err := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, fileDoc.Chunks); err != nil {
+		if err := manager.DeleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, fileDoc.Chunks); err != nil {
 			slog.ErrorContext(ctx, "delete file: delete chunk", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return

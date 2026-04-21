@@ -1,9 +1,8 @@
 package handlers
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -115,7 +114,7 @@ func PostObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			return
 		}
 		if _, ok := c.GetQuery("uploadId"); ok {
-			completeMultipartUpload(c, bucketRepo, sourceRepo, fileRepo, mpRepo, chunkSize)
+			completeMultipartUpload(c, bucketRepo, sourceRepo, fileRepo, mpRepo)
 			return
 		}
 		writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "missing uploads or uploadId parameter")
@@ -331,7 +330,7 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 	c.Status(http.StatusOK)
 }
 
-func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int) {
+func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) {
 	ctx := c.Request.Context()
 	uploadID := c.Query("uploadId")
 
@@ -350,104 +349,53 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 	if !ok {
 		return
 	}
-	if mu.BucketID != bucketDoc.ID {
-		writeS3Error(c, http.StatusNotFound, "NoSuchUpload", "")
-		return
-	}
 
 	var req completeMultipartUploadRequest
 	if err := xml.NewDecoder(c.Request.Body).Decode(&req); err != nil {
 		writeS3Error(c, http.StatusBadRequest, "MalformedXML", "could not parse CompleteMultipartUpload body")
 		return
 	}
-	if len(req.Parts) == 0 {
-		writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "at least one part is required")
-		return
-	}
-
-	// Validate part numbers are ascending.
-	for i := 1; i < len(req.Parts); i++ {
-		if req.Parts[i].PartNumber <= req.Parts[i-1].PartNumber {
-			writeS3Error(c, http.StatusBadRequest, "InvalidPartOrder", "part numbers must be in ascending order")
-			return
-		}
-	}
-
-	// Build lookup of uploaded parts.
-	partMap := make(map[int]repository.UploadPart, len(mu.Parts))
-	for _, p := range mu.Parts {
-		partMap[p.PartNumber] = p
-	}
-
-	// Validate all requested parts exist and ETags match.
+	requestedParts := make([]manager.CompleteMultipartPart, 0, len(req.Parts))
 	for _, rp := range req.Parts {
-		up, exists := partMap[rp.PartNumber]
-		if !exists {
-			writeS3Error(c, http.StatusBadRequest, "InvalidPart", fmt.Sprintf("part %d not uploaded", rp.PartNumber))
-			return
-		}
-		// Normalize ETags for comparison (strip quotes).
-		reqETag := strings.Trim(rp.ETag, "\"")
-		upETag := strings.Trim(up.ETag, "\"")
-		if reqETag != upETag {
-			writeS3Error(c, http.StatusBadRequest, "InvalidPart", fmt.Sprintf("ETag mismatch for part %d", rp.PartNumber))
-			return
-		}
+		requestedParts = append(requestedParts, manager.CompleteMultipartPart{PartNumber: rp.PartNumber, ETag: rp.ETag})
 	}
-	allChunks := completedMultipartChunks(req.Parts, partMap)
 
-	fileDoc := repository.File{
-		BucketID:  bucketDoc.ID,
-		Name:      mu.ObjectKey,
-		CreatedAt: time.Now().UTC(),
-		Chunks:    allChunks,
-	}
-	_, previousFile, err := fileRepo.ReplaceByName(ctx, fileDoc)
+	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, mpRepo)
+	result, err := objectSvc.CompleteMultipartUploadRecord(ctx, bucketDoc.ID, mu, requestedParts)
 	if err != nil {
-		slog.ErrorContext(ctx, "complete multipart: save file", slog.String("error", err.Error()))
-		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		switch {
+		case errors.Is(err, manager.ErrMultipartUploadNotFound):
+			writeS3Error(c, http.StatusNotFound, "NoSuchUpload", "")
+		case errors.Is(err, manager.ErrMultipartUploadHasNoParts):
+			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "at least one part is required")
+		case errors.Is(err, manager.ErrMultipartUploadPartOrder):
+			writeS3Error(c, http.StatusBadRequest, "InvalidPartOrder", "part numbers must be in ascending order")
+		case errors.Is(err, manager.ErrMultipartUploadInvalidPart):
+			var partErr manager.InvalidMultipartPartError
+			if errors.As(err, &partErr) {
+				message := fmt.Sprintf("part %d not uploaded", partErr.PartNumber)
+				if partErr.Reason == "etag mismatch" {
+					message = fmt.Sprintf("ETag mismatch for part %d", partErr.PartNumber)
+				}
+				writeS3Error(c, http.StatusBadRequest, "InvalidPart", message)
+				return
+			}
+			writeS3Error(c, http.StatusBadRequest, "InvalidPart", "")
+		default:
+			slog.ErrorContext(ctx, "complete multipart: mutate object", slog.String("error", err.Error()))
+			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		}
 		return
 	}
-	if previousFile != nil {
-		if delErr := deleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); delErr != nil {
-			slog.WarnContext(ctx, "complete multipart: delete old chunks", slog.String("error", delErr.Error()))
-		}
+	for _, cleanupErr := range result.CleanupErrs {
+		slog.WarnContext(ctx, "complete multipart: cleanup", slog.String("error", cleanupErr.Error()))
 	}
-
-	// Delete chunks for parts that were uploaded but NOT referenced in the completion request.
-	requestedParts := make(map[int]bool, len(req.Parts))
-	for _, rp := range req.Parts {
-		requestedParts[rp.PartNumber] = true
-	}
-	for _, p := range mu.Parts {
-		if !requestedParts[p.PartNumber] {
-			if delErr := manager.DeleteFileChunks(ctx, sourceRepo, p.Chunks); delErr != nil {
-				slog.WarnContext(ctx, "complete multipart: delete unreferenced part", slog.String("error", delErr.Error()))
-			}
-		}
-	}
-
-	// Clean up the multipart upload record.
-	if err := mpRepo.Delete(ctx, uploadID); err != nil {
-		slog.WarnContext(ctx, "complete multipart: delete upload record", slog.String("error", err.Error()))
-	}
-
-	// Compute multipart ETag: md5-of-part-md5s-N
-	h := md5.New()
-	for _, rp := range req.Parts {
-		up := partMap[rp.PartNumber]
-		partHash := strings.Trim(up.ETag, "\"")
-		raw, _ := hex.DecodeString(partHash)
-		_, _ = h.Write(raw)
-	}
-	etag := fmt.Sprintf("\"%s-%d\"", hex.EncodeToString(h.Sum(nil)), len(req.Parts))
-
 	c.XML(http.StatusOK, completeMultipartUploadResult{
 		Xmlns:    "http://s3.amazonaws.com/doc/2006-03-01/",
-		Location: fmt.Sprintf("/%s/%s", c.Param("bucket"), mu.ObjectKey),
+		Location: fmt.Sprintf("/%s/%s", c.Param("bucket"), result.Upload.ObjectKey),
 		Bucket:   c.Param("bucket"),
-		Key:      mu.ObjectKey,
-		ETag:     etag,
+		Key:      result.Upload.ObjectKey,
+		ETag:     result.ETag,
 	})
 }
 
