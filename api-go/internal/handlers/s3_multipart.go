@@ -80,28 +80,6 @@ type partXML struct {
 	LastModified string `xml:"LastModified"`
 }
 
-// lookupBucket resolves the bucket from the request and validates access.
-func lookupBucket(c *gin.Context, bucketRepo *repository.BucketRepository) (*repository.Bucket, bool) {
-	ctx := c.Request.Context()
-	bucketKey := c.Param("bucket")
-	bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
-			return nil, false
-		}
-		slog.ErrorContext(ctx, "lookup bucket", slog.String("error", err.Error()))
-		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-		return nil, false
-	}
-	accessKey := c.GetString("accessKey")
-	if accessKey == "" || bucketDoc.AccessKey != accessKey {
-		writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
-		return nil, false
-	}
-	return bucketDoc, true
-}
-
 // PostObject dispatches POST requests on S3 object paths.
 // ?uploads → CreateMultipartUpload
 // ?uploadId=X → CompleteMultipartUpload
