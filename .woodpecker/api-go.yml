@@ -32,8 +32,9 @@ steps:
       - echo "Waiting for Docker daemon..."
       - for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; echo "still waiting ($i)"; sleep 1; done
       - docker info
+      - for image in "$GO_IMAGE" "$PYTHON_IMAGE" "$MONGO_IMAGE" "$MINIO_IMAGE"; do for i in $(seq 1 4); do docker pull "$image" && break; if [ "$i" = 4 ]; then exit 1; fi; sleep $((i * 10)); done; done
       - cd api-go
-      - E2E_SOURCE_TYPE=s3 docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e-tests
+      - E2E_SOURCE_TYPE=s3 docker compose -f docker-compose.e2e.yml up --pull never --build --abort-on-container-exit --exit-code-from e2e-tests
       - docker compose -f docker-compose.e2e.yml down -v
 
   - name: go e2e tests (s3)
@@ -47,8 +48,9 @@ steps:
     commands:
       - echo "Waiting for Docker daemon..."
       - for i in $(seq 1 60); do docker info >/dev/null 2>&1 && break; echo "still waiting ($i)"; sleep 1; done
+      - for image in "$GO_IMAGE" "$MONGO_IMAGE" "$MINIO_IMAGE"; do for i in $(seq 1 4); do docker pull "$image" && break; if [ "$i" = 4 ]; then exit 1; fi; sleep $((i * 10)); done; done
       - cd api-go
-      - docker compose -f docker-compose.go-e2e.yml up --build --abort-on-container-exit --exit-code-from go-e2e-tests
+      - docker compose -f docker-compose.go-e2e.yml up --pull never --build --abort-on-container-exit --exit-code-from go-e2e-tests
       - docker compose -f docker-compose.go-e2e.yml down -v
 
   - name: build and push
