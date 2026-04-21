@@ -141,7 +141,10 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
-		w.Upload(ctx, "fail.txt", strings.NewReader("data"))
+		_, err := w.Upload(ctx, "fail.txt", strings.NewReader("data"))
+		if err == nil {
+			t.Fatalf("request %d: expected error", i+1)
+		}
 	}
 
 	// Circuit is open.
@@ -168,9 +171,8 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 
 // flakeyClient fails a configurable number of times then succeeds.
 type flakeyClient struct {
-	failCount   int
-	callCount   atomic.Int32
-	permanentOK bool
+	failCount int
+	callCount atomic.Int32
 }
 
 func (f *flakeyClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
