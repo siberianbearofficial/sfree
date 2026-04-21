@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -365,7 +366,7 @@ func signS3Request(req *http.Request, accessKey, secretKey, region string) error
 	canonReq := strings.Join([]string{
 		req.Method,
 		canonURI,
-		req.URL.RawQuery,
+		s3CanonicalQuery(req.URL),
 		canonHeaders,
 		signedHeaders,
 		payloadHash,
@@ -387,6 +388,57 @@ func signS3Request(req *http.Request, accessKey, secretKey, region string) error
 		accessKey, scope, signedHeaders, hex.EncodeToString(sig),
 	))
 	return nil
+}
+
+func s3CanonicalQuery(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	values, _ := url.ParseQuery(u.RawQuery)
+	type kv struct {
+		k string
+		v string
+	}
+	items := make([]kv, 0)
+	for k, vs := range values {
+		if len(vs) == 0 {
+			items = append(items, kv{k: k})
+			continue
+		}
+		for _, v := range vs {
+			items = append(items, kv{k: k, v: v})
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].k == items[j].k {
+			return items[i].v < items[j].v
+		}
+		return items[i].k < items[j].k
+	})
+	var b strings.Builder
+	for i, item := range items {
+		if i > 0 {
+			b.WriteByte('&')
+		}
+		b.WriteString(s3EncodeQuery(item.k))
+		b.WriteByte('=')
+		b.WriteString(s3EncodeQuery(item.v))
+	}
+	return b.String()
+}
+
+func s3EncodeQuery(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+			c == '-' || c == '_' || c == '.' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
 }
 
 func s3HmacSHA256(key, data []byte) []byte {
