@@ -141,7 +141,10 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
-		w.Upload(ctx, "fail.txt", strings.NewReader("data"))
+		_, err := w.Upload(ctx, "fail.txt", strings.NewReader("data"))
+		if err == nil {
+			t.Fatalf("request %d: expected error", i+1)
+		}
 	}
 
 	// Circuit is open.
@@ -168,9 +171,8 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 
 // flakeyClient fails a configurable number of times then succeeds.
 type flakeyClient struct {
-	failCount   int
-	callCount   atomic.Int32
-	permanentOK bool
+	failCount int
+	callCount atomic.Int32
 }
 
 func (f *flakeyClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
@@ -218,6 +220,111 @@ func TestWrapperRetryUploadSucceeds(t *testing.T) {
 	}
 	if got := int(inner.callCount.Load()); got != 3 {
 		t.Fatalf("expected 3 calls (2 failures + 1 success), got %d", got)
+	}
+}
+
+type bodyDrainingUploadClient struct {
+	want      string
+	callCount atomic.Int32
+}
+
+func (c *bodyDrainingUploadClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	got, err := io.ReadAll(r)
+	if err != nil {
+		return "", err
+	}
+	if string(got) != c.want {
+		return "", errors.New("upload retry body did not match original payload")
+	}
+	if c.callCount.Add(1) == 1 {
+		return "", errors.New("transient failure after reading body")
+	}
+	return "uploaded-" + name, nil
+}
+
+func (c *bodyDrainingUploadClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *bodyDrainingUploadClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+func TestWrapperRetryUploadReplaysBody(t *testing.T) {
+	inner := &bodyDrainingUploadClient{want: "chunk-payload"}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       1,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	name, err := w.Upload(context.Background(), "file.txt", strings.NewReader("chunk-payload"))
+	if err != nil {
+		t.Fatalf("expected retry success with replayed body, got %v", err)
+	}
+	if name != "uploaded-file.txt" {
+		t.Fatalf("unexpected name: %s", name)
+	}
+	if got := int(inner.callCount.Load()); got != 2 {
+		t.Fatalf("expected 2 upload calls, got %d", got)
+	}
+}
+
+type countingReadSeeker struct {
+	*strings.Reader
+	readCalls atomic.Int32
+}
+
+func (r *countingReadSeeker) Read(p []byte) (int, error) {
+	r.readCalls.Add(1)
+	return r.Reader.Read(p)
+}
+
+type firstAttemptUploadClient struct {
+	body *countingReadSeeker
+}
+
+func (c *firstAttemptUploadClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	if c.body.readCalls.Load() != 0 {
+		return "", errors.New("upload body was read before first attempt")
+	}
+	if _, err := io.ReadAll(r); err != nil {
+		return "", err
+	}
+	return "uploaded-" + name, nil
+}
+
+func (c *firstAttemptUploadClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (c *firstAttemptUploadClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+func TestWrapperRetryUploadDoesNotPreReadSeekableBody(t *testing.T) {
+	body := &countingReadSeeker{Reader: strings.NewReader("chunk-payload")}
+	inner := &firstAttemptUploadClient{body: body}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       1,
+		RetryBaseDelay:   1 * time.Millisecond,
+		RetryMaxDelay:    10 * time.Millisecond,
+	}
+	w := Wrap(inner, cfg)
+
+	name, err := w.Upload(context.Background(), "file.txt", body)
+	if err != nil {
+		t.Fatalf("expected upload without pre-reading seekable body, got %v", err)
+	}
+	if name != "uploaded-file.txt" {
+		t.Fatalf("unexpected name: %s", name)
 	}
 }
 
