@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -617,9 +618,15 @@ func TestS3CompatGetObjectRange(t *testing.T) {
 		t.Fatalf("GET suffix range mismatch: status=%d body=%q", status, body)
 	}
 
-	status, _, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"Range": "bytes=30-40"})
+	status, headers, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"Range": "bytes=30-40"})
 	if status != http.StatusRequestedRangeNotSatisfiable {
 		t.Fatalf("GET invalid range: expected 416, got %d: %s", status, body)
+	}
+	if got, want := headers.Get("Content-Range"), "bytes */26"; got != want {
+		t.Fatalf("GET invalid range Content-Range mismatch: got %q, want %q", got, want)
+	}
+	if got := headers.Get("Content-Length"); got == strconv.Itoa(len(objectContent)) {
+		t.Fatalf("GET invalid range must not reuse object Content-Length %q", got)
 	}
 
 	status, headers, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)

@@ -422,9 +422,9 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		if !ok {
 			return
 		}
-		setObjectHeaders(c, fileDoc, total)
 		rangeHeader := c.GetHeader("Range")
 		if rangeHeader == "" {
+			setObjectHeaders(c, fileDoc, total)
 			c.Status(http.StatusOK)
 			if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
 				slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
@@ -434,10 +434,12 @@ func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 
 		objRange, ok := parseObjectRange(rangeHeader, total)
 		if !ok {
+			c.Header("Accept-Ranges", "bytes")
 			c.Header("Content-Range", "bytes */"+strconv.FormatInt(total, 10))
 			writeS3Error(c, http.StatusRequestedRangeNotSatisfiable, "InvalidRange", "The requested range is not satisfiable")
 			return
 		}
+		setObjectHeaders(c, fileDoc, total)
 		c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
 		c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
 		c.Status(http.StatusPartialContent)
