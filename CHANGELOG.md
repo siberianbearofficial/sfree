@@ -21,6 +21,8 @@ backend, frontend, CLI, and infrastructure into a single versioned artifact.
   distributing chunks across sources per bucket.
 - **GitHub OAuth** — authenticate via GitHub in addition to HTTP Basic Auth.
   JWT-based token login for API and CLI use.
+- **Rate limiting** — API traffic can be limited to reduce accidental or
+  abusive request volume.
 - **Error messages and UX feedback** — toast notifications, loading spinners,
   and empty states across the web UI.
 
@@ -42,5 +44,4 @@ backend, frontend, CLI, and infrastructure into a single versioned artifact.
 - No chunk redundancy or erasure coding — losing an upstream source means data
   loss for chunks stored there.
 - Auth and credential handling are functional but not production-hardened.
-- No rate limiting (planned for a future release).
 - Single-node deployment only.
