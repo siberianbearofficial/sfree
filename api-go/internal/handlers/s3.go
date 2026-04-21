@@ -229,6 +229,10 @@ type objectFileReader interface {
 	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
 }
 
+type listBucketFilePager interface {
+	ListByBucketWithPrefixPage(ctx context.Context, bucketID primitive.ObjectID, prefix, after string, limit int) ([]repository.File, bool, error)
+}
+
 func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
 }
@@ -379,7 +383,7 @@ func parseObjectRange(raw string, total int64) (objectRange, bool) {
 	return objectRange{start: start, end: end}, true
 }
 
-func buildListBucketPage(ctx context.Context, fileRepo *repository.FileRepository, bucketID primitive.ObjectID, prefix, delimiter, after string, maxKeys int) ([]listBucketEntry, []listCommonPrefix, bool, string, error) {
+func buildListBucketPage(ctx context.Context, fileRepo listBucketFilePager, bucketID primitive.ObjectID, prefix, delimiter, after string, maxKeys int) ([]listBucketEntry, []listCommonPrefix, bool, string, error) {
 	batchLimit := maxKeys + 1
 	if batchLimit < 1 {
 		batchLimit = 1
