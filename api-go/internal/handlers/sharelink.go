@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -47,8 +47,9 @@ type shareLinkResponse struct {
 // @Router /api/v1/buckets/{id}/files/{file_id}/share [post]
 func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || fileRepo == nil || shareLinkRepo == nil {
-			log.Print("create share link: repository is nil")
+			slog.ErrorContext(ctx, "create share link: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -69,13 +70,13 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 		}
 
 		// Verify file exists in bucket.
-		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
+		fileDoc, err := fileRepo.GetByID(ctx, fileID)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("create share link: get file: %v", err)
+			slog.ErrorContext(ctx, "create share link: get file", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -90,7 +91,7 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 
 		token, err := cryptoutil.RandomString(shareTokenLength)
 		if err != nil {
-			log.Printf("create share link: generate token: %v", err)
+			slog.ErrorContext(ctx, "create share link: generate token", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -108,9 +109,9 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 			sl.ExpiresAt = &exp
 		}
 
-		created, err := shareLinkRepo.Create(c.Request.Context(), sl)
+		created, err := shareLinkRepo.Create(ctx, sl)
 		if err != nil {
-			log.Printf("create share link: save: %v", err)
+			slog.ErrorContext(ctx, "create share link: save", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -139,8 +140,9 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 // @Router /share/{token} [get]
 func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if shareLinkRepo == nil || bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
-			log.Print("get shared file: repository is nil")
+			slog.ErrorContext(ctx, "get shared file: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -150,13 +152,13 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 			return
 		}
 
-		sl, err := shareLinkRepo.GetByToken(c.Request.Context(), token)
+		sl, err := shareLinkRepo.GetByToken(ctx, token)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("get shared file: lookup token: %v", err)
+			slog.ErrorContext(ctx, "get shared file: lookup token", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -167,13 +169,13 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 			return
 		}
 
-		fileDoc, err := fileRepo.GetByID(c.Request.Context(), sl.FileID)
+		fileDoc, err := fileRepo.GetByID(ctx, sl.FileID)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("get shared file: get file: %v", err)
+			slog.ErrorContext(ctx, "get shared file: get file", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -186,8 +188,8 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 		c.Header("Content-Type", "application/octet-stream")
 		c.Header("Content-Length", strconv.FormatInt(total, 10))
 		c.Status(http.StatusOK)
-		if err := manager.StreamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-			log.Printf("get shared file: stream: %v", err)
+		if err := manager.StreamFile(ctx, sourceRepo, fileDoc, c.Writer); err != nil {
+			slog.ErrorContext(ctx, "get shared file: stream", slog.String("error", err.Error()))
 		}
 	}
 }
@@ -207,8 +209,9 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 // @Router /api/v1/buckets/{id}/files/{file_id}/shares [get]
 func ListShareLinks(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if bucketRepo == nil || fileRepo == nil || shareLinkRepo == nil {
-			log.Print("list share links: repository is nil")
+			slog.ErrorContext(ctx, "list share links: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -224,13 +227,13 @@ func ListShareLinks(bucketRepo *repository.BucketRepository, fileRepo *repositor
 			return
 		}
 
-		fileDoc, err := fileRepo.GetByID(c.Request.Context(), fileID)
+		fileDoc, err := fileRepo.GetByID(ctx, fileID)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("list share links: get file: %v", err)
+			slog.ErrorContext(ctx, "list share links: get file", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -239,9 +242,9 @@ func ListShareLinks(bucketRepo *repository.BucketRepository, fileRepo *repositor
 			return
 		}
 
-		links, err := shareLinkRepo.ListByFile(c.Request.Context(), fileID)
+		links, err := shareLinkRepo.ListByFile(ctx, fileID)
 		if err != nil {
-			log.Printf("list share links: list: %v", err)
+			slog.ErrorContext(ctx, "list share links: list", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -275,8 +278,9 @@ func ListShareLinks(bucketRepo *repository.BucketRepository, fileRepo *repositor
 // @Router /api/v1/shares/{id} [delete]
 func DeleteShareLink(shareLinkRepo *repository.ShareLinkRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		if shareLinkRepo == nil {
-			log.Print("delete share link: repository is nil")
+			slog.ErrorContext(ctx, "delete share link: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -289,12 +293,12 @@ func DeleteShareLink(shareLinkRepo *repository.ShareLinkRepository) gin.HandlerF
 			return
 		}
 
-		if err := shareLinkRepo.Delete(c.Request.Context(), id, userID); err != nil {
+		if err := shareLinkRepo.Delete(ctx, id, userID); err != nil {
 			if err == mongo.ErrNoDocuments {
 				c.Status(http.StatusNotFound)
 				return
 			}
-			log.Printf("delete share link: %v", err)
+			slog.ErrorContext(ctx, "delete share link", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}

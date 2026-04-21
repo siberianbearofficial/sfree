@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -53,6 +53,7 @@ type githubUser struct {
 // GitHubCallback handles the OAuth callback from GitHub.
 func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		savedState, err := c.Cookie("oauth_state")
 		if err != nil || savedState == "" || c.Query("state") != savedState {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid oauth state"})
@@ -62,17 +63,17 @@ func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin
 		c.SetCookie("oauth_state", "", -1, "/", "", true, true)
 
 		oauthCfg := newGitHubOAuthConfig(cfg)
-		token, err := oauthCfg.Exchange(c.Request.Context(), c.Query("code"))
+		token, err := oauthCfg.Exchange(ctx, c.Query("code"))
 		if err != nil {
-			log.Printf("oauth callback: token exchange failed: %v", err)
+			slog.ErrorContext(ctx, "oauth callback: token exchange failed", slog.String("error", err.Error()))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to exchange code"})
 			return
 		}
 
-		client := oauthCfg.Client(c.Request.Context(), token)
+		client := oauthCfg.Client(ctx, token)
 		resp, err := client.Get("https://api.github.com/user")
 		if err != nil {
-			log.Printf("oauth callback: github user fetch failed: %v", err)
+			slog.ErrorContext(ctx, "oauth callback: github user fetch failed", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -80,13 +81,13 @@ func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin
 
 		var ghUser githubUser
 		if err := json.NewDecoder(resp.Body).Decode(&ghUser); err != nil {
-			log.Printf("oauth callback: failed to decode github user: %v", err)
+			slog.ErrorContext(ctx, "oauth callback: failed to decode github user", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 
 		// Find or create user by GitHub ID.
-		user, err := userRepo.GetByGitHubID(c.Request.Context(), ghUser.ID)
+		user, err := userRepo.GetByGitHubID(ctx, ghUser.ID)
 		if err != nil {
 			// User not found — create a new one.
 			newUser := repository.User{
@@ -95,13 +96,13 @@ func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin
 				AvatarURL: ghUser.AvatarURL,
 				CreatedAt: time.Now().UTC(),
 			}
-			user, err = userRepo.Create(c.Request.Context(), newUser)
+			user, err = userRepo.Create(ctx, newUser)
 			if err != nil {
 				// Username conflict — try with GitHub ID suffix.
 				newUser.Username = fmt.Sprintf("%s-%d", ghUser.Login, ghUser.ID)
-				user, err = userRepo.Create(c.Request.Context(), newUser)
+				user, err = userRepo.Create(ctx, newUser)
 				if err != nil {
-					log.Printf("oauth callback: failed to create user: %v", err)
+					slog.ErrorContext(ctx, "oauth callback: failed to create user", slog.String("error", err.Error()))
 					c.Status(http.StatusInternalServerError)
 					return
 				}
@@ -115,7 +116,7 @@ func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin
 		}
 		jwtToken, err := IssueJWT(user.ID.Hex(), jwtSecret)
 		if err != nil {
-			log.Printf("oauth callback: failed to issue jwt: %v", err)
+			slog.ErrorContext(ctx, "oauth callback: failed to issue jwt", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
@@ -152,6 +153,7 @@ func IssueJWT(userID string, secret string) (string, error) {
 // TokenLogin issues a JWT for an existing Basic Auth session.
 func TokenLogin(cfg *config.Config, userRepo *repository.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx := c.Request.Context()
 		userIDHex := c.GetString("userID")
 		if userIDHex == "" {
 			c.Status(http.StatusUnauthorized)
@@ -163,7 +165,7 @@ func TokenLogin(cfg *config.Config, userRepo *repository.UserRepository) gin.Han
 		}
 		token, err := IssueJWT(userIDHex, jwtSecret)
 		if err != nil {
-			log.Printf("token login: failed to issue jwt: %v", err)
+			slog.ErrorContext(ctx, "token login: failed to issue jwt", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
