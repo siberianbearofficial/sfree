@@ -1,6 +1,7 @@
 package resilience
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -70,6 +71,16 @@ func (w *wrapper) Upload(ctx context.Context, name string, r io.Reader) (string,
 		return "", err
 	}
 
+	var payload []byte
+	if w.retryCfg.MaxRetries > 0 {
+		var err error
+		payload, err = io.ReadAll(r)
+		if err != nil {
+			w.cb.RecordFailure()
+			return "", err
+		}
+	}
+
 	var lastErr error
 	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
 		if attempt > 0 {
@@ -92,8 +103,12 @@ func (w *wrapper) Upload(ctx context.Context, name string, r io.Reader) (string,
 			}
 		}
 
+		body := r
+		if payload != nil {
+			body = bytes.NewReader(payload)
+		}
 		reqCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
-		result, err := w.inner.Upload(reqCtx, name, r)
+		result, err := w.inner.Upload(reqCtx, name, body)
 		cancel()
 
 		if err == nil {
