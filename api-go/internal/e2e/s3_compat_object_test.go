@@ -102,6 +102,32 @@ func TestS3CompatObjectLifecycle(t *testing.T) {
 	}
 }
 
+func TestS3CompatMissingObjectReturnsNoSuchKey(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	suffix := uniqueSuffix()
+	ts, bucket := setupS3CompatTest(t, env, suffix)
+	s3URL := fmt.Sprintf("%s/api/s3/%s/missing-%s.txt", ts.URL, bucket.Key, suffix)
+
+	status, body := s3Do(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+	if status != http.StatusNotFound {
+		t.Fatalf("GET missing object: expected 404, got %d: %s", status, body)
+	}
+
+	var errResp struct {
+		Code string `xml:"Code"`
+	}
+	if err := xml.Unmarshal(body, &errResp); err != nil {
+		t.Fatalf("decode missing object error: %v body=%s", err, body)
+	}
+	if errResp.Code != "NoSuchKey" {
+		t.Fatalf("GET missing object: expected NoSuchKey, got %q", errResp.Code)
+	}
+}
+
 func TestS3CompatCopyObject(t *testing.T) {
 	env, ok := loadS3E2EEnv()
 	if !ok {
