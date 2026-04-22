@@ -113,7 +113,8 @@ instance for local S3-compatible source testing.
 | -------- | ---------------------------- |
 | Frontend | http://localhost:3000        |
 | API      | http://localhost:8080        |
-| Swagger  | http://localhost:8080/swagger/index.html |
+| API Docs | http://localhost:8080/api/docs |
+| OpenAPI JSON | http://localhost:8080/api/openapi.json |
 | MinIO Console | http://localhost:9001   |
 
 ### 2. Try it out

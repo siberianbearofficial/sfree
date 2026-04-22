@@ -1,8 +1,11 @@
 package app
 
 import (
+	"net/http"
+
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/docs"
 	"github.com/example/sfree/api-go/internal/handlers"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -104,6 +107,13 @@ func registerPublicShareRoutes(router *gin.Engine, deps *routerDependencies) {
 }
 
 func registerDocsMetricsRoutes(router *gin.Engine) {
+	router.GET("/api/openapi.json", func(c *gin.Context) {
+		c.Data(http.StatusOK, "application/json; charset=utf-8", docs.OpenAPIJSON())
+	})
+	router.GET("/api/docs", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, "/api/docs/index.html")
+	})
+	router.GET("/api/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("/api/openapi.json")))
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }
