@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/manager"
@@ -204,7 +203,7 @@ func createMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposito
 	if !ok {
 		return
 	}
-	objectKey := strings.TrimPrefix(c.Param("object"), "/")
+	objectKey := s3ObjectKey(c)
 	if objectKey == "" {
 		writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "empty object key")
 		return
