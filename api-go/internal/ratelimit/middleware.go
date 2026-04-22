@@ -25,12 +25,12 @@ func DefaultConfig() Config {
 	}
 }
 
-// Middleware returns a gin middleware that enforces rate limits using in-memory
-// token buckets. All requests are keyed by client IP. Requests from
-// authenticated users (where "userID" is set in the gin context by auth
-// middleware) use the higher per-key limit; unauthenticated requests use the
-// lower per-IP limit.
-func Middleware(cfg Config) gin.HandlerFunc {
+type Limiters struct {
+	ipLimiter  *Limiter
+	keyLimiter *Limiter
+}
+
+func NewLimiters(cfg Config) *Limiters {
 	if cfg.PerIPReqsPerMin <= 0 {
 		cfg.PerIPReqsPerMin = 60
 	}
@@ -44,7 +44,11 @@ func Middleware(cfg Config) gin.HandlerFunc {
 	ipLimiter := NewLimiter(cfg.PerIPReqsPerMin)
 	keyLimiter := NewLimiter(cfg.PerKeyReqsPerMin)
 
-	// Background cleanup goroutine to prevent memory leaks.
+	limiters := &Limiters{
+		ipLimiter:  ipLimiter,
+		keyLimiter: keyLimiter,
+	}
+
 	go func() {
 		ticker := time.NewTicker(cfg.CleanupInterval)
 		defer ticker.Stop()
@@ -54,47 +58,106 @@ func Middleware(cfg Config) gin.HandlerFunc {
 		}
 	}()
 
+	return limiters
+}
+
+// Middleware preserves the single-middleware behavior for callers that already
+// run authentication before rate limiting.
+func Middleware(cfg Config) gin.HandlerFunc {
+	return NewLimiters(cfg).Middleware()
+}
+
+func (l *Limiters) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Run after other middleware in the chain so auth has a chance
-		// to set "userID". We call c.Next() first, then this is a
-		// pre-handler check — but gin processes Use() middleware
-		// before handlers, so we check context keys that prior
-		// middleware may have set.
-		//
-		// Since this middleware runs globally before per-route auth,
-		// "userID" is typically not yet set. All requests are therefore
-		// rate-limited by client IP at the lower rate. Authenticated
-		// routes benefit from the higher limit only when auth runs as
-		// a global middleware too.
-		var ok bool
-		var retryAfter float64
-
-		ip := c.ClientIP()
-
-		// If auth middleware already ran (e.g. global auth), use the
-		// higher per-user limit keyed by user+IP. Otherwise, use the
-		// lower per-IP limit. Keying by IP prevents bypass via fake
-		// or rotated Authorization headers.
-		if userID, exists := c.Get("userID"); exists && userID != nil {
-			key := fmt.Sprintf("user:%v@%s", userID, ip)
-			ok, retryAfter = keyLimiter.Allow(key)
-		} else {
-			ok, retryAfter = ipLimiter.Allow(ip)
+		if !l.allow(c, l.identityOrIPKey(c)) {
+			return
 		}
+		c.Next()
+	}
+}
 
-		if !ok {
-			retrySeconds := int(math.Ceil(retryAfter))
-			if retrySeconds < 1 {
-				retrySeconds = 1
-			}
-			c.Header("Retry-After", fmt.Sprintf("%d", retrySeconds))
-			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error": "rate limit exceeded",
-			})
-			c.Abort()
+func (l *Limiters) IPMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !l.allow(c, limitKey{limiter: l.ipLimiter, value: c.ClientIP()}) {
+			return
+		}
+		c.Next()
+	}
+}
+
+func (l *Limiters) PreAuthIPMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		reservation := l.ipLimiter.reserve(c.ClientIP())
+		if !reservation.allowed {
+			abortTooManyRequests(c, reservation.retryAfter)
 			return
 		}
 
 		c.Next()
+
+		if authenticatedIdentityKey(c) != "" {
+			reservation.cancel()
+		}
 	}
+}
+
+func (l *Limiters) IdentityMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := authenticatedIdentityKey(c)
+		if key == "" {
+			key = "ip:" + c.ClientIP()
+			if !l.allow(c, limitKey{limiter: l.ipLimiter, value: key}) {
+				return
+			}
+			c.Next()
+			return
+		}
+		if !l.allow(c, limitKey{limiter: l.keyLimiter, value: key}) {
+			return
+		}
+		c.Next()
+	}
+}
+
+type limitKey struct {
+	limiter *Limiter
+	value   string
+}
+
+func (l *Limiters) identityOrIPKey(c *gin.Context) limitKey {
+	if key := authenticatedIdentityKey(c); key != "" {
+		return limitKey{limiter: l.keyLimiter, value: key}
+	}
+	return limitKey{limiter: l.ipLimiter, value: c.ClientIP()}
+}
+
+func (l *Limiters) allow(c *gin.Context, key limitKey) bool {
+	ok, retryAfter := key.limiter.Allow(key.value)
+	if !ok {
+		abortTooManyRequests(c, retryAfter)
+		return false
+	}
+	return true
+}
+
+func authenticatedIdentityKey(c *gin.Context) string {
+	if userID := c.GetString("userID"); userID != "" {
+		return "user:" + userID
+	}
+	if accessKey := c.GetString("accessKey"); accessKey != "" {
+		return "s3:" + accessKey
+	}
+	return ""
+}
+
+func abortTooManyRequests(c *gin.Context, retryAfter float64) {
+	retrySeconds := int(math.Ceil(retryAfter))
+	if retrySeconds < 1 {
+		retrySeconds = 1
+	}
+	c.Header("Retry-After", fmt.Sprintf("%d", retrySeconds))
+	c.JSON(http.StatusTooManyRequests, gin.H{
+		"error": "rate limit exceeded",
+	})
+	c.Abort()
 }

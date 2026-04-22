@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/example/sfree/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/ratelimit"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -119,6 +120,63 @@ func TestOpenAPIDocsRouteRedirectsToIndex(t *testing.T) {
 	}
 	if got := w.Header().Get("Location"); got != "/api/docs/index.html" {
 		t.Fatalf("expected redirect to /api/docs/index.html, got %q", got)
+	}
+}
+
+func TestProtectedHandlersUseIdentityLimitAfterAuth(t *testing.T) {
+	r := gin.New()
+	limits := ratelimit.NewLimiters(ratelimit.Config{PerIPReqsPerMin: 1, PerKeyReqsPerMin: 2})
+	auth := func(c *gin.Context) {
+		c.Set("userID", "router-user")
+		c.Next()
+	}
+	r.GET("/protected", protectedHandlers(limits, auth, func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})...)
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.RemoteAddr = "10.1.0.1:1234"
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i+1, w.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.RemoteAddr = "10.1.0.1:1234"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 from identity limiter, got %d", w.Code)
+	}
+}
+
+func TestProtectedHandlersLimitFailedAuthByIP(t *testing.T) {
+	r := gin.New()
+	limits := ratelimit.NewLimiters(ratelimit.Config{PerIPReqsPerMin: 1, PerKeyReqsPerMin: 100})
+	auth := func(c *gin.Context) {
+		c.AbortWithStatus(http.StatusUnauthorized)
+	}
+	r.GET("/protected", protectedHandlers(limits, auth, func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})...)
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.RemoteAddr = "10.1.0.2:1234"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected first failed auth to return 401, got %d", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.RemoteAddr = "10.1.0.2:1234"
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected repeated failed auth to return 429, got %d", w.Code)
 	}
 }
 
