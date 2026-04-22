@@ -8,16 +8,7 @@ import (
 	"github.com/example/sfree/api-go/internal/handlers"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
-)
-
-var (
-	newUserRepository            = repository.NewUserRepository
-	newBucketRepository          = repository.NewBucketRepository
-	newSourceRepository          = repository.NewSourceRepository
-	newFileRepository            = repository.NewFileRepository
-	newShareLinkRepository       = repository.NewShareLinkRepository
-	newMultipartUploadRepository = repository.NewMultipartUploadRepository
-	newBucketGrantRepository     = repository.NewBucketGrantRepository
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type routerDependencies struct {
@@ -31,40 +22,76 @@ type routerDependencies struct {
 	grantRepo     *repository.BucketGrantRepository
 }
 
-func newRouterDependencies(m *db.Mongo, cfg *config.Config) (*routerDependencies, error) {
+type routerDependencyConstructors struct {
+	user            func(*mongo.Database) (*repository.UserRepository, error)
+	bucket          func(*mongo.Database) (*repository.BucketRepository, error)
+	source          func(*mongo.Database, ...string) (*repository.SourceRepository, error)
+	file            func(*mongo.Database) (*repository.FileRepository, error)
+	shareLink       func(*mongo.Database) (*repository.ShareLinkRepository, error)
+	multipartUpload func(*mongo.Database) (*repository.MultipartUploadRepository, error)
+	bucketGrant     func(*mongo.Database) (*repository.BucketGrantRepository, error)
+}
+
+func (constructors routerDependencyConstructors) withDefaults() routerDependencyConstructors {
+	if constructors.user == nil {
+		constructors.user = repository.NewUserRepository
+	}
+	if constructors.bucket == nil {
+		constructors.bucket = repository.NewBucketRepository
+	}
+	if constructors.source == nil {
+		constructors.source = repository.NewSourceRepository
+	}
+	if constructors.file == nil {
+		constructors.file = repository.NewFileRepository
+	}
+	if constructors.shareLink == nil {
+		constructors.shareLink = repository.NewShareLinkRepository
+	}
+	if constructors.multipartUpload == nil {
+		constructors.multipartUpload = repository.NewMultipartUploadRepository
+	}
+	if constructors.bucketGrant == nil {
+		constructors.bucketGrant = repository.NewBucketGrantRepository
+	}
+	return constructors
+}
+
+func newRouterDependencies(m *db.Mongo, cfg *config.Config, constructors routerDependencyConstructors) (*routerDependencies, error) {
 	deps := &routerDependencies{}
 	if m == nil {
 		return deps, nil
 	}
+	constructors = constructors.withDefaults()
 
 	var err error
-	deps.userRepo, err = newUserRepository(m.DB)
+	deps.userRepo, err = constructors.user(m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize user repository: %w", err)
 	}
 	deps.auth = handlers.Auth(deps.userRepo, routerJWTSecret(cfg))
 
-	deps.bucketRepo, err = newBucketRepository(m.DB)
+	deps.bucketRepo, err = constructors.bucket(m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize bucket repository: %w", err)
 	}
-	deps.sourceRepo, err = newSourceRepository(m.DB, routerAccessSecret(cfg))
+	deps.sourceRepo, err = constructors.source(m.DB, routerAccessSecret(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("initialize source repository: %w", err)
 	}
-	deps.fileRepo, err = newFileRepository(m.DB)
+	deps.fileRepo, err = constructors.file(m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize file repository: %w", err)
 	}
-	deps.mpRepo, err = newMultipartUploadRepository(m.DB)
+	deps.mpRepo, err = constructors.multipartUpload(m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize multipart upload repository: %w", err)
 	}
-	deps.shareLinkRepo, err = newShareLinkRepository(m.DB)
+	deps.shareLinkRepo, err = constructors.shareLink(m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize share link repository: %w", err)
 	}
-	deps.grantRepo, err = newBucketGrantRepository(m.DB)
+	deps.grantRepo, err = constructors.bucketGrant(m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize bucket grant repository: %w", err)
 	}
