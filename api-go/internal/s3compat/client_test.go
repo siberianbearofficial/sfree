@@ -28,6 +28,22 @@ func TestParseConfigSetsDefaultRegion(t *testing.T) {
 	}
 }
 
+func TestParseConfigRejectsMalformedEndpoint(t *testing.T) {
+	t.Parallel()
+	_, err := ParseConfig(`{"endpoint":"not a url","bucket":"b","access_key_id":"a","secret_access_key":"s"}`)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+}
+
+func TestParseConfigRejectsBlankFields(t *testing.T) {
+	t.Parallel()
+	_, err := ParseConfig(`{"endpoint":"http://localhost:9000","bucket":" ","access_key_id":"a","secret_access_key":"s"}`)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+}
+
 func TestListObjectsFollowsPagination(t *testing.T) {
 	t.Parallel()
 	cli := &Client{cfg: Config{Bucket: "bucket"}}

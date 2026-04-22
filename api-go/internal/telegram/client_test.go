@@ -106,6 +106,27 @@ func TestConfigCodec(t *testing.T) {
 	}
 }
 
+func TestValidateConfigRejectsBlankFields(t *testing.T) {
+	t.Parallel()
+	if _, err := ValidateConfig(Config{Token: " ", ChatID: "c"}); err == nil {
+		t.Fatal("expected token error")
+	}
+	if _, err := ValidateConfig(Config{Token: "t", ChatID: " "}); err == nil {
+		t.Fatal("expected chat_id error")
+	}
+}
+
+func TestValidateConfigTrimsFields(t *testing.T) {
+	t.Parallel()
+	cfg, err := ValidateConfig(Config{Token: " token ", ChatID: " 123 "})
+	if err != nil {
+		t.Fatalf("validate config: %v", err)
+	}
+	if cfg.Token != "token" || cfg.ChatID != "123" {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+}
+
 func TestCheckChat(t *testing.T) {
 	t.Parallel()
 	const (
