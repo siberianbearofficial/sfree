@@ -88,6 +88,29 @@ func (r *MultipartUploadRepository) ListByBucket(ctx context.Context, bucketID p
 	return uploads, cursor.Err()
 }
 
+func (r *MultipartUploadRepository) CountByPartChunk(ctx context.Context, sourceID primitive.ObjectID, name string) (int64, error) {
+	return r.coll.CountDocuments(ctx, bson.M{
+		"parts": bson.M{"$elemMatch": bson.M{
+			"chunks": bson.M{"$elemMatch": bson.M{
+				"source_id": sourceID,
+				"name":      name,
+			}},
+		}},
+	})
+}
+
+func (r *MultipartUploadRepository) CountByPartChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error) {
+	return r.coll.CountDocuments(ctx, bson.M{
+		"bucket_id": bson.M{"$ne": bucketID},
+		"parts": bson.M{"$elemMatch": bson.M{
+			"chunks": bson.M{"$elemMatch": bson.M{
+				"source_id": sourceID,
+				"name":      name,
+			}},
+		}},
+	})
+}
+
 func (r *MultipartUploadRepository) SetPart(ctx context.Context, uploadID string, part UploadPart) error {
 	partDoc := bson.D{
 		{Key: "part_number", Value: part.PartNumber},
@@ -117,6 +140,11 @@ func (r *MultipartUploadRepository) SetPart(ctx context.Context, uploadID string
 		return mongo.ErrNoDocuments
 	}
 	return nil
+}
+
+func (r *MultipartUploadRepository) DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error {
+	_, err := r.coll.DeleteMany(ctx, bson.M{"bucket_id": bucketID})
+	return err
 }
 
 func (r *MultipartUploadRepository) Delete(ctx context.Context, uploadID string) error {

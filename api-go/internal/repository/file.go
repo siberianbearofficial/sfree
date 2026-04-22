@@ -161,6 +161,16 @@ func (r *FileRepository) CountByChunk(ctx context.Context, sourceID primitive.Ob
 	})
 }
 
+func (r *FileRepository) CountByChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error) {
+	return r.coll.CountDocuments(ctx, bson.M{
+		"bucket_id": bson.M{"$ne": bucketID},
+		"chunks": bson.M{"$elemMatch": bson.M{
+			"source_id": sourceID,
+			"name":      name,
+		}},
+	})
+}
+
 func (r *FileRepository) ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]File, error) {
 	return r.ListByBucketByNameQuery(ctx, bucketID, "")
 }
@@ -252,6 +262,11 @@ func (r *FileRepository) Delete(ctx context.Context, id primitive.ObjectID) erro
 		return mongo.ErrNoDocuments
 	}
 	return nil
+}
+
+func (r *FileRepository) DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error {
+	_, err := r.coll.DeleteMany(ctx, bson.M{"bucket_id": bucketID})
+	return err
 }
 
 func (r *FileRepository) UpdateByID(ctx context.Context, f File) (*File, error) {

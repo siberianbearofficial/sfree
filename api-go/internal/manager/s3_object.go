@@ -67,6 +67,11 @@ type CompleteMultipartUploadResult struct {
 	CleanupErrs []error
 }
 
+type DeleteBucketContentsResult struct {
+	FilesDeleted            int
+	MultipartUploadsDeleted int
+}
+
 type objectSourceStore interface {
 	ListByIDs(ctx context.Context, ids []primitive.ObjectID) ([]repository.Source, error)
 }
@@ -75,16 +80,27 @@ type ChunkReferenceCounter interface {
 	CountByChunk(ctx context.Context, sourceID primitive.ObjectID, name string) (int64, error)
 }
 
-type objectFileStore interface {
+type BucketScopedChunkReferenceCounter interface {
 	ChunkReferenceCounter
+	CountByChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error)
+}
+
+type objectFileStore interface {
+	BucketScopedChunkReferenceCounter
 	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
+	ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]repository.File, error)
 	ReplaceByName(ctx context.Context, f repository.File) (*repository.File, *repository.File, error)
 	Delete(ctx context.Context, id primitive.ObjectID) error
+	DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error
 }
 
 type objectMultipartStore interface {
 	GetByUploadID(ctx context.Context, uploadID string) (*repository.MultipartUpload, error)
+	ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]repository.MultipartUpload, error)
+	CountByPartChunk(ctx context.Context, sourceID primitive.ObjectID, name string) (int64, error)
+	CountByPartChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error)
 	Delete(ctx context.Context, uploadID string) error
+	DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error
 }
 
 type objectChunkUploader func(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, selector SourceSelector) ([]repository.FileChunk, error)
@@ -101,15 +117,17 @@ type ObjectService struct {
 
 func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) *ObjectService {
 	svc := &ObjectService{
-		sources:   sourceRepo,
-		files:     fileRepo,
-		multipart: mpRepo,
+		sources: sourceRepo,
+		files:   fileRepo,
 		uploadChunks: func(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, selector SourceSelector) ([]repository.FileChunk, error) {
 			return UploadFileChunksWithStrategy(ctx, r, sources, chunkSize, nil, selector)
 		},
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
+	}
+	if mpRepo != nil {
+		svc.multipart = mpRepo
 	}
 	svc.deleteChunks = func(ctx context.Context, chunks []repository.FileChunk) error {
 		return DeleteFileChunks(ctx, sourceRepo, chunks)
@@ -187,6 +205,38 @@ func (s *ObjectService) DeleteObject(ctx context.Context, bucketID primitive.Obj
 	return DeleteObjectResult{
 		Deleted:    true,
 		CleanupErr: s.deleteFileChunksIfUnreferenced(ctx, fileDoc.Chunks),
+	}, nil
+}
+
+func (s *ObjectService) DeleteBucketContents(ctx context.Context, bucketID primitive.ObjectID) (DeleteBucketContentsResult, error) {
+	files, err := s.files.ListByBucket(ctx, bucketID)
+	if err != nil {
+		return DeleteBucketContentsResult{}, err
+	}
+
+	var uploads []repository.MultipartUpload
+	if s.multipart != nil {
+		uploads, err = s.multipart.ListByBucket(ctx, bucketID)
+		if err != nil {
+			return DeleteBucketContentsResult{}, err
+		}
+	}
+
+	chunks := bucketCleanupChunks(files, uploads)
+	if err := s.deleteBucketChunksIfUnreferenced(ctx, bucketID, chunks); err != nil {
+		return DeleteBucketContentsResult{}, err
+	}
+	if err := s.files.DeleteByBucket(ctx, bucketID); err != nil {
+		return DeleteBucketContentsResult{}, err
+	}
+	if s.multipart != nil {
+		if err := s.multipart.DeleteByBucket(ctx, bucketID); err != nil {
+			return DeleteBucketContentsResult{}, err
+		}
+	}
+	return DeleteBucketContentsResult{
+		FilesDeleted:            len(files),
+		MultipartUploadsDeleted: len(uploads),
 	}, nil
 }
 
@@ -289,6 +339,10 @@ func (s *ObjectService) deleteFileChunksIfUnreferenced(ctx context.Context, chun
 	return deleteFileChunksIfUnreferenced(ctx, s.files, s.deleteChunks, chunks)
 }
 
+func (s *ObjectService) deleteBucketChunksIfUnreferenced(ctx context.Context, bucketID primitive.ObjectID, chunks []repository.FileChunk) error {
+	return deleteBucketChunksIfUnreferenced(ctx, bucketID, s.files, s.multipart, s.deleteChunks, chunks)
+}
+
 func DeleteFileChunksIfUnreferenced(ctx context.Context, sourceRepo *repository.SourceRepository, fileStore ChunkReferenceCounter, chunks []repository.FileChunk) error {
 	return deleteFileChunksIfUnreferenced(ctx, fileStore, func(ctx context.Context, chunks []repository.FileChunk) error {
 		return DeleteFileChunks(ctx, sourceRepo, chunks)
@@ -315,6 +369,50 @@ func deleteFileChunksIfUnreferenced(ctx context.Context, files ChunkReferenceCou
 		}
 	}
 	return nil
+}
+
+func deleteBucketChunksIfUnreferenced(ctx context.Context, bucketID primitive.ObjectID, files BucketScopedChunkReferenceCounter, multipart objectMultipartStore, deleteChunks objectChunkDeleter, chunks []repository.FileChunk) error {
+	seen := make(map[string]struct{}, len(chunks))
+	for _, chunk := range chunks {
+		ref := chunk.SourceID.Hex() + "/" + chunk.Name
+		if _, ok := seen[ref]; ok {
+			continue
+		}
+		seen[ref] = struct{}{}
+		count, err := files.CountByChunkExcludingBucket(ctx, bucketID, chunk.SourceID, chunk.Name)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			continue
+		}
+		if multipart != nil {
+			count, err = multipart.CountByPartChunkExcludingBucket(ctx, bucketID, chunk.SourceID, chunk.Name)
+			if err != nil {
+				return err
+			}
+			if count > 0 {
+				continue
+			}
+		}
+		if err := deleteChunks(ctx, []repository.FileChunk{chunk}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func bucketCleanupChunks(files []repository.File, uploads []repository.MultipartUpload) []repository.FileChunk {
+	var chunks []repository.FileChunk
+	for _, file := range files {
+		chunks = append(chunks, file.Chunks...)
+	}
+	for _, upload := range uploads {
+		for _, part := range upload.Parts {
+			chunks = append(chunks, part.Chunks...)
+		}
+	}
+	return chunks
 }
 
 func ObjectETag(file repository.File) string {
