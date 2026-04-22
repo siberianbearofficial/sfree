@@ -251,6 +251,17 @@ func TestFileListBucketEntryAndObjectETag(t *testing.T) {
 	if manager.ObjectETag(changed) == entry.ETag {
 		t.Fatal("expected ETag to change when chunk metadata changes")
 	}
+
+	file.ETag = `"persisted-etag"`
+	entry = fileListBucketEntry(file)
+	if entry.ETag != file.ETag {
+		t.Fatalf("expected list entry to use persisted ETag %s, got %s", file.ETag, entry.ETag)
+	}
+	changed = file
+	changed.Chunks[1].Size = 6
+	if manager.ObjectETag(changed) != file.ETag {
+		t.Fatal("expected persisted ETag to remain stable when lifecycle metadata changes")
+	}
 }
 
 func TestBuildListBucketPageDelimiterCommonPrefixes(t *testing.T) {
