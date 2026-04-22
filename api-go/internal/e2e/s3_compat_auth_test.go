@@ -94,8 +94,10 @@ func TestS3CompatWrongBucketCredentialsDoNotExposeObjectBytes(t *testing.T) {
 	if status == http.StatusOK {
 		t.Fatalf("GET with wrong bucket credentials: expected non-200, got 200: %s", body)
 	}
-	if bytes.Contains(body, objectContent) {
-		t.Fatalf("GET with wrong bucket credentials exposed object bytes: %q", body)
+	for i := 0; i <= len(objectContent)-8; i++ {
+		if fragment := objectContent[i : i+8]; bytes.Contains(body, fragment) {
+			t.Fatalf("GET with wrong bucket credentials exposed object byte fragment %q in response %q", fragment, body)
+		}
 	}
 }
 
