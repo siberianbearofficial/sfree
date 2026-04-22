@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"sync/atomic"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/gdrive"
@@ -307,16 +306,15 @@ func (r *cancelOnCloseReadCloser) Close() error {
 
 func downloadAttemptContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc, func() error) {
 	ctx, cancel := context.WithCancel(parent)
-	var timedOut atomic.Bool
 	timer := time.AfterFunc(timeout, func() {
-		timedOut.Store(true)
 		cancel()
 	})
 	timeoutErr := func() error {
-		if !timer.Stop() && timedOut.Load() {
-			return context.DeadlineExceeded
+		if timer.Stop() {
+			return nil
 		}
-		return nil
+		cancel()
+		return context.DeadlineExceeded
 	}
 	return ctx, cancel, timeoutErr
 }
