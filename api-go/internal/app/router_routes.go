@@ -53,7 +53,7 @@ func registerBucketRoutes(router *gin.Engine, cfg *config.Config, deps *routerDe
 	}
 	router.POST("/api/v1/buckets", deps.auth, handlers.CreateBucket(deps.bucketRepo, deps.sourceRepo, routerAccessSecret(cfg)))
 	router.GET("/api/v1/buckets", deps.auth, handlers.ListBuckets(deps.bucketRepo, deps.grantRepo))
-	router.DELETE("/api/v1/buckets/:id", deps.auth, handlers.DeleteBucket(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.grantRepo))
+	router.DELETE("/api/v1/buckets/:id", deps.auth, handlers.DeleteBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.grantRepo, deps.sourceFactory))
 	router.PATCH("/api/v1/buckets/:id/distribution", deps.auth, handlers.UpdateBucketDistribution(deps.bucketRepo, deps.grantRepo))
 
 	registerBucketGrantRoutes(router, deps)
@@ -74,10 +74,10 @@ func registerBucketFileRoutes(router *gin.Engine, cfg *config.Config, deps *rout
 	if deps.sourceRepo == nil || deps.fileRepo == nil {
 		return
 	}
-	router.POST("/api/v1/buckets/:id/upload", deps.auth, handlers.UploadFile(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo, routerUploadChunkSize(cfg)))
+	router.POST("/api/v1/buckets/:id/upload", deps.auth, handlers.UploadFileWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo, routerUploadChunkSize(cfg), deps.sourceFactory))
 	router.GET("/api/v1/buckets/:id/files", deps.auth, handlers.ListFiles(deps.bucketRepo, deps.fileRepo, deps.grantRepo))
-	router.GET("/api/v1/buckets/:id/files/:file_id/download", deps.auth, handlers.DownloadFile(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo))
-	router.DELETE("/api/v1/buckets/:id/files/:file_id", deps.auth, handlers.DeleteFile(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo))
+	router.GET("/api/v1/buckets/:id/files/:file_id/download", deps.auth, handlers.DownloadFileWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo, deps.sourceFactory))
+	router.DELETE("/api/v1/buckets/:id/files/:file_id", deps.auth, handlers.DeleteFileWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo, deps.sourceFactory))
 	if deps.shareLinkRepo == nil {
 		return
 	}
@@ -94,9 +94,9 @@ func registerSourceRoutes(router *gin.Engine, deps *routerDependencies) {
 	router.POST("/api/v1/sources/telegram", deps.auth, handlers.CreateTelegramSource(deps.sourceRepo))
 	router.POST("/api/v1/sources/s3", deps.auth, handlers.CreateS3Source(deps.sourceRepo))
 	router.GET("/api/v1/sources", deps.auth, handlers.ListSources(deps.sourceRepo))
-	router.GET("/api/v1/sources/:id/health", deps.auth, handlers.GetSourceHealth(deps.sourceRepo))
-	router.GET("/api/v1/sources/:id/info", deps.auth, handlers.GetSourceInfo(deps.sourceRepo))
-	router.GET("/api/v1/sources/:id/files/:file_id/download", deps.auth, handlers.DownloadSourceFile(deps.sourceRepo))
+	router.GET("/api/v1/sources/:id/health", deps.auth, handlers.GetSourceHealthWithFactory(deps.sourceRepo, deps.sourceFactory))
+	router.GET("/api/v1/sources/:id/info", deps.auth, handlers.GetSourceInfoWithFactory(deps.sourceRepo, deps.sourceFactory))
+	router.GET("/api/v1/sources/:id/files/:file_id/download", deps.auth, handlers.DownloadSourceFileWithFactory(deps.sourceRepo, deps.sourceFactory))
 	router.DELETE("/api/v1/sources/:id", deps.auth, handlers.DeleteSource(deps.sourceRepo, deps.bucketRepo))
 }
 
@@ -104,12 +104,12 @@ func registerPublicShareRoutes(router *gin.Engine, deps *routerDependencies) {
 	if deps.shareLinkRepo == nil || deps.bucketRepo == nil || deps.sourceRepo == nil || deps.fileRepo == nil {
 		return
 	}
-	router.GET("/share/:token", handlers.GetSharedFile(deps.shareLinkRepo, deps.bucketRepo, deps.sourceRepo, deps.fileRepo))
+	router.GET("/share/:token", handlers.GetSharedFileWithFactory(deps.shareLinkRepo, deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.sourceFactory))
 }
 
 func registerDocsMetricsRoutes(router *gin.Engine) {
 	router.GET("/api/openapi.json", func(c *gin.Context) {
-		c.Data(http.StatusOK, "application/json; charset=utf-8", docs.OpenAPIJSON())
+		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(docs.SwaggerInfo.ReadDoc()))
 	})
 	router.GET("/api/docs", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/api/docs/index.html")
@@ -125,10 +125,10 @@ func registerS3Routes(router *gin.Engine, cfg *config.Config, deps *routerDepend
 	}
 	s3Auth := handlers.AWS4Auth(deps.bucketRepo, routerAccessSecret(cfg))
 	router.HEAD("/api/s3/:bucket/*object", s3Auth, handlers.HeadObject(deps.bucketRepo, deps.fileRepo))
-	router.GET("/api/s3/:bucket/*object", s3Auth, handlers.GetObjectOrParts(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo))
+	router.GET("/api/s3/:bucket/*object", s3Auth, handlers.GetObjectOrPartsWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))
 	router.GET("/api/s3/:bucket", s3Auth, handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo))
-	router.PUT("/api/s3/:bucket/*object", s3Auth, handlers.PutObjectOrPart(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, routerUploadChunkSize(cfg)))
-	router.POST("/api/s3/:bucket", s3Auth, handlers.PostBucket(deps.bucketRepo, deps.sourceRepo, deps.fileRepo))
-	router.POST("/api/s3/:bucket/*object", s3Auth, handlers.PostObject(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, routerUploadChunkSize(cfg)))
-	router.DELETE("/api/s3/:bucket/*object", s3Auth, handlers.DeleteObjectOrAbort(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo))
+	router.PUT("/api/s3/:bucket/*object", s3Auth, handlers.PutObjectOrPartWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, routerUploadChunkSize(cfg), deps.sourceFactory))
+	router.POST("/api/s3/:bucket", s3Auth, handlers.PostBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.sourceFactory))
+	router.POST("/api/s3/:bucket/*object", s3Auth, handlers.PostObjectWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, routerUploadChunkSize(cfg), deps.sourceFactory))
+	router.DELETE("/api/s3/:bucket/*object", s3Auth, handlers.DeleteObjectOrAbortWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))
 }

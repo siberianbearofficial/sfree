@@ -215,7 +215,16 @@ class SFreeClient:
         async with self._http.delete(f"{self.config.buckets_url}/{bucket_id}/files/{file_id}", auth=auth):
             return
 
-    async def upload_file_s3(self, access_key: str, access_secret: str, bucket_key: str, object_key: str, content: bytes) -> None:
+    async def upload_file_s3(
+        self,
+        access_key: str,
+        access_secret: str,
+        bucket_key: str,
+        object_key: str,
+        content: bytes,
+        content_type: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> None:
         session = get_session()
         async with session.create_client(
             "s3",
@@ -226,7 +235,12 @@ class SFreeClient:
                 access_secret=access_secret,
             ),
         ) as s3_client:
-            await s3_client.put_object(Bucket=bucket_key, Key=object_key, Body=content)
+            payload: dict[str, Any] = {"Bucket": bucket_key, "Key": object_key, "Body": content}
+            if content_type is not None:
+                payload["ContentType"] = content_type
+            if metadata is not None:
+                payload["Metadata"] = metadata
+            await s3_client.put_object(**payload)
 
     async def delete_object_s3(self, access_key: str, access_secret: str, bucket_key: str, object_key: str) -> None:
         session = get_session()

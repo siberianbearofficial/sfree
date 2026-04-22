@@ -23,11 +23,13 @@ type FileChunk struct {
 }
 
 type File struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty"`
-	BucketID  primitive.ObjectID `bson:"bucket_id"`
-	Name      string             `bson:"name"`
-	CreatedAt time.Time          `bson:"created_at"`
-	Chunks    []FileChunk        `bson:"chunks"`
+	ID           primitive.ObjectID `bson:"_id,omitempty"`
+	BucketID     primitive.ObjectID `bson:"bucket_id"`
+	Name         string             `bson:"name"`
+	CreatedAt    time.Time          `bson:"created_at"`
+	Chunks       []FileChunk        `bson:"chunks"`
+	ContentType  string             `bson:"content_type,omitempty"`
+	UserMetadata map[string]string  `bson:"user_metadata,omitempty"`
 }
 
 type FileRepository struct {
@@ -272,10 +274,12 @@ func (r *FileRepository) DeleteByBucket(ctx context.Context, bucketID primitive.
 func (r *FileRepository) UpdateByID(ctx context.Context, f File) (*File, error) {
 	f.CreatedAt = f.CreatedAt.UTC()
 	res, err := r.coll.UpdateOne(ctx, bson.M{"_id": f.ID}, bson.M{"$set": bson.M{
-		"bucket_id":  f.BucketID,
-		"name":       f.Name,
-		"created_at": f.CreatedAt,
-		"chunks":     f.Chunks,
+		"bucket_id":     f.BucketID,
+		"name":          f.Name,
+		"created_at":    f.CreatedAt,
+		"chunks":        f.Chunks,
+		"content_type":  f.ContentType,
+		"user_metadata": f.UserMetadata,
 	}})
 	if err != nil {
 		return nil, err
@@ -316,10 +320,12 @@ func (r *FileRepository) ReplaceByName(ctx context.Context, f File) (*File, *Fil
 func (r *FileRepository) replaceByName(ctx context.Context, f File, upsert bool) (*File, error) {
 	update := bson.M{
 		"$set": bson.M{
-			"bucket_id":  f.BucketID,
-			"name":       f.Name,
-			"created_at": f.CreatedAt,
-			"chunks":     f.Chunks,
+			"bucket_id":     f.BucketID,
+			"name":          f.Name,
+			"created_at":    f.CreatedAt,
+			"chunks":        f.Chunks,
+			"content_type":  f.ContentType,
+			"user_metadata": f.UserMetadata,
 		},
 	}
 	if upsert {

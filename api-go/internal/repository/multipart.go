@@ -18,12 +18,14 @@ type UploadPart struct {
 }
 
 type MultipartUpload struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty"`
-	BucketID  primitive.ObjectID `bson:"bucket_id"`
-	ObjectKey string             `bson:"object_key"`
-	UploadID  string             `bson:"upload_id"`
-	Parts     []UploadPart       `bson:"parts"`
-	CreatedAt time.Time          `bson:"created_at"`
+	ID           primitive.ObjectID `bson:"_id,omitempty"`
+	BucketID     primitive.ObjectID `bson:"bucket_id"`
+	ObjectKey    string             `bson:"object_key"`
+	UploadID     string             `bson:"upload_id"`
+	Parts        []UploadPart       `bson:"parts"`
+	CreatedAt    time.Time          `bson:"created_at"`
+	ContentType  string             `bson:"content_type,omitempty"`
+	UserMetadata map[string]string  `bson:"user_metadata,omitempty"`
 }
 
 type MultipartUploadRepository struct {

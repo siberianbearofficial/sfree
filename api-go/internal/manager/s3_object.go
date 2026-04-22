@@ -129,11 +129,15 @@ type ObjectService struct {
 }
 
 func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) *ObjectService {
+	return NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, nil)
+}
+
+func NewObjectServiceWithSourceClientFactory(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, factory SourceClientFactory) *ObjectService {
 	svc := &ObjectService{
 		sources: sourceRepo,
 		files:   fileRepo,
 		uploadChunks: func(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, selector SourceSelector) ([]repository.FileChunk, error) {
-			return UploadFileChunksWithStrategy(ctx, r, sources, chunkSize, nil, selector)
+			return UploadFileChunksWithStrategy(ctx, r, sources, chunkSize, factory, selector)
 		},
 		now: func() time.Time {
 			return time.Now().UTC()
@@ -143,12 +147,12 @@ func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *reposit
 		svc.multipart = mpRepo
 	}
 	svc.deleteChunks = func(ctx context.Context, chunks []repository.FileChunk) error {
-		return DeleteFileChunks(ctx, sourceRepo, chunks)
+		return DeleteFileChunksWithFactory(ctx, sourceRepo, chunks, factory)
 	}
 	return svc
 }
 
-func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int) (PutObjectResult, error) {
+func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int, contentType string, userMetadata map[string]string) (PutObjectResult, error) {
 	sources, err := s.sources.ListByIDs(ctx, bucket.SourceIDs)
 	if err != nil {
 		return PutObjectResult{}, err
@@ -162,7 +166,14 @@ func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket
 		return PutObjectResult{}, err
 	}
 
-	fileDoc := repository.File{BucketID: bucket.ID, Name: name, CreatedAt: s.now(), Chunks: chunks}
+	fileDoc := repository.File{
+		BucketID:     bucket.ID,
+		Name:         name,
+		CreatedAt:    s.now(),
+		Chunks:       chunks,
+		ContentType:  contentType,
+		UserMetadata: cloneStringMap(userMetadata),
+	}
 	currentFile, previousFile, err := s.files.ReplaceByName(ctx, fileDoc)
 	if err != nil {
 		_ = s.deleteChunks(ctx, chunks)
@@ -234,7 +245,14 @@ func (s *ObjectService) CopyObject(ctx context.Context, sourceBucket, destBucket
 	}
 
 	chunks := append([]repository.FileChunk(nil), sourceFile.Chunks...)
-	copyFile := repository.File{BucketID: destBucket.ID, Name: destKey, CreatedAt: s.now(), Chunks: chunks}
+	copyFile := repository.File{
+		BucketID:     destBucket.ID,
+		Name:         destKey,
+		CreatedAt:    s.now(),
+		Chunks:       chunks,
+		ContentType:  sourceFile.ContentType,
+		UserMetadata: cloneStringMap(sourceFile.UserMetadata),
+	}
 	currentFile, previousFile, err := s.files.ReplaceByName(ctx, copyFile)
 	if err != nil {
 		return CopyObjectResult{}, err
@@ -376,10 +394,12 @@ func (s *ObjectService) CompleteMultipartUploadRecord(ctx context.Context, bucke
 	}
 
 	fileDoc := repository.File{
-		BucketID:  bucketID,
-		Name:      mu.ObjectKey,
-		CreatedAt: s.now(),
-		Chunks:    allChunks,
+		BucketID:     bucketID,
+		Name:         mu.ObjectKey,
+		CreatedAt:    s.now(),
+		Chunks:       allChunks,
+		ContentType:  mu.ContentType,
+		UserMetadata: cloneStringMap(mu.UserMetadata),
 	}
 	saved, previousFile, err := s.files.ReplaceByName(ctx, fileDoc)
 	if err != nil {
@@ -467,8 +487,12 @@ func (s *ObjectService) deleteBucketChunksIfUnreferenced(ctx context.Context, bu
 }
 
 func DeleteFileChunksIfUnreferenced(ctx context.Context, sourceRepo *repository.SourceRepository, fileStore ChunkReferenceCounter, chunks []repository.FileChunk) error {
+	return DeleteFileChunksIfUnreferencedWithFactory(ctx, sourceRepo, fileStore, chunks, nil)
+}
+
+func DeleteFileChunksIfUnreferencedWithFactory(ctx context.Context, sourceRepo *repository.SourceRepository, fileStore ChunkReferenceCounter, chunks []repository.FileChunk, factory SourceClientFactory) error {
 	return deleteFileChunksIfUnreferenced(ctx, fileStore, func(ctx context.Context, chunks []repository.FileChunk) error {
-		return DeleteFileChunks(ctx, sourceRepo, chunks)
+		return DeleteFileChunksWithFactory(ctx, sourceRepo, chunks, factory)
 	}, chunks)
 }
 
@@ -558,6 +582,17 @@ func multipartPartETag(chunks []repository.FileChunk) string {
 		_, _ = h.Write([]byte(chunk.Name))
 	}
 	return fmt.Sprintf("\"%s\"", hex.EncodeToString(h.Sum(nil)))
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }
 
 func multipartETag(requestedParts []CompleteMultipartPart, partMap map[int]repository.UploadPart) string {

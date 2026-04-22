@@ -19,11 +19,19 @@ import (
 var ErrChecksumMismatch = errors.New("checksum mismatch")
 
 func StreamFile(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer) error {
-	return streamFileWithFactory(ctx, f, w, sourceClientFactoryFromRepository(srcRepo))
+	return StreamFileWithFactory(ctx, srcRepo, f, w, nil)
 }
 
 func StreamFileRange(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer, start, end int64) error {
-	return streamFileRangeWithFactory(ctx, f, w, start, end, sourceClientFactoryFromRepository(srcRepo))
+	return StreamFileRangeWithFactory(ctx, srcRepo, f, w, start, end, nil)
+}
+
+func StreamFileWithFactory(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer, factory SourceClientFactory) error {
+	return streamFileWithFactory(ctx, f, w, sourceClientFactoryFromRepository(srcRepo, factory))
+}
+
+func StreamFileRangeWithFactory(ctx context.Context, srcRepo *repository.SourceRepository, f *repository.File, w io.Writer, start, end int64, factory SourceClientFactory) error {
+	return streamFileRangeWithFactory(ctx, f, w, start, end, sourceClientFactoryFromRepository(srcRepo, factory))
 }
 
 // streamFileWithFactory is the testable core of StreamFile. The factory receives

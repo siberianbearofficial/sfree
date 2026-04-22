@@ -124,10 +124,12 @@ func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
 	}
 	fileRepo := fakeObjectFileReader{
 		file: &repository.File{
-			ID:        primitive.NewObjectID(),
-			BucketID:  bucketID,
-			Name:      "object.txt",
-			CreatedAt: time.Unix(1700000000, 0).UTC(),
+			ID:           primitive.NewObjectID(),
+			BucketID:     bucketID,
+			Name:         "object.txt",
+			CreatedAt:    time.Unix(1700000000, 0).UTC(),
+			ContentType:  "text/plain",
+			UserMetadata: map[string]string{"owner": "alice", "trace-id": "abc-123"},
 			Chunks: []repository.FileChunk{
 				{SourceID: sourceID, Name: "chunk-1", Order: 0, Size: 7, Checksum: "bad"},
 			},
@@ -135,7 +137,7 @@ func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
 	}
 	sourceRepo := &repository.SourceRepository{}
 
-	return getObject(bucketRepo, sourceRepo, fileRepo)
+	return getObject(bucketRepo, sourceRepo, fileRepo, nil)
 }
 
 func TestGetObjectStreamFailureReturnsS3ErrorBeforeSuccess(t *testing.T) {
@@ -251,5 +253,53 @@ func TestGetObjectStreamsBodyAfterBoundedPreflight(t *testing.T) {
 	}
 	if body := w.Body.String(); body != "complete" {
 		t.Fatalf("unexpected body: %s", body)
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected stored Content-Type, got %q", got)
+	}
+	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
+		t.Fatalf("expected stored owner metadata, got %q", got)
+	}
+	if got := w.Header().Get("x-amz-meta-trace-id"); got != "abc-123" {
+		t.Fatalf("expected stored trace metadata, got %q", got)
+	}
+}
+
+func TestGetObjectRangeReturnsStoredMetadataHeaders(t *testing.T) {
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() { streamS3ObjectRange = origStreamRange })
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
+		if end >= start {
+			_, _ = io.WriteString(w, "cde")
+		}
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("Range", "bytes=2-4")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("expected 206, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Length"); got != "3" {
+		t.Fatalf("expected ranged Content-Length, got %q", got)
+	}
+	if got := w.Header().Get("Content-Range"); got != "bytes 2-4/7" {
+		t.Fatalf("expected Content-Range, got %q", got)
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected stored Content-Type, got %q", got)
+	}
+	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
+		t.Fatalf("expected stored metadata, got %q", got)
 	}
 }

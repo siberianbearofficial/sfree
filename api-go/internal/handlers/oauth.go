@@ -26,7 +26,13 @@ func newGitHubOAuthConfig(cfg *config.Config) *oauth2.Config {
 	}
 }
 
-// GitHubLogin redirects the user to GitHub's OAuth consent page.
+// GitHubLogin godoc
+// @Summary Start GitHub OAuth login
+// @Tags auth
+// @Success 307 {string} string ""
+// @Failure 500 {string} string ""
+// @Failure 501 {string} string ""
+// @Router /api/v1/auth/github [get]
 func GitHubLogin(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cfg.GitHubOAuth.ClientID == "" {
@@ -50,7 +56,15 @@ type githubUser struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
-// GitHubCallback handles the OAuth callback from GitHub.
+// GitHubCallback godoc
+// @Summary Complete GitHub OAuth login
+// @Tags auth
+// @Param code query string true "OAuth authorization code"
+// @Param state query string true "OAuth state"
+// @Success 307 {string} string ""
+// @Failure 400 {string} string ""
+// @Failure 500 {string} string ""
+// @Router /api/v1/auth/github/callback [get]
 func GitHubCallback(cfg *config.Config, userRepo *repository.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -152,7 +166,14 @@ func IssueJWT(userID string, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-// TokenLogin issues a JWT for an existing Basic Auth session.
+// TokenLogin godoc
+// @Summary Issue auth token
+// @Tags auth
+// @Success 200 {object} map[string]string
+// @Failure 401 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/auth/token [post]
 func TokenLogin(cfg *config.Config, userRepo *repository.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
