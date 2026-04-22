@@ -53,9 +53,11 @@ func (c *sourceClientCache) get(ctx context.Context, src repository.Source) (sou
 	return cli, nil
 }
 
-var ResilienceConfig = resilience.DefaultWrapperConfig()
-
 func NewSourceClient(ctx context.Context, src *repository.Source) (SourceClient, error) {
+	return NewSourceClientWithConfig(ctx, src, resilience.DefaultWrapperConfig())
+}
+
+func NewSourceClientWithConfig(ctx context.Context, src *repository.Source, resilienceConfig resilience.WrapperConfig) (SourceClient, error) {
 	if src == nil {
 		return nil, errors.New("nil source")
 	}
@@ -86,15 +88,24 @@ func NewSourceClient(ctx context.Context, src *repository.Source) (SourceClient,
 	if err != nil {
 		return nil, err
 	}
-	return resilience.Wrap(cli, ResilienceConfig), nil
+	return resilience.Wrap(cli, resilienceConfig), nil
 }
 
-func sourceClientFactoryFromRepository(srcRepo *repository.SourceRepository) SourceClientFactory {
+func NewSourceClientFactory(resilienceConfig resilience.WrapperConfig) SourceClientFactory {
+	return func(ctx context.Context, src *repository.Source) (SourceClient, error) {
+		return NewSourceClientWithConfig(ctx, src, resilienceConfig)
+	}
+}
+
+func sourceClientFactoryFromRepository(srcRepo *repository.SourceRepository, factory SourceClientFactory) SourceClientFactory {
+	if factory == nil {
+		factory = NewSourceClient
+	}
 	return func(ctx context.Context, src *repository.Source) (sourceClient, error) {
 		fullSrc, err := srcRepo.GetByID(ctx, src.ID)
 		if err != nil {
 			return nil, err
 		}
-		return NewSourceClient(ctx, fullSrc)
+		return factory(ctx, fullSrc)
 	}
 }

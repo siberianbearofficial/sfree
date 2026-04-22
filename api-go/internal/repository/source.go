@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var ErrSourcesNotFound = errors.New("sources not found")
@@ -182,6 +183,26 @@ func (r *SourceRepository) ListByUser(ctx context.Context, userID primitive.Obje
 		}
 		s.Key, err = r.decryptKey(s.Key)
 		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, err
+	}
+	return sources, nil
+}
+
+func (r *SourceRepository) ListMetadataByUser(ctx context.Context, userID primitive.ObjectID) ([]Source, error) {
+	cursor, err := r.coll.Find(ctx, bson.M{"user_id": userID}, options.Find().SetProjection(bson.M{"key": 0}))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+	var sources []Source
+	for cursor.Next(ctx) {
+		var s Source
+		if err := cursor.Decode(&s); err != nil {
 			return nil, err
 		}
 		sources = append(sources, s)

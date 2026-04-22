@@ -29,12 +29,17 @@ type CircuitBreaker struct {
 	failureThreshold int
 	recoveryTimeout  time.Duration
 	openedAt         time.Time
+	now              func() time.Time
 }
 
 // NewCircuitBreaker creates a circuit breaker with the given parameters.
 // failureThreshold is the number of consecutive failures before opening.
 // recoveryTimeout is how long the circuit stays open before allowing a probe.
 func NewCircuitBreaker(failureThreshold int, recoveryTimeout time.Duration) *CircuitBreaker {
+	return newCircuitBreakerWithClock(failureThreshold, recoveryTimeout, time.Now)
+}
+
+func newCircuitBreakerWithClock(failureThreshold int, recoveryTimeout time.Duration, now func() time.Time) *CircuitBreaker {
 	if failureThreshold <= 0 {
 		failureThreshold = 5
 	}
@@ -45,6 +50,7 @@ func NewCircuitBreaker(failureThreshold int, recoveryTimeout time.Duration) *Cir
 		state:            stateClosed,
 		failureThreshold: failureThreshold,
 		recoveryTimeout:  recoveryTimeout,
+		now:              now,
 	}
 }
 
@@ -58,7 +64,7 @@ func (cb *CircuitBreaker) Allow() error {
 	case stateClosed:
 		return nil
 	case stateOpen:
-		if time.Since(cb.openedAt) >= cb.recoveryTimeout {
+		if cb.now().Sub(cb.openedAt) >= cb.recoveryTimeout {
 			cb.state = stateHalfOpen
 			return nil
 		}
@@ -86,6 +92,6 @@ func (cb *CircuitBreaker) RecordFailure() {
 	cb.failures++
 	if cb.failures >= cb.failureThreshold {
 		cb.state = stateOpen
-		cb.openedAt = time.Now()
+		cb.openedAt = cb.now()
 	}
 }

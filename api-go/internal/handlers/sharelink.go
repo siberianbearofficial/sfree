@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/example/sfree/api-go/internal/cryptoutil"
+	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -141,6 +142,10 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 // @Failure 500 {string} string ""
 // @Router /share/{token} [get]
 func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return GetSharedFileWithFactory(shareLinkRepo, bucketRepo, sourceRepo, fileRepo, nil)
+}
+
+func GetSharedFileWithFactory(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if shareLinkRepo == nil || bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -148,11 +153,13 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		getSharedFile(shareLinkRepo, sourceRepo, fileRepo)(c)
+		getSharedFile(shareLinkRepo, sourceRepo, fileRepo, factory)(c)
 	}
 }
 
-func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader) gin.HandlerFunc {
+func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader, factory manager.SourceClientFactory) gin.HandlerFunc {
+	streamFile := fileStreamFuncForFactory(factory)
+	streamRange := fileRangeStreamFuncForFactory(factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if shareLinkRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -195,14 +202,14 @@ func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.
 		}
 
 		total := fileContentLength(fileDoc)
-		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamDownloadFileRange); err != nil {
+		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamRange); err != nil {
 			slog.ErrorContext(ctx, "get shared file: stream", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 		setAttachmentDownloadHeaders(c, fileDoc.Name, total)
 		c.Status(http.StatusOK)
-		if err := streamDownloadFile(ctx, sourceRepo, fileDoc, c.Writer); err != nil {
+		if err := streamFile(ctx, sourceRepo, fileDoc, c.Writer); err != nil {
 			slog.ErrorContext(ctx, "get shared file: stream failed after response commit", slog.String("error", err.Error()))
 		}
 	}
