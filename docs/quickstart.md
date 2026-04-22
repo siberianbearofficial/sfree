@@ -140,16 +140,41 @@ Replace `SOURCE_ID` with the source id from step 3.
 Save `access_key` and `access_secret` — these are S3 credentials for this
 bucket (used in step 7).
 
+Now fetch the bucket id used by the REST upload and download endpoints:
+
+```bash
+curl -s http://localhost:8080/api/v1/buckets \
+  -H "Authorization: Basic $AUTH"
+```
+
+**Expected output:**
+
+```json
+[
+  {
+    "id": "BUCKET_ID",
+    "key": "my-bucket",
+    "access_key": "my-bucket",
+    "created_at": "...",
+    "role": "owner",
+    "shared": false
+  }
+]
+```
+
+Set `BUCKET_ID` to the `id` for `my-bucket`:
+
+```bash
+BUCKET_ID=BUCKET_ID
+```
+
 ## 5. Upload a file
 
 ```bash
-curl -s -X POST http://localhost:8080/api/v1/buckets/BUCKET_ID/upload \
+curl -s -X POST "http://localhost:8080/api/v1/buckets/$BUCKET_ID/upload" \
   -H "Authorization: Basic $AUTH" \
   -F 'file=@README.md'
 ```
-
-Replace `BUCKET_ID` with the bucket `id` from step 4 (check with
-`GET /api/v1/buckets` if needed).
 
 **Expected output:**
 
@@ -164,7 +189,7 @@ Replace `BUCKET_ID` with the bucket `id` from step 4 (check with
 ## 6. Download the file
 
 ```bash
-curl -s http://localhost:8080/api/v1/buckets/BUCKET_ID/files/FILE_ID/download \
+curl -s "http://localhost:8080/api/v1/buckets/$BUCKET_ID/files/FILE_ID/download" \
   -H "Authorization: Basic $AUTH" \
   -o downloaded-README.md
 ```
