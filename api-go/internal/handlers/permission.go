@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -14,14 +17,22 @@ type bucketAccess struct {
 	Role   repository.BucketRole
 }
 
+type bucketLookup interface {
+	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.Bucket, error)
+}
+
+type bucketGrantLookup interface {
+	GetByBucketAndUser(ctx context.Context, bucketID, userID primitive.ObjectID) (*repository.BucketGrant, error)
+}
+
 // requireBucketAccess verifies that the authenticated user has at least the
 // given role on the bucket identified by the :id route parameter. On success it
 // returns the bucket document and effective role. On failure it writes an HTTP
 // error and returns nil.
 func requireBucketAccess(
 	c *gin.Context,
-	bucketRepo *repository.BucketRepository,
-	grantRepo *repository.BucketGrantRepository,
+	bucketRepo bucketLookup,
+	grantRepo bucketGrantLookup,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
 	bucketID, ok := routeObjectID(c, "id")
@@ -30,6 +41,12 @@ func requireBucketAccess(
 	}
 	userID, ok := authenticatedUserID(c)
 	if !ok {
+		return nil
+	}
+
+	if bucketRepo == nil {
+		slog.ErrorContext(c.Request.Context(), "bucket access: bucket repository is nil")
+		c.Status(http.StatusInternalServerError)
 		return nil
 	}
 
@@ -51,7 +68,20 @@ func requireBucketAccess(
 	// Check explicit grants.
 	if grantRepo != nil {
 		grant, err := grantRepo.GetByBucketAndUser(c.Request.Context(), bucketID, userID)
-		if err == nil && repository.RoleAtLeast(grant.Role, requiredRole) {
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return nil
+			}
+			slog.ErrorContext(c.Request.Context(), "bucket access: grant lookup failed",
+				slog.String("bucket_id", bucketID.Hex()),
+				slog.String("user_id", userID.Hex()),
+				slog.String("error", err.Error()),
+			)
+			c.Status(http.StatusInternalServerError)
+			return nil
+		}
+		if repository.RoleAtLeast(grant.Role, requiredRole) {
 			return &bucketAccess{Bucket: bucketDoc, Role: grant.Role}
 		}
 	}
