@@ -88,19 +88,19 @@ func TestOpenAPIJSONRoute(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	if contentType := w.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
-		t.Fatalf("expected OpenAPI JSON content type, got %q", contentType)
+		t.Fatalf("expected API docs JSON content type, got %q", contentType)
 	}
 	var doc struct {
-		OpenAPI string                         `json:"openapi"`
+		Swagger string                         `json:"swagger"`
 		Paths   map[string]map[string]struct{} `json:"paths"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
-		t.Fatalf("expected valid OpenAPI JSON: %v", err)
+		t.Fatalf("expected valid API docs JSON: %v", err)
 	}
-	if doc.OpenAPI != "3.0.3" {
-		t.Fatalf("expected OpenAPI 3.0.3, got %q", doc.OpenAPI)
+	if doc.Swagger != "2.0" {
+		t.Fatalf("expected Swagger 2.0, got %q", doc.Swagger)
 	}
-	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/s3/{bucket}", "/api/s3/{bucket}/{objectKey}"} {
+	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("expected OpenAPI path %s", path)
 		}
