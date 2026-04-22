@@ -350,6 +350,109 @@ func TestWrapperRetryDownloadSucceeds(t *testing.T) {
 	}
 }
 
+type contextBoundDownloadClient struct {
+	ctx context.Context
+}
+
+func (c *contextBoundDownloadClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (c *contextBoundDownloadClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	c.ctx = ctx
+	return &contextBoundBody{ctx: ctx, r: strings.NewReader("data")}, nil
+}
+
+func (c *contextBoundDownloadClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+type contextBoundBody struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (b *contextBoundBody) Read(p []byte) (int, error) {
+	select {
+	case <-b.ctx.Done():
+		return 0, b.ctx.Err()
+	default:
+		return b.r.Read(p)
+	}
+}
+
+func (b *contextBoundBody) Close() error {
+	return nil
+}
+
+func TestWrapperDownloadKeepsContextAliveUntilBodyClose(t *testing.T) {
+	inner := &contextBoundDownloadClient{}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	rc, err := w.Download(context.Background(), "file.txt")
+	if err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	select {
+	case <-inner.ctx.Done():
+		t.Fatal("download context canceled before body close")
+	default:
+	}
+
+	got, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(got) != "data" {
+		t.Fatalf("expected data, got %q", string(got))
+	}
+	if err := rc.Close(); err != nil {
+		t.Fatalf("close body: %v", err)
+	}
+	select {
+	case <-inner.ctx.Done():
+	default:
+		t.Fatal("download context was not canceled on body close")
+	}
+}
+
+type blockingDownloadClient struct{}
+
+func (c *blockingDownloadClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (c *blockingDownloadClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (c *blockingDownloadClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+func TestWrapperDownloadTimeoutBeforeBodyReturned(t *testing.T) {
+	inner := &blockingDownloadClient{}
+	cfg := WrapperConfig{
+		Timeout:          10 * time.Millisecond,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	_, err := w.Download(context.Background(), "slow.txt")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded, got %v", err)
+	}
+}
+
 type streamContextClient struct {
 	ctxCh chan context.Context
 }
