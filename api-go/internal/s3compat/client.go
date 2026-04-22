@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -47,8 +49,24 @@ func ParseConfig(raw string) (Config, error) {
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return Config{}, err
 	}
+	return ValidateConfig(cfg)
+}
+
+func ValidateConfig(cfg Config) (Config, error) {
+	cfg.Endpoint = strings.TrimSpace(cfg.Endpoint)
+	cfg.Region = strings.TrimSpace(cfg.Region)
+	cfg.Bucket = strings.TrimSpace(cfg.Bucket)
+	cfg.AccessKeyID = strings.TrimSpace(cfg.AccessKeyID)
+	cfg.SecretAccess = strings.TrimSpace(cfg.SecretAccess)
 	if cfg.Endpoint == "" {
 		return Config{}, fmt.Errorf("s3 endpoint is required")
+	}
+	endpointURL, err := url.ParseRequestURI(cfg.Endpoint)
+	if err != nil || endpointURL.Scheme == "" || endpointURL.Host == "" {
+		return Config{}, fmt.Errorf("s3 endpoint must be a valid URL")
+	}
+	if endpointURL.Scheme != "http" && endpointURL.Scheme != "https" {
+		return Config{}, fmt.Errorf("s3 endpoint must use http or https")
 	}
 	if cfg.Bucket == "" {
 		return Config{}, fmt.Errorf("s3 bucket is required")

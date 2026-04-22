@@ -222,13 +222,56 @@ func (w *wrapper) Upload(ctx context.Context, name string, r io.Reader) (string,
 }
 
 func (w *wrapper) Download(ctx context.Context, name string) (io.ReadCloser, error) {
-	var rc io.ReadCloser
-	err := w.withRetry(ctx, "retrying download", []any{slog.String("name", name)}, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
-		var err error
-		rc, err = w.inner.Download(reqCtx, name)
-		return err
-	})
-	return rc, err
+	if err := w.cb.Allow(); err != nil {
+		return nil, err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying download",
+				slog.String("name", name),
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return nil, ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return nil, err
+			}
+		}
+
+		reqCtx, cancel, timeoutErr := downloadAttemptContext(ctx, w.cfg.Timeout)
+		rc, err := w.inner.Download(reqCtx, name)
+
+		if err == nil {
+			if err := timeoutErr(); err != nil {
+				cancel()
+				_ = rc.Close()
+				lastErr = err
+				break
+			}
+			w.cb.RecordSuccess()
+			return &cancelOnCloseReadCloser{ReadCloser: rc, cancel: cancel}, nil
+		}
+		cancel()
+		if timeoutErr() != nil && errors.Is(err, context.Canceled) {
+			err = context.DeadlineExceeded
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return nil, lastErr
 }
 
 func (w *wrapper) DownloadStream(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -258,6 +301,21 @@ func (r *cancelOnCloseReadCloser) Close() error {
 	err := r.ReadCloser.Close()
 	r.cancel()
 	return err
+}
+
+func downloadAttemptContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc, func() error) {
+	ctx, cancel := context.WithCancel(parent)
+	timer := time.AfterFunc(timeout, func() {
+		cancel()
+	})
+	timeoutErr := func() error {
+		if timer.Stop() {
+			return nil
+		}
+		cancel()
+		return context.DeadlineExceeded
+	}
+	return ctx, cancel, timeoutErr
 }
 
 func (w *wrapper) SourceInfo(ctx context.Context) (sourcecap.Info, error) {
