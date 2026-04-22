@@ -53,7 +53,8 @@ cd api-go
 ENV=local go run ./cmd/server
 ```
 
-Swagger is served from `http://localhost:8080/swagger/index.html`.
+API docs are served from `http://localhost:8080/api/docs`; the OpenAPI JSON is
+available at `http://localhost:8080/api/openapi.json`.
 
 ### Frontend (React / Vite)
 

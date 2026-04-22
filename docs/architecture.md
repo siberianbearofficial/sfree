@@ -8,7 +8,7 @@ upstream sources, and exposes both REST and S3-compatible access paths.
 
 At a high level:
 
-1. A user signs up and authenticates with HTTP Basic Auth.
+1. A user signs up and authenticates with HTTP Basic Auth or GitHub OAuth.
 2. The user registers one or more storage sources.
 3. A bucket records the selected source set plus generated S3 credentials.
 4. Uploads are split into chunks and assigned to sources in round-robin order.
@@ -77,21 +77,25 @@ copy:
 
 - Do not claim redundancy, erasure coding, or durable multi-provider storage.
   The current design distributes chunks; it does not replicate them.
-- Do not describe the auth model as hardened. The API uses Basic Auth and the
-  frontend stores credentials in `localStorage`, and source create/list
-  responses echo stored credential payloads.
+- Do not describe the auth model as hardened. The API accepts HTTP Basic Auth,
+  bearer tokens, and GitHub OAuth sessions through an `auth_token` cookie. The
+  frontend still stores Basic Auth credentials or token state in `localStorage`,
+  and source create/list responses echo stored credential payloads.
 - Do not imply identical observability across source types. Google Drive,
   Telegram, and S3-compatible sources return different levels of file/quota
   detail.
+- Do not describe rate limiting as complete abuse protection. The API has
+  in-memory request limits, but they are not a distributed production
+  throttling layer.
 
 ## Local Development Notes
 
 - Default local backend config lives in `api-go/config/local.yaml`.
 - The Go API listens on the Gin default port, `:8080`.
 - `api-go/docker-compose.yml` starts the local MongoDB dependency.
-- The checked-in frontend points at a hosted dev API URL in
-  `webui/src/shared/api/*.ts`, so a fully local browser loop still requires a
-  small manual config edit.
+- The frontend API helper reads `VITE_API_BASE` at build time and defaults to
+  the relative `/api/v1` path. In local Vite development, `/api` requests are
+  proxied to `VITE_API_URL`, which defaults to `http://localhost:8080`.
 
 ## Naming
 
