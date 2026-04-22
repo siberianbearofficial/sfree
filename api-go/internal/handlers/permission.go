@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"github.com/example/sfree/api-go/internal/repository"
@@ -30,15 +31,11 @@ type bucketAccess struct {
 // error and returns nil.
 func requireBucketAccess(
 	c *gin.Context,
-	bucketRepo *repository.BucketRepository,
-	grantRepo *repository.BucketGrantRepository,
+	bucketRepo bucketAccessBucketReader,
+	grantRepo bucketAccessGrantReader,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
-	var grantReader bucketAccessGrantReader
-	if grantRepo != nil {
-		grantReader = grantRepo
-	}
-	return requireBucketAccessFor(c, bucketRepo, grantReader, requiredRole)
+	return requireBucketAccessFor(c, bucketRepo, bucketAccessGrantReaderOrNil(grantRepo), requiredRole)
 }
 
 func requireBucketAccessFor(
@@ -47,12 +44,20 @@ func requireBucketAccessFor(
 	grantRepo bucketAccessGrantReader,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
+	grantRepo = bucketAccessGrantReaderOrNil(grantRepo)
+
 	bucketID, ok := routeObjectID(c, "id")
 	if !ok {
 		return nil
 	}
 	userID, ok := authenticatedUserID(c)
 	if !ok {
+		return nil
+	}
+
+	if bucketRepo == nil {
+		slog.ErrorContext(c.Request.Context(), "bucket access: bucket repository is nil")
+		c.Status(http.StatusInternalServerError)
 		return nil
 	}
 
@@ -74,7 +79,20 @@ func requireBucketAccessFor(
 	// Check explicit grants.
 	if grantRepo != nil {
 		grant, err := grantRepo.GetByBucketAndUser(c.Request.Context(), bucketID, userID)
-		if err == nil && repository.RoleAtLeast(grant.Role, requiredRole) {
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return nil
+			}
+			slog.ErrorContext(c.Request.Context(), "bucket access: grant lookup failed",
+				slog.String("bucket_id", bucketID.Hex()),
+				slog.String("user_id", userID.Hex()),
+				slog.String("error", err.Error()),
+			)
+			c.Status(http.StatusInternalServerError)
+			return nil
+		}
+		if repository.RoleAtLeast(grant.Role, requiredRole) {
 			return &bucketAccess{Bucket: bucketDoc, Role: grant.Role}
 		}
 	}
@@ -82,4 +100,14 @@ func requireBucketAccessFor(
 	// No access — return 404 to avoid leaking bucket existence.
 	c.Status(http.StatusNotFound)
 	return nil
+}
+
+func bucketAccessGrantReaderOrNil(grantRepo bucketAccessGrantReader) bucketAccessGrantReader {
+	if grantRepo == nil {
+		return nil
+	}
+	if repo, ok := grantRepo.(*repository.BucketGrantRepository); ok && repo == nil {
+		return nil
+	}
+	return grantRepo
 }

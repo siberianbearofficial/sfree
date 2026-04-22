@@ -415,6 +415,43 @@ func TestUploadFileChunksWithWeightedStrategy(t *testing.T) {
 	}
 }
 
+func TestUploadFileChunksWeightedFailoverTriesLowWeightSource(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	s2 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	sources := []repository.Source{s1, s2}
+
+	failingStub := &stubSourceClient{uploadErr: errors.New("source down")}
+	workingStub := &stubSourceClient{}
+	factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		if src.ID == s1.ID {
+			return failingStub, nil
+		}
+		return workingStub, nil
+	}
+
+	weights := map[string]int{s1.ID.Hex(): MaxWeightedSourceWeight, s2.ID.Hex(): 1}
+	sel := NewWeightedSelector(sources, weights)
+
+	payload := []byte("abcdef")
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), sources, len(payload), factory, sel)
+	if err != nil {
+		t.Fatalf("expected failover to low-weight source, got %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	if chunks[0].SourceID != s2.ID {
+		t.Fatalf("expected chunk on low-weight source after failover, got %s", chunks[0].SourceID.Hex())
+	}
+	if failingStub.uploadCalls != 1 {
+		t.Fatalf("expected failing source to be tried once, got %d", failingStub.uploadCalls)
+	}
+	if workingStub.uploadCalls != 1 {
+		t.Fatalf("expected low-weight source to be tried once, got %d", workingStub.uploadCalls)
+	}
+}
+
 func TestSelectorForBucketRoundRobin(t *testing.T) {
 	t.Parallel()
 	bucket := &repository.Bucket{DistributionStrategy: repository.StrategyRoundRobin}
