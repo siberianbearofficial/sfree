@@ -350,6 +350,57 @@ func TestWrapperRetryDownloadSucceeds(t *testing.T) {
 	}
 }
 
+type streamContextClient struct {
+	ctxCh chan context.Context
+}
+
+func (c *streamContextClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (c *streamContextClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	c.ctxCh <- ctx
+	return io.NopCloser(strings.NewReader("data")), nil
+}
+
+func (c *streamContextClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+func TestWrapperDownloadStreamCancelsOnClose(t *testing.T) {
+	inner := &streamContextClient{ctxCh: make(chan context.Context, 1)}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg).(interface {
+		DownloadStream(context.Context, string) (io.ReadCloser, error)
+	})
+
+	rc, err := w.DownloadStream(context.Background(), "file.txt")
+	if err != nil {
+		t.Fatalf("download stream: %v", err)
+	}
+
+	reqCtx := <-inner.ctxCh
+	select {
+	case <-reqCtx.Done():
+		t.Fatal("stream context was canceled before close")
+	default:
+	}
+
+	if err := rc.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	select {
+	case <-reqCtx.Done():
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("stream context was not canceled after close")
+	}
+}
+
 func TestWrapperRetryDeleteSucceeds(t *testing.T) {
 	inner := &flakeyClient{failCount: 1}
 	cfg := WrapperConfig{
