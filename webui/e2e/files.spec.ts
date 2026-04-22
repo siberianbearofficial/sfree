@@ -16,6 +16,20 @@ const MOCK_BUCKET = {
   key: "my-bucket",
   access_key: "AK123",
   created_at: "2024-01-15T11:00:00Z",
+  role: "owner",
+  shared: false,
+};
+
+const MOCK_VIEWER_BUCKET = {
+  ...MOCK_BUCKET,
+  role: "viewer",
+  shared: true,
+};
+
+const MOCK_EDITOR_BUCKET = {
+  ...MOCK_BUCKET,
+  role: "editor",
+  shared: true,
 };
 
 const MOCK_FILES = [
@@ -90,9 +104,45 @@ test.describe("File listing and download", () => {
     const fileRows = page.locator("tbody tr");
     await expect(fileRows).toHaveCount(2);
 
-    // Each row should have exactly 2 icon buttons (download + delete)
-    const firstRowButtons = fileRows.first().getByRole("button");
-    await expect(firstRowButtons).toHaveCount(2);
+    const firstRowActionButtons = fileRows
+      .first()
+      .locator("td")
+      .last()
+      .getByRole("button");
+    await expect(firstRowActionButtons).toHaveCount(3);
+    await expect(fileRows.first().getByRole("button", { name: "Share report.pdf" })).toBeVisible();
+    await expect(fileRows.first().getByRole("button", { name: "Download report.pdf" })).toBeVisible();
+    await expect(fileRows.first().getByRole("button", { name: "Delete report.pdf" })).toBeVisible();
+  });
+
+  test("viewer file rows only expose download actions", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+    await page.goto("/buckets/bkt-1");
+
+    const firstRowActions = page.locator("tbody tr").first().locator("td").last();
+    await expect(firstRowActions.getByRole("button")).toHaveCount(1);
+    await expect(
+      firstRowActions.getByRole("button", { name: "Download report.pdf" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Upload File" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Share Bucket" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Share report.pdf" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Delete report.pdf" })).not.toBeVisible();
+  });
+
+  test("editor file rows expose file actions without bucket sharing", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_EDITOR_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
+    await page.goto("/buckets/bkt-1");
+
+    await expect(page.getByRole("button", { name: "Upload File" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Share Bucket" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Share report.pdf" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download report.pdf" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Delete report.pdf" })).toBeVisible();
   });
 
   test("clicking download triggers a fetch to the download endpoint", async ({
@@ -116,14 +166,37 @@ test.describe("File listing and download", () => {
     await page.goto("/buckets/bkt-1");
     await expect(page.getByText("report.pdf")).toBeVisible();
 
-    // Click the first icon button in the first file row (download)
+    await page.getByRole("button", { name: "Download report.pdf" }).click();
+
+    await expect.poll(() => downloadCalled).toBe(true);
+  });
+
+  test("failed bucket download shows an error toast", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
+
+    await page.route("**/api/v1/buckets/bkt-1/files/file-1/download", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({error: "download unavailable"}),
+      });
+    });
+
+    await page.goto("/buckets/bkt-1");
+    await expect(page.getByText("report.pdf")).toBeVisible();
+
     const firstRow = page.locator("tbody tr").first();
     const actionCell = firstRow.locator("td").last();
     const actionButtons = actionCell.getByRole("button");
     const actionButtonCount = await actionButtons.count();
     await actionButtons.nth(actionButtonCount === 1 ? 0 : 1).click();
 
-    await expect.poll(() => downloadCalled).toBe(true);
+    await expect(page.getByText("Something went wrong")).toBeVisible();
+    await expect(
+      page.getByText("The server returned an error. Try again later."),
+    ).toBeVisible();
   });
 
   test("back button is present and navigates back", async ({ page }) => {

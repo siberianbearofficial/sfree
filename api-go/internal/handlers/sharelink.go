@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/cryptoutil"
-	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -146,6 +144,18 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
+		getSharedFile(shareLinkRepo, sourceRepo, fileRepo)(c)
+	}
+}
+
+func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if shareLinkRepo == nil || sourceRepo == nil || fileRepo == nil {
+			slog.ErrorContext(ctx, "get shared file: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
 		token := c.Param("token")
 		if token == "" {
 			c.Status(http.StatusNotFound)
@@ -180,16 +190,16 @@ func GetSharedFile(shareLinkRepo *repository.ShareLinkRepository, bucketRepo *re
 			return
 		}
 
-		var total int64
-		for _, ch := range fileDoc.Chunks {
-			total += ch.Size
-		}
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(fileDoc.Name)))
-		c.Header("Content-Type", "application/octet-stream")
-		c.Header("Content-Length", strconv.FormatInt(total, 10))
-		c.Status(http.StatusOK)
-		if err := manager.StreamFile(ctx, sourceRepo, fileDoc, c.Writer); err != nil {
+		total := fileContentLength(fileDoc)
+		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamDownloadFileRange); err != nil {
 			slog.ErrorContext(ctx, "get shared file: stream", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		setAttachmentDownloadHeaders(c, fileDoc.Name, total)
+		c.Status(http.StatusOK)
+		if err := streamDownloadFile(ctx, sourceRepo, fileDoc, c.Writer); err != nil {
+			slog.ErrorContext(ctx, "get shared file: stream failed after response commit", slog.String("error", err.Error()))
 		}
 	}
 }

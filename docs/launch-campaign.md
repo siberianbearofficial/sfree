@@ -25,7 +25,7 @@ so you can use any S3 SDK or tool (rclone, mc, boto3) to read and write objects.
 
 What actually works today (v0.1.0):
 
-- Go backend with REST API and Swagger docs
+- Go backend with REST API and API docs
 - Three storage backends: Google Drive, Telegram, S3-compatible
 - S3-compatible endpoint with AWS SigV4 auth
 - React web UI for signup, bucket management, file upload/download/preview
@@ -41,7 +41,8 @@ What it does NOT do (being upfront):
   source, those files are gone.
 - No erasure coding.
 - Auth is functional but not production-hardened.
-- No rate limiting yet.
+- Rate limiting is in-memory and basic, not a full production abuse protection
+  layer.
 
 This is an early-stage project aimed at self-hosters and homelab tinkerers who
 want to unify their scattered free storage behind one interface. It is not a
@@ -80,7 +81,7 @@ distributed round-robin across them. Every bucket also gets S3-compatible
 credentials, so tools like rclone or mc just work.
 
 **What works right now (v0.1.0):**
-- Go backend with full REST API + Swagger docs
+- Go backend with full REST API + API docs
 - Google Drive, Telegram, and S3-compatible backends
 - S3-compatible endpoint (AWS SigV4 auth)
 - React web UI for buckets, files, preview, and public share links
@@ -92,7 +93,7 @@ credentials, so tools like rclone or mc just work.
 - Early stage — no replication or erasure coding
 - Auth is functional, not production-hardened
 - Losing an upstream source = data loss for affected chunks
-- No rate limiting yet
+- Rate limiting exists, but it is in-memory and still basic
 
 This is aimed at homelab/self-hosting experimentation, not production
 workloads. If you're interested in the approach or want to contribute, the
@@ -117,18 +118,18 @@ single object store with an S3-compatible interface.
 **How it works:**
 1. Register storage sources (Google Drive, Telegram bots, S3-compatible services)
 2. Create a bucket backed by your chosen sources
-3. Upload files — SFree chunks and distributes them round-robin
-4. Download files — SFree reassembles from the chunk manifest
+3. Upload files through REST, the web UI, or the S3-compatible endpoint
+4. SFree chunks, distributes, and reassembles objects from the saved manifest
 5. Use any S3 SDK/tool via auto-generated per-bucket credentials
 
 **Tech stack:** Go 1.24, MongoDB, React 19, Docker Compose, Woodpecker CI.
 
 This is early-stage software — no replication, no erasure coding, experimental.
-But the core loop works: chunk, distribute, reassemble, serve over S3. Plus
-public share links, GitHub OAuth, a CLI, and configurable distribution
-strategies shipped in v0.1.0.
+But the core loop works: chunk, distribute, reassemble, serve over S3, and apply
+basic request limits. Plus public share links, GitHub OAuth, a CLI, and
+configurable distribution strategies shipped in v0.1.0.
 
-Contributions welcome — the codebase is clean Go with Swagger docs and CI.
+Contributions welcome — the codebase is clean Go with API docs and CI.
 
 https://github.com/siberianbearofficial/sfree
 ```
@@ -166,6 +167,8 @@ configurable distribution strategies (round-robin or weighted).
 **Fair warnings:**
 - No chunk replication — if a source goes down, affected files are gone
 - Auth is functional but not production-hardened — run it behind a reverse proxy
+- Rate limiting is basic and in-memory, so keep normal proxy protections in
+  front of public deployments
 - This is experimental, not for irreplaceable data
 
 If you're into storage hacking or want to help add backends, check it out:
@@ -212,7 +215,7 @@ based on early reactions.
 - [x] Landing page merged and live
 - [x] Demo visuals (annotated screenshots) in README
 - [ ] README Quick Start verified end-to-end (fresh clone to running)
-- [ ] Swagger docs accessible and accurate
+- [ ] API docs accessible and accurate
 - [ ] Docker Compose brings up a working instance
 - [ ] GitHub repo has: description, topics, license badge, social preview image
 - [ ] GitHub topics set: `storage`, `s3`, `self-hosted`, `google-drive`,

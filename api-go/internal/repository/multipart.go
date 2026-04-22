@@ -111,35 +111,40 @@ func (r *MultipartUploadRepository) CountByPartChunkExcludingBucket(ctx context.
 	})
 }
 
-func (r *MultipartUploadRepository) SetPart(ctx context.Context, uploadID string, part UploadPart) error {
-	partDoc := bson.D{
-		{Key: "part_number", Value: part.PartNumber},
-		{Key: "etag", Value: part.ETag},
-		{Key: "size", Value: part.Size},
-		{Key: "chunks", Value: part.Chunks},
+func (r *MultipartUploadRepository) SetPart(ctx context.Context, uploadID string, part UploadPart) (*UploadPart, error) {
+	update := mongo.Pipeline{
+		{{
+			Key: "$set",
+			Value: bson.D{{
+				Key: "parts",
+				Value: bson.D{{
+					Key: "$concatArrays",
+					Value: bson.A{
+						bson.D{{
+							Key: "$filter",
+							Value: bson.D{
+								{Key: "input", Value: bson.D{{Key: "$ifNull", Value: bson.A{"$parts", bson.A{}}}}},
+								{Key: "as", Value: "part"},
+								{Key: "cond", Value: bson.D{{Key: "$ne", Value: bson.A{"$$part.part_number", part.PartNumber}}}},
+							},
+						}},
+						bson.A{part},
+					},
+				}},
+			}},
+		}},
 	}
-	partArrayValue := bson.D{{Key: "$literal", Value: bson.A{partDoc}}}
-	partsOrEmpty := bson.D{{Key: "$ifNull", Value: bson.A{"$parts", bson.A{}}}}
-	otherParts := bson.D{{Key: "$filter", Value: bson.D{
-		{Key: "input", Value: partsOrEmpty},
-		{Key: "as", Value: "part"},
-		{Key: "cond", Value: bson.D{{Key: "$ne", Value: bson.A{"$$part.part_number", part.PartNumber}}}},
-	}}}
-	partsExpr := bson.D{{Key: "$concatArrays", Value: bson.A{otherParts, partArrayValue}}}
-
-	res, err := r.coll.UpdateOne(ctx,
-		bson.M{"upload_id": uploadID},
-		mongo.Pipeline{
-			bson.D{{Key: "$set", Value: bson.D{{Key: "parts", Value: partsExpr}}}},
-		},
-	)
-	if err != nil {
-		return err
+	var previousUpload MultipartUpload
+	if err := r.coll.FindOneAndUpdate(ctx, bson.M{"upload_id": uploadID}, update).Decode(&previousUpload); err != nil {
+		return nil, err
 	}
-	if res.MatchedCount == 0 {
-		return mongo.ErrNoDocuments
+	for _, existing := range previousUpload.Parts {
+		if existing.PartNumber == part.PartNumber {
+			partCopy := existing
+			return &partCopy, nil
+		}
 	}
-	return nil
+	return nil, nil
 }
 
 func (r *MultipartUploadRepository) DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error {

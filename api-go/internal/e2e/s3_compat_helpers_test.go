@@ -146,14 +146,7 @@ func newTestServer(t *testing.T) (*httptest.Server, *appconfig.Config) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	var mongoConn *db.Mongo
-	for i := 0; i < 30; i++ {
-		mongoConn, err = db.Connect(context.Background(), cfg.Mongo)
-		if err == nil {
-			break
-		}
-		time.Sleep(time.Second)
-	}
+	mongoConn, err := connectMongoForE2E(cfg)
 	if err != nil {
 		t.Fatalf("connect mongo: %v", err)
 	}
@@ -164,6 +157,31 @@ func newTestServer(t *testing.T) (*httptest.Server, *appconfig.Config) {
 	ts := httptest.NewServer(router)
 	t.Cleanup(ts.Close)
 	return ts, cfg
+}
+
+func connectMongoForE2E(cfg *appconfig.Config) (*db.Mongo, error) {
+	deadline := time.Now().Add(30 * time.Second)
+	retryInterval := time.Second
+	var lastErr error
+	for attempts := 1; ; attempts++ {
+		mongoConn, err := db.Connect(context.Background(), cfg.Mongo)
+		if err == nil {
+			return mongoConn, nil
+		}
+		lastErr = err
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, fmt.Errorf("mongo did not become ready within 30s after %d attempts: %w", attempts, lastErr)
+		}
+
+		wait := retryInterval
+		if remaining < wait {
+			wait = remaining
+		}
+		timer := time.NewTimer(wait)
+		<-timer.C
+	}
 }
 
 // apiPost makes a POST request with JSON body and basic auth.
@@ -554,7 +572,11 @@ func assertS3Error(t *testing.T, body []byte, wantCode string) {
 
 // presignS3URL generates a presigned URL for the given method and raw URL.
 func presignS3URL(rawURL, method, accessKey, secretKey, region string, expiresSec int) (string, error) {
-	now := time.Now().UTC()
+	return presignS3URLAt(rawURL, method, accessKey, secretKey, region, time.Now().UTC(), expiresSec)
+}
+
+func presignS3URLAt(rawURL, method, accessKey, secretKey, region string, signedAt time.Time, expiresSec int) (string, error) {
+	now := signedAt.UTC()
 	amzDate := now.Format("20060102T150405Z")
 	dateStr := now.Format("20060102")
 	scope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStr, region)

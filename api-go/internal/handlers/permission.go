@@ -1,12 +1,22 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+type bucketAccessBucketReader interface {
+	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.Bucket, error)
+}
+
+type bucketAccessGrantReader interface {
+	GetByBucketAndUser(ctx context.Context, bucketID, userID primitive.ObjectID) (*repository.BucketGrant, error)
+}
 
 // bucketAccess holds the result of a permission check.
 type bucketAccess struct {
@@ -22,6 +32,19 @@ func requireBucketAccess(
 	c *gin.Context,
 	bucketRepo *repository.BucketRepository,
 	grantRepo *repository.BucketGrantRepository,
+	requiredRole repository.BucketRole,
+) *bucketAccess {
+	var grantReader bucketAccessGrantReader
+	if grantRepo != nil {
+		grantReader = grantRepo
+	}
+	return requireBucketAccessFor(c, bucketRepo, grantReader, requiredRole)
+}
+
+func requireBucketAccessFor(
+	c *gin.Context,
+	bucketRepo bucketAccessBucketReader,
+	grantRepo bucketAccessGrantReader,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
 	bucketID, ok := routeObjectID(c, "id")

@@ -50,6 +50,12 @@ type PutObjectResult struct {
 	CleanupErr error
 }
 
+type UploadMultipartPartResult struct {
+	Part       repository.UploadPart
+	ETag       string
+	CleanupErr error
+}
+
 type CopyObjectResult struct {
 	File       repository.File
 	CleanupErr error
@@ -87,6 +93,7 @@ type BucketScopedChunkReferenceCounter interface {
 
 type objectFileStore interface {
 	BucketScopedChunkReferenceCounter
+	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.File, error)
 	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
 	ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]repository.File, error)
 	ReplaceByName(ctx context.Context, f repository.File) (*repository.File, *repository.File, error)
@@ -99,6 +106,7 @@ type objectMultipartStore interface {
 	ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]repository.MultipartUpload, error)
 	CountByPartChunk(ctx context.Context, sourceID primitive.ObjectID, name string) (int64, error)
 	CountByPartChunkExcludingBucket(ctx context.Context, bucketID, sourceID primitive.ObjectID, name string) (int64, error)
+	SetPart(ctx context.Context, uploadID string, part repository.UploadPart) (*repository.UploadPart, error)
 	Delete(ctx context.Context, uploadID string) error
 	DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error
 }
@@ -162,6 +170,51 @@ func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket
 	return PutObjectResult{File: *currentFile, CleanupErr: cleanupErr}, nil
 }
 
+func (s *ObjectService) UploadMultipartPartRecord(ctx context.Context, bucket *repository.Bucket, mu *repository.MultipartUpload, partNumber int, body io.Reader, chunkSize int) (UploadMultipartPartResult, error) {
+	if bucket == nil || mu == nil || mu.BucketID != bucket.ID {
+		return UploadMultipartPartResult{}, ErrMultipartUploadNotFound
+	}
+
+	sources, err := s.sources.ListByIDs(ctx, bucket.SourceIDs)
+	if err != nil {
+		return UploadMultipartPartResult{}, err
+	}
+	if len(sources) == 0 {
+		return UploadMultipartPartResult{}, ErrNoSources
+	}
+
+	chunks, err := s.uploadChunks(ctx, body, sources, chunkSize, SelectorForBucket(bucket, sources))
+	if err != nil {
+		return UploadMultipartPartResult{}, err
+	}
+
+	var totalSize int64
+	for _, ch := range chunks {
+		totalSize += ch.Size
+	}
+	part := repository.UploadPart{
+		PartNumber: partNumber,
+		ETag:       multipartPartETag(chunks),
+		Size:       totalSize,
+		Chunks:     chunks,
+	}
+
+	previous, err := s.multipart.SetPart(ctx, mu.UploadID, part)
+	if err != nil {
+		_ = s.deleteChunks(ctx, chunks)
+		if err == mongo.ErrNoDocuments {
+			return UploadMultipartPartResult{}, ErrMultipartUploadNotFound
+		}
+		return UploadMultipartPartResult{}, err
+	}
+
+	var cleanupErr error
+	if previous != nil {
+		cleanupErr = s.deleteChunks(ctx, previous.Chunks)
+	}
+	return UploadMultipartPartResult{Part: part, ETag: part.ETag, CleanupErr: cleanupErr}, nil
+}
+
 func (s *ObjectService) CopyObject(ctx context.Context, sourceBucket, destBucket *repository.Bucket, sourceKey, destKey string) (CopyObjectResult, error) {
 	if sourceBucket.ID != destBucket.ID && sourceBucket.UserID != destBucket.UserID {
 		return CopyObjectResult{}, ErrAccessDenied
@@ -199,6 +252,29 @@ func (s *ObjectService) DeleteObject(ctx context.Context, bucketID primitive.Obj
 	if err := s.files.Delete(ctx, fileDoc.ID); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return DeleteObjectResult{}, nil
+		}
+		return DeleteObjectResult{}, err
+	}
+	return DeleteObjectResult{
+		Deleted:    true,
+		CleanupErr: s.deleteFileChunksIfUnreferenced(ctx, fileDoc.Chunks),
+	}, nil
+}
+
+func (s *ObjectService) DeleteFile(ctx context.Context, bucketID, fileID primitive.ObjectID) (DeleteObjectResult, error) {
+	fileDoc, err := s.files.GetByID(ctx, fileID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return DeleteObjectResult{}, ErrObjectNotFound
+		}
+		return DeleteObjectResult{}, err
+	}
+	if fileDoc.BucketID != bucketID {
+		return DeleteObjectResult{}, ErrObjectNotFound
+	}
+	if err := s.files.Delete(ctx, fileDoc.ID); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return DeleteObjectResult{}, ErrObjectNotFound
 		}
 		return DeleteObjectResult{}, err
 	}
@@ -427,6 +503,14 @@ func ObjectETag(file repository.File) string {
 		_, _ = h.Write([]byte(strconv.FormatInt(chunk.Size, 10)))
 	}
 	return "\"" + hex.EncodeToString(h.Sum(nil)) + "\""
+}
+
+func multipartPartETag(chunks []repository.FileChunk) string {
+	h := md5.New()
+	for _, chunk := range chunks {
+		_, _ = h.Write([]byte(chunk.Name))
+	}
+	return fmt.Sprintf("\"%s\"", hex.EncodeToString(h.Sum(nil)))
 }
 
 func multipartETag(requestedParts []CompleteMultipartPart, partMap map[int]repository.UploadPart) string {
