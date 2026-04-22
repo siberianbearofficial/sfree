@@ -110,6 +110,25 @@ func TestRequireBucketAccessMissingGrantReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestRequireBucketAccessNilGrantRepositoryReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	bucketID := primitive.NewObjectID()
+	ownerID := primitive.NewObjectID()
+	userID := primitive.NewObjectID()
+	bucketRepo := &fakeBucketLookup{bucket: &repository.Bucket{ID: bucketID, UserID: ownerID}}
+	var grantRepo *repository.BucketGrantRepository
+
+	var acc *bucketAccess
+	w := performRequireBucketAccess(t, bucketID, userID, bucketRepo, grantRepo, repository.RoleViewer, &acc)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if acc != nil {
+		t.Fatalf("expected nil access, got %#v", acc)
+	}
+}
+
 func TestRequireBucketAccessValidGrantReturnsRole(t *testing.T) {
 	t.Parallel()
 	bucketID := primitive.NewObjectID()
@@ -156,8 +175,8 @@ func performRequireBucketAccess(
 	t *testing.T,
 	bucketID primitive.ObjectID,
 	userID primitive.ObjectID,
-	bucketRepo bucketLookup,
-	grantRepo bucketGrantLookup,
+	bucketRepo bucketAccessBucketReader,
+	grantRepo bucketAccessGrantReader,
 	requiredRole repository.BucketRole,
 	acc **bucketAccess,
 ) *httptest.ResponseRecorder {

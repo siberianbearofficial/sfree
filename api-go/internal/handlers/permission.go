@@ -25,29 +25,17 @@ type bucketAccess struct {
 	Role   repository.BucketRole
 }
 
-type bucketLookup interface {
-	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.Bucket, error)
-}
-
-type bucketGrantLookup interface {
-	GetByBucketAndUser(ctx context.Context, bucketID, userID primitive.ObjectID) (*repository.BucketGrant, error)
-}
-
 // requireBucketAccess verifies that the authenticated user has at least the
 // given role on the bucket identified by the :id route parameter. On success it
 // returns the bucket document and effective role. On failure it writes an HTTP
 // error and returns nil.
 func requireBucketAccess(
 	c *gin.Context,
-	bucketRepo bucketLookup,
-	grantRepo bucketGrantLookup,
+	bucketRepo bucketAccessBucketReader,
+	grantRepo bucketAccessGrantReader,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
-	var grantReader bucketAccessGrantReader
-	if grantRepo != nil {
-		grantReader = grantRepo
-	}
-	return requireBucketAccessFor(c, bucketRepo, grantReader, requiredRole)
+	return requireBucketAccessFor(c, bucketRepo, bucketAccessGrantReaderOrNil(grantRepo), requiredRole)
 }
 
 func requireBucketAccessFor(
@@ -56,6 +44,8 @@ func requireBucketAccessFor(
 	grantRepo bucketAccessGrantReader,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
+	grantRepo = bucketAccessGrantReaderOrNil(grantRepo)
+
 	bucketID, ok := routeObjectID(c, "id")
 	if !ok {
 		return nil
@@ -110,4 +100,14 @@ func requireBucketAccessFor(
 	// No access — return 404 to avoid leaking bucket existence.
 	c.Status(http.StatusNotFound)
 	return nil
+}
+
+func bucketAccessGrantReaderOrNil(grantRepo bucketAccessGrantReader) bucketAccessGrantReader {
+	if grantRepo == nil {
+		return nil
+	}
+	if repo, ok := grantRepo.(*repository.BucketGrantRepository); ok && repo == nil {
+		return nil
+	}
+	return grantRepo
 }
