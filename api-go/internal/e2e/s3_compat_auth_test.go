@@ -57,6 +57,50 @@ func TestS3CompatAccessKeyAuth(t *testing.T) {
 	}
 }
 
+func TestS3CompatWrongBucketCredentialsDoNotExposeObjectBytes(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	ownerBucket := createBucket(t, ts, username, password, "owner-bkt-"+suffix, sourceID)
+	otherBucket := createBucket(t, ts, username, password, "other-bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+otherBucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/buckets/"+ownerBucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	objectKey := "private-" + suffix + ".txt"
+	objectContent := []byte("private object bytes " + suffix)
+	s3URL := fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, ownerBucket.Key, objectKey)
+
+	status, body := s3Do(t, http.MethodPut, s3URL, ownerBucket.AccessKey, ownerBucket.AccessSecret, env.Region, objectContent)
+	if status != http.StatusOK {
+		t.Fatalf("PUT private object: expected 200, got %d: %s", status, body)
+	}
+	t.Cleanup(func() {
+		s3Do(t, http.MethodDelete, s3URL, ownerBucket.AccessKey, ownerBucket.AccessSecret, env.Region, nil)
+	})
+
+	status, body = s3Do(t, http.MethodGet, s3URL, otherBucket.AccessKey, otherBucket.AccessSecret, env.Region, nil)
+	if status == http.StatusOK {
+		t.Fatalf("GET with wrong bucket credentials: expected non-200, got 200: %s", body)
+	}
+	for i := 0; i <= len(objectContent)-8; i++ {
+		if fragment := objectContent[i : i+8]; bytes.Contains(body, fragment) {
+			t.Fatalf("GET with wrong bucket credentials exposed object byte fragment %q in response %q", fragment, body)
+		}
+	}
+}
+
 func TestS3CompatPresignedGetObject(t *testing.T) {
 	env, ok := loadS3E2EEnv()
 	if !ok {
