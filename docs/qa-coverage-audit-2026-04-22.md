@@ -2,7 +2,48 @@
 
 Date: 2026-04-22
 
-Scope: `api-go` automated tests, Woodpecker validation, recent `origin/main` changes, and open backend/web UI PRs as of 2026-04-22 07:17 UTC.
+Scope: `api-go` automated tests, Woodpecker validation, recent `origin/main` changes, and open backend/web UI PRs as of 2026-04-22 14:17 UTC.
+
+## 14:17 UTC Refresh
+
+Since the 07:17 UTC audit snapshot, `origin/main` added or merged the following relevant validation changes:
+
+- PR [#276](https://github.com/siberianbearofficial/sfree/pull/276) adds share-link request body validation coverage for empty, valid, malformed, wrongly typed, zero, and negative `expires_in` request bodies.
+- PR [#274](https://github.com/siberianbearofficial/sfree/pull/274) adds the `THE-658` S3 range corruption regression, strengthening retrieval/corruption coverage for partial reads.
+- Commit `29b3fb9` aligns S3 compatibility evidence.
+- Commit `9c83f7c` requires the bucket check before aborting multipart uploads, covering an S3 multipart correctness path that previously depended on later upload lookup behavior.
+- Commit `c8310a0` regenerates source-health docs after the generated docs route/freshness work.
+- PR [#244](https://github.com/siberianbearofficial/sfree/pull/244) adds web UI role-action coverage for owner, editor, and viewer bucket/file controls.
+- PR [#260](https://github.com/siberianbearofficial/sfree/pull/260) splits web UI Woodpecker validation into separate lint/build and Playwright gates.
+- PR [#249](https://github.com/siberianbearofficial/sfree/pull/249) adds direct source download preflight coverage.
+- PR [#262](https://github.com/siberianbearofficial/sfree/pull/262) adds web UI download failure coverage.
+- PR [#252](https://github.com/siberianbearofficial/sfree/pull/252) proxies share downloads through the frontend origin with web UI and smoke coverage.
+
+Current high-signal open PRs reviewed for this refresh:
+
+- PR [#235](https://github.com/siberianbearofficial/sfree/pull/235) covers route-aware API/S3 rate limiting with authenticated identity, unauthenticated IP fallback, S3 credential identity, router wiring, and limiter configuration tests.
+- PR [#285](https://github.com/siberianbearofficial/sfree/pull/285) covers REST bucket deletion grant-cleanup success ordering and cleanup-failure behavior.
+- PR [#286](https://github.com/siberianbearofficial/sfree/pull/286) covers web UI bucket-grant loading success and list-failure states with route-mocked Playwright tests.
+- PR [#287](https://github.com/siberianbearofficial/sfree/pull/287) raises web UI npm audit validation to high severity in Woodpecker.
+- PR [#273](https://github.com/siberianbearofficial/sfree/pull/273) adds backend route/handler coverage for source download keys containing slash, space, plus, question mark, and hash characters.
+- PR [#253](https://github.com/siberianbearofficial/sfree/pull/253) adds dependency audit gates for backend and web UI Woodpecker validation.
+
+The strongest remaining coverage gaps after this refresh are not broad feature areas; they are specific public-surface regressions where manager or repository tests cannot prove client-visible behavior:
+
+1. Missing bucket-source upload errors at REST/S3 handler level before the missing-source branch is merged.
+   Acceptance: REST upload, S3 `PutObject`, and S3 `UploadPart` against a bucket whose `source_ids` include a deleted source return stable client errors without attempting chunk upload.
+
+2. S3 malformed/unsupported request error-shape matrix.
+   Acceptance: missing bucket, missing upload, invalid range, unsupported operation, malformed query, and auth mismatch combinations return S3 XML errors with stable status codes instead of generic JSON or empty responses.
+
+3. Public cleanup semantics after bucket grant cleanup failure, if PR #285 changes before merge.
+   Acceptance: REST bucket delete returns `500` when grant cleanup fails, preserves the bucket document, removes object/multipart residue only according to the accepted ordering, and does not orphan grants behind a deleted bucket.
+
+4. Grant listing failure and loading UI behavior, if PR #286 changes before merge.
+   Acceptance: the Share Bucket dialog distinguishes loading, empty, successful, and failed grant-list states without showing stale successful grant data after a list failure.
+
+5. Dependency audit gate behavior after PR #253/#287 merge.
+   Acceptance: Woodpecker fails on backend govulncheck execution errors, reports current backend findings according to the accepted baseline, and fails web UI validation on high or critical npm advisories.
 
 ## Recent Inputs
 
