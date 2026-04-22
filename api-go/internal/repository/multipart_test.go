@@ -57,8 +57,12 @@ func TestMultipartUploadRepositorySetPartReplacesWithoutDroppingParts(t *testing
 		Size:       9,
 		Chunks:     []FileChunk{{SourceID: sourceID, Name: "new-part-1", Order: 0, Size: 9}},
 	}
-	if err := repo.SetPart(ctx, uploadID, replacement); err != nil {
+	previous, err := repo.SetPart(ctx, uploadID, replacement)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if previous == nil || previous.ETag != `"old"` {
+		t.Fatalf("expected previous part to be returned, got %+v", previous)
 	}
 
 	got, err := repo.GetByUploadID(ctx, uploadID)
@@ -80,8 +84,12 @@ func TestMultipartUploadRepositorySetPartReplacesWithoutDroppingParts(t *testing
 		Size:       11,
 		Chunks:     []FileChunk{{SourceID: sourceID, Name: "added-part-3", Order: 2, Size: 11}},
 	}
-	if err := repo.SetPart(ctx, uploadID, added); err != nil {
+	previous, err = repo.SetPart(ctx, uploadID, added)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if previous != nil {
+		t.Fatalf("expected no previous part for insert, got %+v", previous)
 	}
 
 	got, err = repo.GetByUploadID(ctx, uploadID)
@@ -95,7 +103,7 @@ func TestMultipartUploadRepositorySetPartReplacesWithoutDroppingParts(t *testing
 	assertMultipartPart(t, got.Parts, 2, `"kept"`, "kept-part-2")
 	assertMultipartPart(t, got.Parts, 3, `"added"`, "added-part-3")
 
-	err = repo.SetPart(ctx, "missing-upload", added)
+	_, err = repo.SetPart(ctx, "missing-upload", added)
 	if err != mongo.ErrNoDocuments {
 		t.Fatalf("expected ErrNoDocuments for missing upload, got %v", err)
 	}
