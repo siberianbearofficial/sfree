@@ -438,7 +438,7 @@ func s3CanonicalRawQuery(rawQuery string, presign bool) string {
 }
 
 func s3QueryPartUnescape(s string) string {
-	decoded, err := url.PathUnescape(s)
+	decoded, err := url.QueryUnescape(s)
 	if err != nil {
 		return s
 	}

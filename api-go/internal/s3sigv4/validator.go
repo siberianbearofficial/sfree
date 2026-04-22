@@ -487,7 +487,7 @@ func canonicalizeQuery(u *url.URL, presign bool) string {
 }
 
 func queryPartUnescape(s string) string {
-	decoded, err := url.PathUnescape(s)
+	decoded, err := url.QueryUnescape(s)
 	if err != nil {
 		return s
 	}
