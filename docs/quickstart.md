@@ -37,7 +37,7 @@ api-1    | [GIN-debug] Listening and serving HTTP on :8080
 | ------------- | ----------------------------------------- |
 | Frontend      | http://localhost:3000                      |
 | REST API      | http://localhost:8080                      |
-| Swagger docs  | http://localhost:8080/swagger/index.html   |
+| API docs      | http://localhost:8080/api/docs             |
 | MinIO Console | http://localhost:9001                      |
 
 ## 2. Create a user
@@ -107,7 +107,7 @@ curl -s -X POST http://localhost:8080/api/v1/sources/s3 \
 Save the `id` — you need it to create a bucket.
 
 > **Other source types:** SFree also supports Google Drive and Telegram
-> sources. See the [API docs](http://localhost:8080/swagger/index.html) for
+> sources. See the [API docs](http://localhost:8080/api/docs) for
 > details.
 
 ## 4. Create a bucket

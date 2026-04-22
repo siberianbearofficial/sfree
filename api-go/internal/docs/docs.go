@@ -1470,6 +1470,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/sources/{id}/health": {
+            "get": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "description": "Runs a lightweight on-demand provider probe. Google Drive returns native quota when available; S3-compatible and Telegram quota fields are null because no cheap native capacity is available.",
+                "tags": [
+                    "sources"
+                ],
+                "summary": "Check source health",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.sourceHealthResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/sources/{id}/info": {
             "get": {
                 "security": [
@@ -1936,6 +1991,44 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.sourceHealthResponse": {
+            "type": "object",
+            "properties": {
+                "checked_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "latency_ms": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "quota_free_bytes": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "quota_total_bytes": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "quota_used_bytes": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "reason_code": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
                     "type": "string"
                 }
             }

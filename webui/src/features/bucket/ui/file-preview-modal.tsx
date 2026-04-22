@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FileInfo } from "../../../shared/api/buckets";
 import { fetchFileBlob, downloadFile } from "../../../shared/api/buckets";
+import { showErrorToast } from "../../../shared/api/error";
 import { DownloadIcon } from "../../../shared/icons";
 import { formatSize } from "../../../shared/lib/format";
 
@@ -39,6 +40,15 @@ export function FilePreviewModal({ isOpen, onClose, file, bucketId }: Props) {
   const ext = file ? getExtension(file.name) : "";
   const isImage = IMAGE_EXTENSIONS.has(ext);
   const isText = TEXT_EXTENSIONS.has(ext);
+
+  async function handleDownload() {
+    if (!file) return;
+    try {
+      await downloadFile(bucketId, file);
+    } catch (err) {
+      showErrorToast(err);
+    }
+  }
 
   const loadPreview = useCallback(async () => {
     if (!file) return;
@@ -137,7 +147,7 @@ export function FilePreviewModal({ isOpen, onClose, file, bucketId }: Props) {
             <Button
               color="primary"
               startContent={<DownloadIcon className="w-4 h-4" />}
-              onPress={() => downloadFile(bucketId, file)}
+              onPress={handleDownload}
             >
               Download
             </Button>
