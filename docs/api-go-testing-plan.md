@@ -50,10 +50,22 @@ These checks live in the existing Go S3 E2E suite so they run in the Woodpecker 
 
 ## Prioritized Backlog
 
-1. S3 error-shape matrix for missing bucket, missing upload, unsupported copy metadata directive, invalid range, and auth mismatch paths.
-2. HTTP API/S3 parity checks for file metadata after S3 overwrite, copy, delete, and multipart completion.
-3. Negative auth coverage across presigned URLs, wrong bucket keys, wrong access keys, and cross-bucket copy attempts.
+1. Multipart metadata surface regression: create a multipart upload with `Content-Type` and `x-amz-meta-*`, complete it, then assert S3 `HEAD` and `GET` return the stored content type and user metadata. Current manager coverage checks `CompleteMultipartUpload` preserves metadata, but the Go and Python E2E suites only prove metadata through simple `PutObject` and `CopyObject`.
+2. Missing bucket source handler mapping: add focused handler or Go E2E checks for REST upload, S3 `PutObject`, and multipart `UploadPart` when a bucket references a deleted or unresolved source. The open THE-591 branch adds object-service and source-resolution coverage, but the API/S3 error contract should be pinned so clients see the intended `400` or `InvalidRequest` response instead of a partial write or generic server error.
+3. Cross-surface file size consistency: after THE-732 lands, add one regression that uploads a multi-chunk object and compares the same byte size through bucket file listing, REST download `Content-Length`, share-link download `Content-Length`, S3 `HEAD`/`GET`, and S3 list object `Size`. The helper has unit coverage, but the risk is divergent handler wiring.
+4. Negative auth coverage across presigned URLs, wrong bucket keys, wrong access keys, and cross-bucket copy attempts.
+5. S3 error-shape matrix for missing bucket, missing upload, unsupported copy metadata directive, invalid range, and auth mismatch paths.
+
+## 2026-04-22 Audit Refresh
+
+Recent `origin/main` changes added or refreshed coverage for S3 object metadata persistence, multipart helper cleanup, SigV4 query canonicalization, source provider config validation, source health, bucket cleanup, range corruption detection, and deterministic tests. Open PR review found targeted coverage in the active branches for file-size helper extraction, bucket deletion cleanup ordering, duplicate download preflight removal, weighted upload failover, escaped source download keys, missing bucket source failures, and provider-neutral source capabilities.
+
+The strongest new test candidates are the first three backlog items above. They are concrete, user-visible regressions with existing harness locations:
+
+- Multipart metadata belongs in `api-go/internal/e2e/s3_compat_multipart_test.go` or the Python SDK E2E suite if SDK parity is preferred.
+- Missing source error mapping belongs near the existing S3/REST upload handler tests, with a later E2E only if handler coverage cannot verify the wire contract.
+- File size consistency should wait for THE-732 to merge, then live in the Go S3 E2E suite or a narrow handler test that exercises all changed response paths.
 
 ## Validation
 
-No CI behavior changes are required. Woodpecker `.woodpecker/api-go.yml` remains the validation source for Docker-backed E2E execution.
+No CI behavior changes are required. Woodpecker `.woodpecker/api-go.yml` remains the validation source for Docker-backed E2E execution. This refresh was based on repository and PR inspection only; local Go, Docker, and E2E test execution were intentionally not run on the limited-resource agent machine.
