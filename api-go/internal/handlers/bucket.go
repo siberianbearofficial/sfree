@@ -418,6 +418,15 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			return
 		}
 		bucketDoc := acc.Bucket
+		if err := objectSvc.ValidateObjectSources(ctx, bucketDoc); err != nil {
+			if errors.Is(err, manager.ErrNoSources) {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+			slog.ErrorContext(ctx, "upload file: validate object sources", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 		fh, err := c.FormFile("file")
 		if err != nil {
 			slog.WarnContext(ctx, "upload file: get file", slog.String("error", err.Error()))

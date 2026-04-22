@@ -135,6 +135,17 @@ func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *reposit
 	return svc
 }
 
+func (s *ObjectService) ValidateObjectSources(ctx context.Context, bucket *repository.Bucket) error {
+	sources, err := s.sources.ListByIDs(ctx, bucket.SourceIDs)
+	if err != nil {
+		return err
+	}
+	if len(sources) == 0 {
+		return ErrNoSources
+	}
+	return nil
+}
+
 func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int) (PutObjectResult, error) {
 	sources, err := s.sources.ListByIDs(ctx, bucket.SourceIDs)
 	if err != nil {

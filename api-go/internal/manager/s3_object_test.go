@@ -285,6 +285,15 @@ func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 	}
 }
 
+func TestObjectServiceValidateObjectSourcesRejectsNoSources(t *testing.T) {
+	svc := &ObjectService{sources: &fakeObjectSources{}}
+
+	err := svc.ValidateObjectSources(context.Background(), &repository.Bucket{ID: primitive.NewObjectID()})
+	if !errors.Is(err, ErrNoSources) {
+		t.Fatalf("expected ErrNoSources, got %v", err)
+	}
+}
+
 func TestObjectServicePutObjectReturnsNoSourcesBeforeUpload(t *testing.T) {
 	files := newFakeObjectFiles()
 	uploadCalled := false
