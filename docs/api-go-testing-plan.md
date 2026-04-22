@@ -6,6 +6,17 @@ This plan scopes the first bounded QA slice for public GitHub issue #89. It reco
 
 ## Current Coverage
 
+### April 22, 2026 Audit Snapshot
+
+Recent merged backend work added targeted coverage for S3 range corruption, multipart abort bucket ownership, source health documentation, manager chunk I/O splitting, direct source download preflight, and bucket deletion cleanup. Open PR review found these relevant active branches:
+
+- PR #282 / THE-681 adds a focused manager regression for weighted upload failover when a 1000:1 high-weight source fails and the healthy low-weight source must still be tried.
+- PR #281 / THE-682 narrows ObjectService construction to operation-specific services without changing the tested manager behavior.
+- PR #280 / THE-631 adds shared S3 object-key parsing coverage for normal, leading-slash, and empty wildcard keys.
+- PR #279 / THE-673 splits S3 object handler helpers while retaining copy-source parser coverage.
+
+The current practical gap is not broad unit coverage. It is cross-boundary regression coverage where S3-compatible requests, REST file lifecycle requests, metadata persistence, and source-placement behavior interact.
+
 ### `api-go/internal/e2e/s3_compat_test.go`
 
 This file covers API-backed source and bucket creation through the Go E2E harness. It verifies that created S3 sources appear in the source list, bucket S3 access credentials are issued, and deleting an in-use source returns `409 Conflict`.
@@ -50,10 +61,14 @@ These checks live in the existing Go S3 E2E suite so they run in the Woodpecker 
 
 ## Prioritized Backlog
 
-1. S3 error-shape matrix for missing bucket, missing upload, unsupported copy metadata directive, invalid range, and auth mismatch paths.
-2. HTTP API/S3 parity checks for file metadata after S3 overwrite, copy, delete, and multipart completion.
-3. Negative auth coverage across presigned URLs, wrong bucket keys, wrong access keys, and cross-bucket copy attempts.
+1. Add an API-backed placement regression that uploads enough chunks through a weighted bucket to prove stored file chunk metadata follows the configured source weights, then downloads the object to prove reconstruction still succeeds.
+2. Add HTTP API/S3 parity checks for object metadata after S3 overwrite, CopyObject, delete/recreate, and multipart completion. Existing metadata work has strong unit and E2E coverage, but parity across REST and S3 lifecycle paths remains the highest-value integration gap.
+3. Add an S3 error-shape matrix for missing bucket, missing multipart upload, unsupported copy metadata directive, invalid range, auth mismatch, and cross-bucket copy attempts.
+4. Add source/backend failure coverage for client-construction failures separately from upload failures. PR #282 covers upload-time weighted failover; constructor/preflight failures still need explicit expected behavior before QA should encode it.
+5. Add a cleanup regression for multi-source uploads where an early chunk succeeds on one source, later failover exhausts all sources, and previously uploaded chunks must be deleted exactly once.
 
 ## Validation
 
 No CI behavior changes are required. Woodpecker `.woodpecker/api-go.yml` remains the validation source for Docker-backed E2E execution.
+
+Local validation for this audit was limited to repository inspection, GitHub PR inspection, and `git diff --check` because backend test, Docker, and E2E execution belong in Woodpecker on this limited machine.
