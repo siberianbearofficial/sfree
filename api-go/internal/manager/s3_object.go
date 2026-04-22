@@ -299,9 +299,6 @@ func (s *ObjectService) DeleteBucketContents(ctx context.Context, bucketID primi
 	}
 
 	chunks := bucketCleanupChunks(files, uploads)
-	if err := s.deleteBucketChunksIfUnreferenced(ctx, bucketID, chunks); err != nil {
-		return DeleteBucketContentsResult{}, err
-	}
 	if err := s.files.DeleteByBucket(ctx, bucketID); err != nil {
 		return DeleteBucketContentsResult{}, err
 	}
@@ -309,6 +306,9 @@ func (s *ObjectService) DeleteBucketContents(ctx context.Context, bucketID primi
 		if err := s.multipart.DeleteByBucket(ctx, bucketID); err != nil {
 			return DeleteBucketContentsResult{}, err
 		}
+	}
+	if err := s.deleteBucketChunksIfUnreferenced(ctx, bucketID, chunks); err != nil {
+		return DeleteBucketContentsResult{}, err
 	}
 	return DeleteBucketContentsResult{
 		FilesDeleted:            len(files),
