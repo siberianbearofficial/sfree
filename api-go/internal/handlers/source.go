@@ -326,6 +326,10 @@ func GetSourceInfo(repo *repository.SourceRepository) gin.HandlerFunc {
 	return getSourceInfo(repo, nil)
 }
 
+func GetSourceInfoWithFactory(repo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	return getSourceInfo(repo, factory)
+}
+
 func getSourceInfo(repo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -396,6 +400,10 @@ func getSourceInfo(repo *repository.SourceRepository, factory manager.SourceClie
 // @Router /api/v1/sources/{id}/health [get]
 func GetSourceHealth(repo *repository.SourceRepository) gin.HandlerFunc {
 	return getSourceHealth(repo, nil)
+}
+
+func GetSourceHealthWithFactory(repo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	return getSourceHealth(repo, factory)
 }
 
 func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin.HandlerFunc {
@@ -471,6 +479,13 @@ func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc
 		return downloadSourceFile(nil, nil)
 	}
 	return downloadSourceFile(sourceRepo, nil)
+}
+
+func DownloadSourceFileWithFactory(sourceRepo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	if sourceRepo == nil {
+		return downloadSourceFile(nil, factory)
+	}
+	return downloadSourceFile(sourceRepo, factory)
 }
 
 func downloadSourceFile(sourceRepo sourceGetter, factory manager.SourceClientFactory) gin.HandlerFunc {

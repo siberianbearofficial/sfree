@@ -10,7 +10,11 @@ import (
 )
 
 func DeleteFileChunks(ctx context.Context, srcRepo *repository.SourceRepository, chunks []repository.FileChunk) error {
-	return deleteFileChunksWithFactory(ctx, chunks, sourceClientFactoryFromRepository(srcRepo))
+	return DeleteFileChunksWithFactory(ctx, srcRepo, chunks, nil)
+}
+
+func DeleteFileChunksWithFactory(ctx context.Context, srcRepo *repository.SourceRepository, chunks []repository.FileChunk, factory SourceClientFactory) error {
+	return deleteFileChunksWithFactory(ctx, chunks, sourceClientFactoryFromRepository(srcRepo, factory))
 }
 
 func deleteFileChunksWithFactory(ctx context.Context, chunks []repository.FileChunk, factory SourceClientFactory) error {

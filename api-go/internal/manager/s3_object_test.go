@@ -408,6 +408,31 @@ func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) 
 	}
 }
 
+func TestNewObjectServiceWithSourceClientFactoryUsesFactoryForUploads(t *testing.T) {
+	t.Parallel()
+
+	sourceID := primitive.NewObjectID()
+	calls := 0
+	svc := NewObjectServiceWithSourceClientFactory(nil, nil, nil, func(_ context.Context, src *repository.Source) (SourceClient, error) {
+		calls++
+		if src.ID != sourceID {
+			t.Fatalf("expected source %s, got %s", sourceID.Hex(), src.ID.Hex())
+		}
+		return &stubSourceClient{}, nil
+	})
+
+	chunks, err := svc.uploadChunks(context.Background(), bytes.NewReader([]byte("payload")), []repository.Source{{ID: sourceID}}, len("payload"), &RoundRobinSelector{})
+	if err != nil {
+		t.Fatalf("upload chunks: %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected one chunk, got %d", len(chunks))
+	}
+	if calls != 1 {
+		t.Fatalf("expected factory to be called once, got %d", calls)
+	}
+}
+
 func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 	bucketID := primitive.NewObjectID()
 	oldSourceID := primitive.NewObjectID()
