@@ -24,7 +24,8 @@ type shareLinkByTokenReader interface {
 }
 
 var (
-	streamDownloadFile fileStreamFunc = manager.StreamFile
+	streamDownloadFile      fileStreamFunc      = manager.StreamFile
+	streamDownloadFileRange fileRangeStreamFunc = manager.StreamFileRange
 )
 
 type deferredResponseWriter struct {
@@ -56,6 +57,24 @@ func (w *deferredResponseWriter) commitNow() {
 
 func (w *deferredResponseWriter) isCommitted() bool {
 	return w.committed
+}
+
+func fileStreamFuncForFactory(factory manager.SourceClientFactory) fileStreamFunc {
+	if factory == nil {
+		return streamDownloadFile
+	}
+	return func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer) error {
+		return manager.StreamFileWithFactory(ctx, sourceRepo, fileDoc, w, factory)
+	}
+}
+
+func fileRangeStreamFuncForFactory(factory manager.SourceClientFactory) fileRangeStreamFunc {
+	if factory == nil {
+		return streamDownloadFileRange
+	}
+	return func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer, start, end int64) error {
+		return manager.StreamFileRangeWithFactory(ctx, sourceRepo, fileDoc, w, start, end, factory)
+	}
 }
 
 func fileContentLength(fileDoc *repository.File) int64 {

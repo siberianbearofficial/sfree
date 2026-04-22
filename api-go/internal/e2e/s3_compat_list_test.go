@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -36,9 +37,12 @@ func TestS3CompatListObjectsV2PrefixDelimiterAndPagination(t *testing.T) {
 		"photos/2024/b-" + suffix + ".jpg",
 		"photos/2025/c-" + suffix + ".jpg",
 		"photos/root-" + suffix + ".txt",
+		"encoded+ space/root-" + suffix + ".txt",
+		"encoded+ space/child-" + suffix + ".txt",
 	}
 	s3URL := func(key string) string {
-		return fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, key)
+		escapedKey := strings.ReplaceAll(url.PathEscape(key), "%2F", "/")
+		return fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, escapedKey)
 	}
 	for _, key := range objectKeys {
 		status, body := s3Do(t, http.MethodPut, s3URL(key), bucket.AccessKey, bucket.AccessSecret, env.Region, []byte("content "+key))
@@ -71,7 +75,7 @@ func TestS3CompatListObjectsV2PrefixDelimiterAndPagination(t *testing.T) {
 		t.Helper()
 		rawURL := listURL
 		if len(params) > 0 {
-			rawURL += "?" + params.Encode()
+			rawURL += "?" + strings.ReplaceAll(params.Encode(), "+", "%20")
 		}
 		status, body := s3Do(t, http.MethodGet, rawURL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
 		if status != http.StatusOK {
@@ -144,6 +148,13 @@ func TestS3CompatListObjectsV2PrefixDelimiterAndPagination(t *testing.T) {
 	v1Prefixes := prefixesFrom(v1Delimited)
 	if v1Delimited.KeyCount != 3 || !has(v1Prefixes, "photos/2024/") || !has(v1Prefixes, "photos/2025/") || !has(v1Keys, "photos/root-"+suffix+".txt") {
 		t.Fatalf("V1 delimiter list mismatch: keyCount=%d keys=%v prefixes=%v nextMarker=%q", v1Delimited.KeyCount, v1Keys, v1Prefixes, v1Delimited.NextMarker)
+	}
+
+	encodedPrefix := "encoded+ space/"
+	encodedList := listWith(url.Values{"list-type": {"2"}, "prefix": {encodedPrefix}})
+	encodedKeys := keysFrom(encodedList)
+	if encodedList.Prefix != encodedPrefix || encodedList.KeyCount != 2 || !has(encodedKeys, "encoded+ space/root-"+suffix+".txt") || !has(encodedKeys, "encoded+ space/child-"+suffix+".txt") {
+		t.Fatalf("V2 encoded prefix list mismatch: prefix=%q keyCount=%d keys=%v", encodedList.Prefix, encodedList.KeyCount, encodedKeys)
 	}
 }
 

@@ -78,7 +78,7 @@ func TestDownloadFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T)
 	r.GET(
 		"/buckets/:id/files/:file_id/download",
 		setUserID(userID.Hex()),
-		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil),
+		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil, nil),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files/"+file.ID.Hex()+"/download", nil)
@@ -119,7 +119,7 @@ func TestGetSharedFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T
 		CreatedAt: time.Now().UTC(),
 	}
 	r := gin.New()
-	r.GET("/share/:token", getSharedFile(fakeShareLinkByTokenReader{link: link}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}))
+	r.GET("/share/:token", getSharedFile(fakeShareLinkByTokenReader{link: link}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/share/token", nil)
 	w := httptest.NewRecorder()
@@ -157,7 +157,7 @@ func TestDownloadFileStreamsBodyWithoutPreflight(t *testing.T) {
 	r.GET(
 		"/buckets/:id/files/:file_id/download",
 		setUserID(userID.Hex()),
-		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil),
+		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil, nil),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files/"+file.ID.Hex()+"/download", nil)
