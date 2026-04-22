@@ -241,7 +241,7 @@ func ListSources(repo *repository.SourceRepository) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		sources, err := repo.ListByUser(c.Request.Context(), userID)
+		sources, err := repo.ListMetadataByUser(c.Request.Context(), userID)
 		if err != nil {
 			slog.ErrorContext(ctx, "list sources: failed to list", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
