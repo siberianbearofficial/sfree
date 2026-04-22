@@ -96,6 +96,7 @@ func registerSourceRoutes(router *gin.Engine, deps *routerDependencies) {
 	router.GET("/api/v1/sources", deps.auth, handlers.ListSources(deps.sourceRepo))
 	router.GET("/api/v1/sources/:id/health", deps.auth, handlers.GetSourceHealthWithFactory(deps.sourceRepo, deps.sourceFactory))
 	router.GET("/api/v1/sources/:id/info", deps.auth, handlers.GetSourceInfoWithFactory(deps.sourceRepo, deps.sourceFactory))
+	router.GET("/api/v1/sources/:id/download", deps.auth, handlers.DownloadSourceFileWithFactory(deps.sourceRepo, deps.sourceFactory))
 	router.GET("/api/v1/sources/:id/files/:file_id/download", deps.auth, handlers.DownloadSourceFileWithFactory(deps.sourceRepo, deps.sourceFactory))
 	router.DELETE("/api/v1/sources/:id", deps.auth, handlers.DeleteSource(deps.sourceRepo, deps.bucketRepo))
 }

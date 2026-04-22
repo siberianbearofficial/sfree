@@ -466,13 +466,14 @@ func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin
 // @Tags sources
 // @Produce octet-stream
 // @Param id path string true "Source ID"
-// @Param file_id path string true "File ID (GDrive file ID or S3 object key)"
+// @Param file_id query string true "File ID (GDrive file ID or S3 object key)"
 // @Success 200 {file} file
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Security BasicAuth
+// @Router /api/v1/sources/{id}/download [get]
 // @Router /api/v1/sources/{id}/files/{file_id}/download [get]
 func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
 	if sourceRepo == nil {
@@ -503,7 +504,10 @@ func downloadSourceFile(sourceRepo sourceGetter, factory manager.SourceClientFac
 		if !ok {
 			return
 		}
-		fileID := c.Param("file_id")
+		fileID := c.Query("file_id")
+		if fileID == "" {
+			fileID = c.Param("file_id")
+		}
 		if fileID == "" {
 			c.Status(http.StatusBadRequest)
 			return
