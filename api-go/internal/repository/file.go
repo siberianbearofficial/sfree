@@ -36,17 +36,28 @@ type FileRepository struct {
 	coll *mongo.Collection
 }
 
-const fileBucketNameUniqueIndex = "bucket_id_name_unique"
+const (
+	fileBucketNameUniqueIndex = "bucket_id_name_unique"
+	fileChunkReferenceIndex   = "chunks_source_id_name"
+)
 
 func NewFileRepository(db *mongo.Database) (*FileRepository, error) {
 	coll := db.Collection("files")
-	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
-		Keys: bson.D{{Key: "bucket_id", Value: 1}},
+	ctx := context.Background()
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			Keys: bson.D{{Key: "bucket_id", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "chunks.source_id", Value: 1}, {Key: "chunks.name", Value: 1}},
+			Options: options.Index().
+				SetName(fileChunkReferenceIndex),
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	if err := ensureUniqueFileBucketNameIndex(context.Background(), coll); err != nil {
+	if err := ensureUniqueFileBucketNameIndex(ctx, coll); err != nil {
 		return nil, err
 	}
 	return &FileRepository{coll: coll}, nil
