@@ -2011,13 +2011,16 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "quota_free_bytes": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "quota_total_bytes": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "quota_used_bytes": {
-                    "type": "integer"
+                    "type": "integer",
+                    "x-nullable": true
                 },
                 "reason_code": {
                     "type": "string"
