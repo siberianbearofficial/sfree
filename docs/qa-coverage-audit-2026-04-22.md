@@ -2,11 +2,12 @@
 
 Date: 2026-04-22
 
-Scope: `api-go` automated tests, Woodpecker backend validation, recent `origin/main` changes, and open backend PRs as of 2026-04-22 00:22 UTC.
+Scope: `api-go` automated tests, Woodpecker backend validation, recent `origin/main` changes, and open backend PRs as of 2026-04-22 01:22 UTC.
 
 ## Recent Inputs
 
 - `origin/main` now includes focused S3 range GET, ListObjectsV2 pagination, checksum verification, multipart checksum preservation, atomic multipart part replacement cleanup, one-file-per-bucket-object enforcement, S3 GET stream-failure semantics, DeleteObjects support, CopyObject support, SDK CopyObject and HEAD compatibility coverage, bucket grant route scoping, S3 helper coverage, multipart malformed error-shape coverage, SigV4 redaction coverage, upload-failure cleanup coverage, short-read upload chunking coverage, manager-level S3 object mutation coverage, OpenAPI docs route coverage, Woodpecker image-pinning, lint enforcement, Woodpecker E2E image-pull speedups, and the unit-only `api-go` Makefile `test` target.
+- Merged PR [#221](https://github.com/siberianbearofficial/sfree/pull/221) shares S3 bucket/object lookup helpers while preserving missing bucket, wrong access key, missing object, and GET stream-failure preflight coverage.
 - Merged PR [#225](https://github.com/siberianbearofficial/sfree/pull/225) refreshed this QA audit around SigV4 body-hash buffering, REST/S3/OpenAPI test branches, and the remaining S3 auth/error-shape gap.
 - Merged PR [#209](https://github.com/siberianbearofficial/sfree/pull/209) makes multipart part replacement cleanup atomic and adds repository and handler coverage for replacement behavior.
 - Merged PR [#219](https://github.com/siberianbearofficial/sfree/pull/219) adds Go S3 E2E assertions for DeleteObjects oversized and malformed XML error codes.
@@ -30,13 +31,14 @@ Scope: `api-go` automated tests, Woodpecker backend validation, recent `origin/m
 - Merged PR [#180](https://github.com/siberianbearofficial/sfree/pull/180) adds S3 CopyObject support plus Go E2E coverage for same-bucket copy, cross-bucket copy, response XML fields, unsupported metadata replacement, and copied-object survival after deleting the source object.
 - Merged PR [#178](https://github.com/siberianbearofficial/sfree/pull/178) adds S3 GET stream-failure semantics and handler regression tests for corrupt chunks before success headers/body are emitted.
 - Merged PR [#176](https://github.com/siberianbearofficial/sfree/pull/176) adds S3 DeleteObjects support plus E2E coverage for normal delete, missing-key idempotency, quiet mode, list-after-delete, and oversized XML rejection.
+- Open PR [#231](https://github.com/siberianbearofficial/sfree/pull/231) implements minimal S3 object metadata persistence and adds handler, manager, repository, Go S3 E2E, and Python SDK E2E coverage for Content-Type and user metadata.
+- Open PR [#230](https://github.com/siberianbearofficial/sfree/pull/230) removes fixed sleeps from S3 Go E2E readiness and expired-presign coverage by adding a Mongo readiness retry helper and deterministic expired presign signing.
 - Open PR [#228](https://github.com/siberianbearofficial/sfree/pull/228) adds an S3/API testing plan plus Go S3 E2E coverage for missing-object `NoSuchKey` XML behavior and cross-bucket credential isolation.
 - Open PR [#227](https://github.com/siberianbearofficial/sfree/pull/227) fixes S3 multipart part replacement cleanup order with manager tests that assert metadata replacement happens before old-chunk deletion and failed metadata replacement cleans only new chunks.
 - Open PR [#226](https://github.com/siberianbearofficial/sfree/pull/226) validates weighted source weights with handler validation tests and selector coverage.
 - Open PR [#224](https://github.com/siberianbearofficial/sfree/pull/224) routes REST bucket file mutations through the object service and adds handler coverage for overwrite routing and delete cleanup-failure propagation.
 - Open PR [#223](https://github.com/siberianbearofficial/sfree/pull/223) bounds SigV4 validator payload hashing and adds tests for explicit hashes, missing hashes, unknown-length non-empty bodies, and unknown-length empty bodies.
 - Open PR [#222](https://github.com/siberianbearofficial/sfree/pull/222) adds a generated OpenAPI freshness check target intended for Woodpecker validation.
-- Open PR [#221](https://github.com/siberianbearofficial/sfree/pull/221) shares S3 bucket/object lookup helpers and adds handler tests for missing bucket, wrong access key, missing object, and GET stream-failure preflight behavior.
 - Open PR [#220](https://github.com/siberianbearofficial/sfree/pull/220) adds download preflight coverage for REST and shared downloads.
 - Open PR [#210](https://github.com/siberianbearofficial/sfree/pull/210) cleans bucket contents on delete and adds manager regressions for object chunk cleanup, multipart part cleanup, and repository delete helpers.
 - Open PR [#202](https://github.com/siberianbearofficial/sfree/pull/202) centralizes source-client construction and adds unit coverage for source-client parsing, wrapping, inspection, download, and stream lifetime behavior.
@@ -47,22 +49,22 @@ Scope: `api-go` automated tests, Woodpecker backend validation, recent `origin/m
 | --- | --- | --- |
 | Object write/read roundtrip | Python E2E and Go S3 E2E cover PUT, LIST, GET, overwrite, DELETE with an S3 source. | Covered for simple objects. |
 | Chunking correctness | `internal/manager/file_test.go` covers round-robin chunking, weighted placement, checksum storage, failover, and short-read chunk filling. | Covered at unit level. |
-| Metadata integrity | File chunk size/checksum metadata is unit-tested, including completed multipart checksum propagation. S3 ETag, range headers, and basic object headers are checked in E2E. | Weak for user metadata and content type because those are not implemented. |
+| Metadata integrity | File chunk size/checksum metadata is unit-tested, including completed multipart checksum propagation. S3 ETag, range headers, and basic object headers are checked in E2E. PR #231 adds Content-Type and `x-amz-meta-*` persistence coverage across handlers, manager, repository, Go S3 E2E, and Python SDK E2E. | Covered for minimal metadata once PR #231 merges; broader tags/checksum headers/metadata-directive REPLACE behavior remains out of scope. |
 | Placement logic | Round-robin, weighted selection, and upload failover have unit coverage; PR #226 adds request validation for weighted source configuration. | Covered for manager logic; request-validation coverage remains pending until PR #226 merges. |
 | Reconstruction/retrieval | Manager tests cover checksum-verified streaming, range streaming across chunks, legacy chunks, oversized chunks, truncated chunks, and corruption. S3 E2E covers full-object and ranged download. Handler tests cover S3 full and ranged GET failures before success headers/body are emitted. | Covered for manager logic and pre-commit S3 HTTP error behavior. |
 | Corruption detection | SHA-256 mismatch paths are unit-tested, including short and oversized chunk reads. | Covered at unit level. |
 | Source/backend failure cases | Manager failover, resilience wrappers, upload retry body replay, uploaded-chunk cleanup after later failures, and S3 GET stream-failure handler behavior have tests. Open PR #202 covers source-client construction/stream lifetime behavior. | Covered for upload/retry/cleanup logic and pre-commit S3 GET failure behavior; source-client branch remains open. |
-| Critical S3-compatible API behavior | Go E2E covers source/bucket creation, object lifecycle, auth failure, presigned GET/PUT, HEAD, expired presign, range GET, ListObjectsV2 prefix/delimiter/pagination, DeleteObjects, CopyObject, multipart lifecycle, malformed multipart errors, and DeleteObjects malformed/oversized error codes. PR #228 adds missing-object and cross-bucket credential-isolation E2E coverage. Python SDK E2E covers ListObjectsV2, range GET, DeleteObjects, CopyObject, multipart, and HEAD. | Covered for currently implemented core operations once PR #228 merges; still weak for metadata and broader unsupported/malformed request combinations. |
+| Critical S3-compatible API behavior | Go E2E covers source/bucket creation, object lifecycle, auth failure, presigned GET/PUT, HEAD, expired presign, range GET, ListObjectsV2 prefix/delimiter/pagination, DeleteObjects, CopyObject, multipart lifecycle, malformed multipart errors, and DeleteObjects malformed/oversized error codes. PR #228 adds missing-object and cross-bucket credential-isolation E2E coverage. PR #231 adds metadata-header E2E coverage. Python SDK E2E covers ListObjectsV2, range GET, DeleteObjects, CopyObject, multipart, HEAD, and metadata once PR #231 merges. | Covered for currently implemented core operations once PR #228 and PR #231 merge; still weak for broader unsupported/malformed request combinations. |
 | Recent bug regressions | Recent checksum, ListObjectsV2, range GET, multipart checksum propagation, DeleteObjects, CopyObject, S3 GET stream-failure, SigV4 body-hash buffering, file-manager cache, upload retry body replay, upload failure cleanup, source-client factory, one-file-per-object enforcement, bucket grant route scoping, short-read chunking, multipart replacement atomicity, bucket delete cleanup, and multipart replacement cleanup-order work have focused tests or open test branches. | Covered for latest backend regressions once open branches merge. |
 | Recently changed code paths | Backend CI runs lint, Go unit tests, Python E2E, and Go E2E through Woodpecker for `api-go/**`; `make test` is unit-only on `origin/main`, keeping CPU-heavy integration/E2E work in CI. PR #222 adds generated docs freshness validation to Woodpecker. | Covered by CI routing once open branches merge. |
 
 ## Prioritized Missing Tests
 
-1. Add S3 object metadata/header behavior coverage when metadata support is implemented.
-   Acceptance: PUT with `Content-Type` and `x-amz-meta-*` either preserves those values through HEAD/GET or returns an intentional S3-compatible unsupported-feature response.
-
-2. Finish S3 auth/malformed/unsupported request error-shape coverage at SDK and raw HTTP levels.
+1. Expand malformed/unsupported request error-shape coverage at SDK and raw HTTP levels.
    Acceptance: PR #228 lands missing-object and cross-bucket auth coverage; remaining unsupported operations and malformed query combinations return XML S3 errors with stable status codes instead of generic JSON or empty responses.
+
+2. Add focused advanced metadata compatibility coverage only when product support expands beyond PR #231's minimal scope.
+   Acceptance: supported checksum headers, object tags, response header overrides, or `x-amz-metadata-directive: REPLACE` each get one SDK or raw-HTTP regression when implemented; unsupported metadata features return stable S3 XML errors.
 
 3. Add SDK-level presigned URL coverage if the Python SDK compatibility suite is expected to be the long-term compatibility matrix rather than a focused SDK smoke branch.
    Acceptance: aiobotocore-generated presigned GET/PUT URLs work without client-specific signing hacks and return stable S3-compatible responses.
@@ -108,7 +110,9 @@ Scope: `api-go` automated tests, Woodpecker backend validation, recent `origin/m
 - Confirmed PR #223 adds SigV4 validator tests for explicit payload hashes, missing payload hashes, unknown-length non-empty bodies, and unknown-length empty bodies without full request-body buffering.
 - Confirmed PR #224 adds handler-level tests proving REST upload/delete mutations route through the shared object service and surface cleanup failures.
 - Confirmed PR #222 adds an OpenAPI generated-docs freshness check target intended for Woodpecker validation.
-- Confirmed PR #221 preserves S3 GET stream-failure coverage while moving bucket/object lookup into a shared helper.
+- Confirmed merged PR #221 is now on `origin/main`, so missing bucket, wrong access key, missing object, and GET stream-failure preflight coverage are no longer only open-branch coverage.
+- Confirmed open PR #230 replaces fixed S3 Go E2E sleeps with a bounded Mongo readiness retry helper and deterministic already-expired presigned URL generation; local E2E execution remains Woodpecker-only.
+- Confirmed open PR #231 adds Content-Type and user metadata coverage at handler, manager, repository, Go S3 E2E, and Python SDK E2E levels.
 - Reviewed `.woodpecker/api-go.yml`; backend PRs and pushes to main run lint, Go unit tests, and S3-backed Python and Go E2E suites in Woodpecker.
 
 ## Verification
