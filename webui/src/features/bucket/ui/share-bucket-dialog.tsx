@@ -11,7 +11,7 @@ import {
   Spinner,
 } from "@heroui/react";
 import {addToast} from "@heroui/toast";
-import {useCallback, useState, useEffect} from "react";
+import {useCallback, useState, useEffect, useRef} from "react";
 import {
   createGrant,
   deleteGrant,
@@ -42,13 +42,20 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
   const [isAdding, setIsAdding] = useState(false);
   const [isLoadingGrants, setIsLoadingGrants] = useState(false);
   const [grantLoadError, setGrantLoadError] = useState<string | null>(null);
+  const grantLoadRequestRef = useRef(0);
 
   const loadGrants = useCallback(async () => {
+    const requestId = grantLoadRequestRef.current + 1;
+    grantLoadRequestRef.current = requestId;
     setIsLoadingGrants(true);
     setGrantLoadError(null);
     try {
-      setGrants(await listGrants(bucketId));
+      const nextGrants = await listGrants(bucketId);
+      if (grantLoadRequestRef.current !== requestId) return;
+      setGrants(nextGrants);
+      setGrantLoadError(null);
     } catch (err) {
+      if (grantLoadRequestRef.current !== requestId) return;
       setGrants([]);
       setGrantLoadError(
         err instanceof Error
@@ -57,7 +64,9 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
       );
       showErrorToast(err);
     } finally {
-      setIsLoadingGrants(false);
+      if (grantLoadRequestRef.current === requestId) {
+        setIsLoadingGrants(false);
+      }
     }
   }, [bucketId]);
 
@@ -115,6 +124,7 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
       isOpen={isOpen}
       onOpenChange={(open) => {
         if (!open) {
+          grantLoadRequestRef.current += 1;
           setGrants([]);
           setUsername("");
           setGrantLoadError(null);

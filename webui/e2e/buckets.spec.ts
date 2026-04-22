@@ -8,7 +8,7 @@
  * - Upload File button is present on the bucket detail page
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Route } from "@playwright/test";
 import { API_GLOB, injectAuth, mockGet, mockPost } from "./helpers";
 
 const MOCK_SOURCE = {
@@ -186,6 +186,44 @@ test.describe("Bucket creation flow", () => {
     await expect(dialog.getByText("Grant store unavailable")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Retry" })).toBeVisible();
     await expect(dialog.getByText("People with access")).not.toBeVisible();
+  });
+
+  test("Share Bucket dialog ignores stale grant-list failures", async ({
+    page,
+  }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1/files", []);
+
+    const grantRoutes: Route[] = [];
+    await page.route(`${API_GLOB}/buckets/bkt-1/grants`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      grantRoutes.push(route);
+    });
+
+    await page.goto("/buckets/bkt-1");
+    const dialog = page.getByRole("dialog");
+
+    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await expect(dialog.getByText("Loading people with access")).toBeVisible();
+    await expect.poll(() => grantRoutes.length).toBe(1);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).not.toBeVisible();
+
+    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await expect.poll(() => grantRoutes.length).toBe(2);
+    await grantRoutes[1].fulfill({status: 200, json: [MOCK_GRANT]});
+    await expect(dialog.getByText("shared-user")).toBeVisible();
+
+    await grantRoutes[0].fulfill({
+      status: 500,
+      json: {error: "Stale grant failure"},
+    });
+    await expect(dialog.getByText("shared-user")).toBeVisible();
+    await expect(dialog.getByText("Stale grant failure")).not.toBeVisible();
   });
 
   test("viewer bucket detail hides write actions", async ({ page }) => {
