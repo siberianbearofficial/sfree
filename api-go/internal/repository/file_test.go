@@ -118,6 +118,48 @@ func TestFileRepositoryMigratesLegacyBucketNameIndex(t *testing.T) {
 	}
 }
 
+func TestFileRepositoryListByBucketByNameQuery(t *testing.T) {
+	_, repo := newFileRepositoryTestDB(t)
+	ctx := context.Background()
+	bucketID := primitive.NewObjectID()
+	otherBucketID := primitive.NewObjectID()
+	now := time.Now().UTC()
+
+	for _, file := range []File{
+		{BucketID: bucketID, Name: "alpha.txt", CreatedAt: now},
+		{BucketID: bucketID, Name: "Quarterly Report.pdf", CreatedAt: now},
+		{BucketID: bucketID, Name: "report[1].txt", CreatedAt: now},
+		{BucketID: bucketID, Name: "report1.txt", CreatedAt: now},
+		{BucketID: otherBucketID, Name: "other-report.txt", CreatedAt: now},
+	} {
+		if _, err := repo.Create(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	matches, err := repo.ListByBucketByNameQuery(ctx, bucketID, "report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFileNames(t, matches, []string{"Quarterly Report.pdf", "report1.txt", "report[1].txt"})
+
+	literalMatches, err := repo.ListByBucketByNameQuery(ctx, bucketID, "report[1]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFileNames(t, literalMatches, []string{"report[1].txt"})
+
+	blankMatches, err := repo.ListByBucketByNameQuery(ctx, bucketID, "   ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unfiltered, err := repo.ListByBucket(ctx, bucketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFileNames(t, blankMatches, fileNames(unfiltered))
+}
+
 func newFileRepositoryTestDB(t *testing.T) (*mongo.Database, *FileRepository) {
 	t.Helper()
 	cfg, err := config.Load()
@@ -138,4 +180,25 @@ func newFileRepositoryTestDB(t *testing.T) (*mongo.Database, *FileRepository) {
 		t.Fatal(err)
 	}
 	return testDB, repo
+}
+
+func assertFileNames(t *testing.T, files []File, want []string) {
+	t.Helper()
+	got := fileNames(files)
+	if len(got) != len(want) {
+		t.Fatalf("expected file names %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected file names %v, got %v", want, got)
+		}
+	}
+}
+
+func fileNames(files []File) []string {
+	names := make([]string, 0, len(files))
+	for _, file := range files {
+		names = append(names, file.Name)
+	}
+	return names
 }

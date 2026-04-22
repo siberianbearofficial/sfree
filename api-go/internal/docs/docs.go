@@ -372,6 +372,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filename search query",
+                        "name": "q",
+                        "in": "query"
                     }
                 ],
                 "responses": {

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/cryptoutil"
@@ -426,6 +427,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Tags buckets
 // @Produce json
 // @Param id path string true "Bucket ID"
+// @Param q query string false "Filename search query"
 // @Success 200 {array} fileResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
@@ -447,7 +449,7 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 			return
 		}
 		bucketID := acc.Bucket.ID
-		files, err := fileRepo.ListByBucket(c.Request.Context(), bucketID)
+		files, err := fileRepo.ListByBucketByNameQuery(c.Request.Context(), bucketID, strings.TrimSpace(c.Query("q")))
 		if err != nil {
 			slog.ErrorContext(ctx, "list files: list files", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
