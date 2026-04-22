@@ -7,7 +7,7 @@ Actions workflows to this repository.
 
 | Pipeline | Paths | `pull_request` | `push` to `main` | Behavior |
 | --- | --- | --- | --- | --- |
-| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs `golangci-lint run`, Go unit tests, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
+| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs `golangci-lint run`, Go unit tests, blocking `govulncheck` dependency auditing, generated API docs freshness, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
 | `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs frontend dependency install, lint, and production build in `validate`, then runs Chromium Playwright E2E validation in `e2e tests`. Pushes to `main` also publish the frontend image. |
 | `.woodpecker/smoke.yml` | `.woodpecker/smoke.yml`, `docker-compose.yml`, `scripts/woodpecker-smoke.sh`, `api-go/**`, `webui/**` | Yes | Yes | Starts the root Compose stack in Woodpecker, creates a user and MinIO-backed source, creates a bucket, uploads and downloads a file with the CLI, and verifies S3-compatible credential download bytes. |
 
@@ -46,6 +46,15 @@ service dependency is deliberately accepted as a merge blocker.
 
 The stack smoke pipeline uses only local Woodpecker services and does not need
 repository secrets.
+
+## Dependency Audits
+
+Backend pull requests run `govulncheck@v1.1.4` in Woodpecker on Go 1.25. Known
+reachable Go vulnerability findings fail the `dependency audit` step. Tool
+installation and execution errors also fail the step.
+
+Run backend dependency audits locally only when you need to reproduce a CI
+failure; otherwise leave dependency auditing to Woodpecker.
 
 ## Published Images
 
