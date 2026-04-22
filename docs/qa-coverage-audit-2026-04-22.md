@@ -179,7 +179,7 @@ Scope: `api-go` automated tests, Woodpecker validation, recent `origin/main` cha
 - Confirmed open PR #277 adds a backend dependency-audit baseline remediation path; Woodpecker API and smoke checks were pending during this refresh.
 - Confirmed open PR #272 adds bucket detail API coverage but had a failing Woodpecker API check during this refresh.
 - Reviewed `.woodpecker/api-go.yml`; backend PRs and pushes to main run lint, Go unit tests, generated docs freshness, and S3-backed Python and Go E2E suites in Woodpecker.
-- Reviewed open PR check state with `gh pr list`; several open branches had pending Woodpecker checks, and PRs #272, #261, #258, #257, #254, #251, #245, #241, #239, #235, and #231 showed failing API checks during this refresh.
+- Reviewed open PR check state with `gh pr list`; several open branches had pending Woodpecker checks, and PR #272 showed a failing API check during this refresh.
 
 ## Verification
 
