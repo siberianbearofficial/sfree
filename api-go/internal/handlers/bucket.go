@@ -46,6 +46,40 @@ type fileResponse struct {
 	Size      int64     `json:"size"`
 }
 
+func validateSourceWeights(weights map[string]int, sourceIDs []primitive.ObjectID) error {
+	if len(weights) == 0 {
+		return nil
+	}
+	attached := make(map[primitive.ObjectID]struct{}, len(sourceIDs))
+	for _, sourceID := range sourceIDs {
+		attached[sourceID] = struct{}{}
+	}
+	for sourceIDHex, weight := range weights {
+		sourceID, err := primitive.ObjectIDFromHex(sourceIDHex)
+		if err != nil {
+			return fmt.Errorf("source_weights key %q must be a valid source id", sourceIDHex)
+		}
+		if _, ok := attached[sourceID]; !ok {
+			return fmt.Errorf("source_weights key %q is not attached to this bucket", sourceIDHex)
+		}
+		if weight <= 0 {
+			return fmt.Errorf("source_weights value for %q must be positive", sourceIDHex)
+		}
+		if weight > manager.MaxWeightedSourceWeight {
+			return fmt.Errorf("source_weights value for %q must be <= %d", sourceIDHex, manager.MaxWeightedSourceWeight)
+		}
+	}
+	return nil
+}
+
+func respondBadSourceWeights(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	return true
+}
+
 // CreateBucket godoc
 // @Summary Create bucket
 // @Tags buckets
@@ -123,6 +157,9 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 		}
 		if strategy != repository.StrategyRoundRobin && strategy != repository.StrategyWeighted {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid distribution_strategy"})
+			return
+		}
+		if respondBadSourceWeights(c, validateSourceWeights(req.SourceWeights, sourceIDs)) {
 			return
 		}
 		bucket := repository.Bucket{
@@ -314,6 +351,9 @@ func UpdateBucketDistribution(repo *repository.BucketRepository, grantRepo *repo
 
 		acc := requireBucketAccess(c, repo, grantRepo, repository.RoleOwner)
 		if acc == nil {
+			return
+		}
+		if respondBadSourceWeights(c, validateSourceWeights(req.SourceWeights, acc.Bucket.SourceIDs)) {
 			return
 		}
 

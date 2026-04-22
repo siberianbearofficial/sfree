@@ -24,6 +24,8 @@ import (
 
 var ErrUnsupportedSourceType = errors.New("unsupported source type")
 
+const MaxWeightedSourceWeight = 1000
+
 // ErrChecksumMismatch is returned when a downloaded chunk's SHA-256 hash does
 // not match the value stored at upload time, indicating possible corruption.
 var ErrChecksumMismatch = errors.New("checksum mismatch")
@@ -85,37 +87,39 @@ func (s *RoundRobinSelector) NextSource(sources []repository.Source) (int, repos
 	return idx, sources[idx], nil
 }
 
-// WeightedSelector distributes chunks across sources proportionally to their
-// configured weights. It builds a repeating sequence where each source appears
-// a number of times equal to its weight, then cycles through that sequence.
 type WeightedSelector struct {
-	sequence []int
-	next     int
+	cumulativeWeights []int
+	totalWeight       int
+	next              int
 }
 
 // NewWeightedSelector creates a selector that distributes chunks according to
 // per-source weights. The weights map uses source ID hex strings as keys.
 // Sources without an entry default to weight 1.
 func NewWeightedSelector(sources []repository.Source, weights map[string]int) *WeightedSelector {
-	seq := make([]int, 0)
-	for i, src := range sources {
+	cumulativeWeights := make([]int, 0, len(sources))
+	totalWeight := 0
+	for _, src := range sources {
 		w := weights[src.ID.Hex()]
 		if w <= 0 {
 			w = 1
 		}
-		for j := 0; j < w; j++ {
-			seq = append(seq, i)
-		}
+		totalWeight += w
+		cumulativeWeights = append(cumulativeWeights, totalWeight)
 	}
-	return &WeightedSelector{sequence: seq}
+	return &WeightedSelector{cumulativeWeights: cumulativeWeights, totalWeight: totalWeight}
 }
 
 func (s *WeightedSelector) NextSource(sources []repository.Source) (int, repository.Source, error) {
-	if len(sources) == 0 || len(s.sequence) == 0 {
+	if len(sources) == 0 || s.totalWeight == 0 || len(s.cumulativeWeights) == 0 {
 		return 0, repository.Source{}, errors.New("no sources")
 	}
-	idx := s.sequence[s.next%len(s.sequence)]
-	s.next = (s.next + 1) % len(s.sequence)
+	offset := s.next % s.totalWeight
+	s.next = (s.next + 1) % s.totalWeight
+	idx := 0
+	for idx < len(s.cumulativeWeights) && offset >= s.cumulativeWeights[idx] {
+		idx++
+	}
 	if idx >= len(sources) {
 		return 0, repository.Source{}, errors.New("source index out of range")
 	}
