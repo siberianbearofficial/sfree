@@ -21,7 +21,7 @@ import {FilePreviewModal} from "../../../features/bucket/ui/file-preview-modal";
 import {ShareBucketDialog} from "../../../features/bucket/ui/share-bucket-dialog";
 import {ShareFileDialog} from "../../../features/bucket/ui/share-file-dialog";
 import {formatSize} from "../../../shared/lib/format";
-import {showErrorToast} from "../../../shared/api/error";
+import {ApiError, showErrorToast} from "../../../shared/api/error";
 
 export function BucketPage() {
   const {id} = useParams<{id: string}>();
@@ -51,6 +51,11 @@ export function BucketPage() {
       setBucket(loadedBucket);
       setFiles(fs);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setBucket(null);
+        setFiles([]);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to load bucket");
     } finally {
       setIsLoading(false);
