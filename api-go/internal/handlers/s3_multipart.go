@@ -87,6 +87,10 @@ type multipartUploadAbortStore interface {
 // ?uploads → CreateMultipartUpload
 // ?uploadId=X → CompleteMultipartUpload
 func PostObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int) gin.HandlerFunc {
+	return PostObjectWithFactory(bucketRepo, sourceRepo, fileRepo, mpRepo, chunkSize, nil)
+}
+
+func PostObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil || mpRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
@@ -97,7 +101,7 @@ func PostObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			return
 		}
 		if _, ok := c.GetQuery("uploadId"); ok {
-			completeMultipartUpload(c, bucketRepo, sourceRepo, fileRepo, mpRepo)
+			completeMultipartUpload(c, bucketRepo, sourceRepo, fileRepo, mpRepo, factory)
 			return
 		}
 		writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "missing uploads or uploadId parameter")
@@ -107,7 +111,11 @@ func PostObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // PostBucket dispatches POST requests on S3 bucket paths.
 // ?delete -> DeleteObjects
 func PostBucket(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
-	deleteObjectsHandler := DeleteObjects(bucketRepo, sourceRepo, fileRepo)
+	return PostBucketWithFactory(bucketRepo, sourceRepo, fileRepo, nil)
+}
+
+func PostBucketWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	deleteObjectsHandler := DeleteObjectsWithFactory(bucketRepo, sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		if _, ok := c.GetQuery("delete"); ok {
 			deleteObjectsHandler(c)
@@ -122,8 +130,12 @@ func PostBucket(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // ?uploadId=X&partNumber=N → UploadPart
 // otherwise → PutObject
 func PutObjectOrPart(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int) gin.HandlerFunc {
-	putHandler := PutObject(bucketRepo, sourceRepo, fileRepo, chunkSize)
-	copyHandler := CopyObject(bucketRepo, sourceRepo, fileRepo)
+	return PutObjectOrPartWithFactory(bucketRepo, sourceRepo, fileRepo, mpRepo, chunkSize, nil)
+}
+
+func PutObjectOrPartWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int, factory manager.SourceClientFactory) gin.HandlerFunc {
+	putHandler := PutObjectWithFactory(bucketRepo, sourceRepo, fileRepo, chunkSize, factory)
+	copyHandler := CopyObjectWithFactory(bucketRepo, sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		if c.GetHeader("x-amz-copy-source") != "" {
 			if _, ok := c.GetQuery("uploadId"); ok {
@@ -135,7 +147,7 @@ func PutObjectOrPart(bucketRepo *repository.BucketRepository, sourceRepo *reposi
 		}
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploadId"); ok {
-				uploadPart(c, bucketRepo, sourceRepo, mpRepo, chunkSize)
+				uploadPart(c, bucketRepo, sourceRepo, mpRepo, chunkSize, factory)
 				return
 			}
 		}
@@ -147,11 +159,15 @@ func PutObjectOrPart(bucketRepo *repository.BucketRepository, sourceRepo *reposi
 // ?uploadId=X → AbortMultipartUpload
 // otherwise → DeleteObject
 func DeleteObjectOrAbort(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) gin.HandlerFunc {
-	deleteHandler := DeleteObject(bucketRepo, sourceRepo, fileRepo)
+	return DeleteObjectOrAbortWithFactory(bucketRepo, sourceRepo, fileRepo, mpRepo, nil)
+}
+
+func DeleteObjectOrAbortWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	deleteHandler := DeleteObjectWithFactory(bucketRepo, sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploadId"); ok {
-				abortMultipartUpload(c, bucketRepo, sourceRepo, mpRepo)
+				abortMultipartUpload(c, bucketRepo, sourceRepo, mpRepo, factory)
 				return
 			}
 		}
@@ -163,7 +179,11 @@ func DeleteObjectOrAbort(bucketRepo *repository.BucketRepository, sourceRepo *re
 // ?uploadId=X → ListParts
 // otherwise → GetObject
 func GetObjectOrParts(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) gin.HandlerFunc {
-	getHandler := GetObject(bucketRepo, sourceRepo, fileRepo)
+	return GetObjectOrPartsWithFactory(bucketRepo, sourceRepo, fileRepo, mpRepo, nil)
+}
+
+func GetObjectOrPartsWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	getHandler := GetObjectWithFactory(bucketRepo, sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploadId"); ok {
@@ -230,7 +250,7 @@ func createMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposito
 	})
 }
 
-func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int) {
+func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, mpRepo *repository.MultipartUploadRepository, chunkSize int, factory manager.SourceClientFactory) {
 	ctx := c.Request.Context()
 	uploadID := c.Query("uploadId")
 	partNumStr := c.Query("partNumber")
@@ -260,7 +280,7 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 		return
 	}
 
-	objectSvc := manager.NewObjectService(sourceRepo, nil, mpRepo)
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, nil, mpRepo, factory)
 	result, err := objectSvc.UploadMultipartPartRecord(ctx, bucketDoc, mu, partNum, c.Request.Body, chunkSize)
 	if err != nil {
 		switch {
@@ -282,7 +302,7 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 	c.Status(http.StatusOK)
 }
 
-func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) {
+func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, factory manager.SourceClientFactory) {
 	ctx := c.Request.Context()
 	uploadID := c.Query("uploadId")
 
@@ -312,7 +332,7 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 		requestedParts = append(requestedParts, manager.CompleteMultipartPart{PartNumber: rp.PartNumber, ETag: rp.ETag})
 	}
 
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, mpRepo)
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, factory)
 	result, err := objectSvc.CompleteMultipartUploadRecord(ctx, bucketDoc.ID, mu, requestedParts)
 	if err != nil {
 		switch {
@@ -351,7 +371,7 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 	})
 }
 
-func abortMultipartUpload(c *gin.Context, bucketRepo objectBucketReader, sourceRepo *repository.SourceRepository, mpRepo multipartUploadAbortStore) {
+func abortMultipartUpload(c *gin.Context, bucketRepo objectBucketReader, sourceRepo *repository.SourceRepository, mpRepo multipartUploadAbortStore, factory manager.SourceClientFactory) {
 	ctx := c.Request.Context()
 	uploadID := c.Query("uploadId")
 
@@ -376,7 +396,7 @@ func abortMultipartUpload(c *gin.Context, bucketRepo objectBucketReader, sourceR
 	}
 
 	for _, p := range mu.Parts {
-		if delErr := manager.DeleteFileChunks(ctx, sourceRepo, p.Chunks); delErr != nil {
+		if delErr := manager.DeleteFileChunksWithFactory(ctx, sourceRepo, p.Chunks, factory); delErr != nil {
 			slog.WarnContext(ctx, "abort multipart: delete part chunks",
 				slog.Int("part_number", p.PartNumber),
 				slog.String("error", delErr.Error()),

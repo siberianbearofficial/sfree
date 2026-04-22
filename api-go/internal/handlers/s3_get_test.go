@@ -137,7 +137,7 @@ func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
 	}
 	sourceRepo := &repository.SourceRepository{}
 
-	return getObject(bucketRepo, sourceRepo, fileRepo)
+	return getObject(bucketRepo, sourceRepo, fileRepo, nil)
 }
 
 func TestGetObjectStreamFailureReturnsS3ErrorBeforeSuccess(t *testing.T) {

@@ -124,11 +124,15 @@ type ObjectService struct {
 }
 
 func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) *ObjectService {
+	return NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, nil)
+}
+
+func NewObjectServiceWithSourceClientFactory(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, factory SourceClientFactory) *ObjectService {
 	svc := &ObjectService{
 		sources: sourceRepo,
 		files:   fileRepo,
 		uploadChunks: func(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, selector SourceSelector) ([]repository.FileChunk, error) {
-			return UploadFileChunksWithStrategy(ctx, r, sources, chunkSize, nil, selector)
+			return UploadFileChunksWithStrategy(ctx, r, sources, chunkSize, factory, selector)
 		},
 		now: func() time.Time {
 			return time.Now().UTC()
@@ -138,7 +142,7 @@ func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *reposit
 		svc.multipart = mpRepo
 	}
 	svc.deleteChunks = func(ctx context.Context, chunks []repository.FileChunk) error {
-		return DeleteFileChunks(ctx, sourceRepo, chunks)
+		return DeleteFileChunksWithFactory(ctx, sourceRepo, chunks, factory)
 	}
 	return svc
 }
@@ -436,8 +440,12 @@ func (s *ObjectService) deleteBucketChunksIfUnreferenced(ctx context.Context, bu
 }
 
 func DeleteFileChunksIfUnreferenced(ctx context.Context, sourceRepo *repository.SourceRepository, fileStore ChunkReferenceCounter, chunks []repository.FileChunk) error {
+	return DeleteFileChunksIfUnreferencedWithFactory(ctx, sourceRepo, fileStore, chunks, nil)
+}
+
+func DeleteFileChunksIfUnreferencedWithFactory(ctx context.Context, sourceRepo *repository.SourceRepository, fileStore ChunkReferenceCounter, chunks []repository.FileChunk, factory SourceClientFactory) error {
 	return deleteFileChunksIfUnreferenced(ctx, fileStore, func(ctx context.Context, chunks []repository.FileChunk) error {
-		return DeleteFileChunks(ctx, sourceRepo, chunks)
+		return DeleteFileChunksWithFactory(ctx, sourceRepo, chunks, factory)
 	}, chunks)
 }
 

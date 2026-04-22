@@ -287,7 +287,7 @@ func TestAbortMultipartUploadRejectsOtherBucketUpload(t *testing.T) {
 			Key:       "route-bucket",
 			AccessKey: "route-access",
 		},
-	}, &repository.SourceRepository{}, store)
+	}, &repository.SourceRepository{}, store, nil)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
@@ -311,7 +311,7 @@ func TestAbortMultipartUploadUnknownUploadKeepsNoSuchUpload(t *testing.T) {
 		{Key: "object", Value: "/object.txt"},
 	}
 
-	abortMultipartUpload(c, fakeObjectBucketReader{}, &repository.SourceRepository{}, store)
+	abortMultipartUpload(c, fakeObjectBucketReader{}, &repository.SourceRepository{}, store, nil)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
