@@ -126,6 +126,34 @@ test.describe("File listing and download", () => {
     await expect.poll(() => downloadCalled).toBe(true);
   });
 
+  test("failed bucket download shows an error toast", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
+
+    await page.route("**/api/v1/buckets/bkt-1/files/file-1/download", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({error: "download unavailable"}),
+      });
+    });
+
+    await page.goto("/buckets/bkt-1");
+    await expect(page.getByText("report.pdf")).toBeVisible();
+
+    const firstRow = page.locator("tbody tr").first();
+    const actionCell = firstRow.locator("td").last();
+    const actionButtons = actionCell.getByRole("button");
+    const actionButtonCount = await actionButtons.count();
+    await actionButtons.nth(actionButtonCount === 1 ? 0 : 1).click();
+
+    await expect(page.getByText("Something went wrong")).toBeVisible();
+    await expect(
+      page.getByText("The server returned an error. Try again later."),
+    ).toBeVisible();
+  });
+
   test("back button is present and navigates back", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
