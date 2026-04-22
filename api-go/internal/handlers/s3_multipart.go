@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/manager"
@@ -76,6 +76,11 @@ type partXML struct {
 	ETag         string `xml:"ETag"`
 	Size         int64  `xml:"Size"`
 	LastModified string `xml:"LastModified"`
+}
+
+type multipartUploadAbortStore interface {
+	GetByUploadID(ctx context.Context, uploadID string) (*repository.MultipartUpload, error)
+	Delete(ctx context.Context, uploadID string) error
 }
 
 // PostObject dispatches POST requests on S3 object paths.
@@ -146,7 +151,7 @@ func DeleteObjectOrAbort(bucketRepo *repository.BucketRepository, sourceRepo *re
 	return func(c *gin.Context) {
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploadId"); ok {
-				abortMultipartUpload(c, sourceRepo, mpRepo)
+				abortMultipartUpload(c, bucketRepo, sourceRepo, mpRepo)
 				return
 			}
 		}
@@ -198,7 +203,7 @@ func createMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposito
 	if !ok {
 		return
 	}
-	objectKey := strings.TrimPrefix(c.Param("object"), "/")
+	objectKey := s3ObjectKey(c)
 	if objectKey == "" {
 		writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "empty object key")
 		return
@@ -367,7 +372,7 @@ func completedMultipartChunks(parts []completionPart, partMap map[int]repository
 	return allChunks
 }
 
-func abortMultipartUpload(c *gin.Context, sourceRepo *repository.SourceRepository, mpRepo *repository.MultipartUploadRepository) {
+func abortMultipartUpload(c *gin.Context, bucketRepo objectBucketReader, sourceRepo *repository.SourceRepository, mpRepo multipartUploadAbortStore) {
 	ctx := c.Request.Context()
 	uploadID := c.Query("uploadId")
 
@@ -382,7 +387,15 @@ func abortMultipartUpload(c *gin.Context, sourceRepo *repository.SourceRepositor
 		return
 	}
 
-	// Delete all part chunks from sources.
+	bucketDoc, ok := lookupBucket(c, bucketRepo)
+	if !ok {
+		return
+	}
+	if mu.BucketID != bucketDoc.ID {
+		writeS3Error(c, http.StatusNotFound, "NoSuchUpload", "")
+		return
+	}
+
 	for _, p := range mu.Parts {
 		if delErr := manager.DeleteFileChunks(ctx, sourceRepo, p.Chunks); delErr != nil {
 			slog.WarnContext(ctx, "abort multipart: delete part chunks",

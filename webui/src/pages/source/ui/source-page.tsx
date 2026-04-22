@@ -2,7 +2,8 @@ import {Button, CircularProgress, Spinner} from "@heroui/react";
 import {useCallback, useEffect, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {downloadFile, getSourceInfo} from "../../../shared/api/sources";
-import type {SourceInfo} from "../../../shared/api/sources";
+import type {SourceFile, SourceInfo} from "../../../shared/api/sources";
+import {showErrorToast} from "../../../shared/api/error";
 import {SourceTypeChip} from "../../../entities/source";
 import {DownloadIcon} from "../../../shared/icons";
 import {ArrowLeftIcon} from "@heroui/shared-icons";
@@ -28,6 +29,15 @@ export function SourcePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function handleDownload(file: SourceFile) {
+    if (!id) return;
+    try {
+      await downloadFile(id, file);
+    } catch (err) {
+      showErrorToast(err);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -118,7 +128,7 @@ export function SourcePage() {
                     <Button
                       isIconOnly
                       variant="light"
-                      onPress={() => downloadFile(id!, f)}
+                      onPress={() => handleDownload(f)}
                     >
                       <DownloadIcon className="w-5 h-5" />
                     </Button>

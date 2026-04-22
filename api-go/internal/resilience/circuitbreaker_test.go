@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+type fakeClock struct {
+	t time.Time
+}
+
+func newFakeClock() *fakeClock {
+	return &fakeClock{t: time.Date(2026, 4, 22, 0, 0, 0, 0, time.UTC)}
+}
+
+func (c *fakeClock) Now() time.Time {
+	return c.t
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.t = c.t.Add(d)
+}
+
 func TestCircuitBreakerStartsClosed(t *testing.T) {
 	cb := NewCircuitBreaker(3, 100*time.Millisecond)
 	if err := cb.Allow(); err != nil {
@@ -51,7 +67,8 @@ func TestCircuitBreakerResetOnSuccess(t *testing.T) {
 }
 
 func TestCircuitBreakerHalfOpen(t *testing.T) {
-	cb := NewCircuitBreaker(2, 50*time.Millisecond)
+	clock := newFakeClock()
+	cb := newCircuitBreakerWithClock(2, 50*time.Millisecond, clock.Now)
 
 	cb.RecordFailure()
 	cb.RecordFailure()
@@ -61,8 +78,7 @@ func TestCircuitBreakerHalfOpen(t *testing.T) {
 		t.Fatalf("expected ErrCircuitOpen, got %v", err)
 	}
 
-	// Wait for recovery timeout.
-	time.Sleep(60 * time.Millisecond)
+	clock.Advance(50 * time.Millisecond)
 
 	// First call should be allowed (half-open probe).
 	if err := cb.Allow(); err != nil {
@@ -76,12 +92,13 @@ func TestCircuitBreakerHalfOpen(t *testing.T) {
 }
 
 func TestCircuitBreakerClosesAfterHalfOpenSuccess(t *testing.T) {
-	cb := NewCircuitBreaker(2, 50*time.Millisecond)
+	clock := newFakeClock()
+	cb := newCircuitBreakerWithClock(2, 50*time.Millisecond, clock.Now)
 
 	cb.RecordFailure()
 	cb.RecordFailure()
 
-	time.Sleep(60 * time.Millisecond)
+	clock.Advance(50 * time.Millisecond)
 
 	// Half-open probe.
 	_ = cb.Allow()
@@ -94,12 +111,13 @@ func TestCircuitBreakerClosesAfterHalfOpenSuccess(t *testing.T) {
 }
 
 func TestCircuitBreakerReopensAfterHalfOpenFailure(t *testing.T) {
-	cb := NewCircuitBreaker(2, 50*time.Millisecond)
+	clock := newFakeClock()
+	cb := newCircuitBreakerWithClock(2, 50*time.Millisecond, clock.Now)
 
 	cb.RecordFailure()
 	cb.RecordFailure()
 
-	time.Sleep(60 * time.Millisecond)
+	clock.Advance(50 * time.Millisecond)
 
 	// Half-open probe.
 	_ = cb.Allow()

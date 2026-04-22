@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+type fakeClock struct {
+	t time.Time
+}
+
+func newFakeClock() *fakeClock {
+	return &fakeClock{t: time.Date(2026, 4, 22, 0, 0, 0, 0, time.UTC)}
+}
+
+func (c *fakeClock) Now() time.Time {
+	return c.t
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.t = c.t.Add(d)
+}
+
 func TestLimiterAllow(t *testing.T) {
 	l := NewLimiter(60) // 60 req/min = 1 req/sec
 
@@ -49,7 +65,8 @@ func TestLimiterSeparateKeys(t *testing.T) {
 }
 
 func TestLimiterRefill(t *testing.T) {
-	l := NewLimiter(600) // 600 req/min = 10 req/sec
+	clock := newFakeClock()
+	l := newLimiterWithClock(600, clock.Now) // 600 req/min = 10 req/sec
 
 	// Exhaust all tokens.
 	for i := 0; i < 600; i++ {
@@ -61,8 +78,7 @@ func TestLimiterRefill(t *testing.T) {
 		t.Fatal("should be denied after exhausting tokens")
 	}
 
-	// Wait enough time for at least 1 token to refill (need 0.1s for 1 token at 10/sec).
-	time.Sleep(150 * time.Millisecond)
+	clock.Advance(100 * time.Millisecond)
 
 	ok, _ = l.Allow("refill")
 	if !ok {

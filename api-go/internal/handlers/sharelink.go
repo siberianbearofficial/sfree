@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -84,8 +86,10 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 		}
 
 		var req createShareRequest
-		// Body is optional; ignore bind errors for empty body.
-		_ = c.ShouldBindJSON(&req)
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			c.Status(http.StatusBadRequest)
+			return
+		}
 
 		token, err := cryptoutil.RandomString(shareTokenLength)
 		if err != nil {

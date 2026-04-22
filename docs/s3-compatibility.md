@@ -1,21 +1,22 @@
 # S3 Compatibility Matrix
 
-Last updated: 2026-04-21
+Last updated: 2026-04-22
 
-Baseline: `origin/main` at `eff5880` before the v0.2.0 S3 compatibility PRs. SFree exposes its S3-compatible API under `/api/s3` and uses path-style addressing: `/api/s3/{bucket}/{key}`.
+Baseline: `origin/main` at `214fdd7dec102fea85c8af4b4ada3e282e9eb183`. SFree exposes its S3-compatible API under `/api/s3` and uses path-style addressing: `/api/s3/{bucket}/{key}`.
 
 Reference: [Amazon S3 API operations](https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html).
 
 ## Summary
 
-SFree supports the core object lifecycle: upload, download, head, single-delete, multi-delete, ListObjectsV2, byte-range downloads, and multipart upload. The main compatibility gaps are server-side copy, bucket-discovery calls used by general-purpose clients, metadata fidelity, checksums, and advanced bucket/object APIs.
+SFree supports the core object lifecycle: upload, download, head, copy, single-delete, multi-delete, ListObjectsV2, byte-range downloads, and multipart upload. The main compatibility gaps are bucket-discovery calls used by general-purpose clients, metadata fidelity, checksums, and advanced bucket/object APIs.
 
 Validated v0.2 SDK compatibility scope:
 
 1. ListObjectsV2 plus prefix, delimiter, and pagination support.
 2. Range requests for GetObject.
 3. DeleteObjects multi-delete.
-4. Multipart upload lifecycle.
+4. CopyObject for same-user same-bucket and cross-bucket copies.
+5. Multipart upload lifecycle.
 
 Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, and policy APIs are not v0.2.0 targets.
 
@@ -29,7 +30,7 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | PutObject | Partial | Basic upload and overwrite work. Content-Type, user metadata, object tags, storage class, checksum validation, and server-side encryption headers are ignored. |
 | DeleteObject | Implemented | Single-object delete is idempotent and returns no content for missing keys. |
 | HeadObject | Partial | Returns ETag, Last-Modified, Content-Length, and Content-Type. Range awareness, checksum headers, metadata, and conditional request behavior are missing. |
-| CopyObject | Missing | A PUT with `x-amz-copy-source` is not dispatched to copy behavior on `origin/main`. |
+| CopyObject | Partial | Basic same-bucket and cross-bucket copies are implemented and covered by Go and Python SDK E2E. `x-amz-metadata-directive: REPLACE` returns XML `NotImplemented`; broader metadata-copy fidelity remains limited while metadata persistence is not on `origin/main`. |
 | DeleteObjects | Implemented | SDK multi-delete is covered by `test_s3_sdk_delete_objects_removes_multiple_keys`, including missing-key idempotency. |
 | GetObjectAcl / PutObjectAcl | Missing | ACLs are not modeled in the S3 API. |
 | GetObjectTagging / PutObjectTagging / DeleteObjectTagging | Missing | Object tags are not stored. |
@@ -99,10 +100,10 @@ These checks are based on the current S3 API surface and known request patterns 
 | Configure S3 remote with path-style endpoint | Partial | Requires explicit endpoint and path-style configuration. |
 | `rclone lsd` / bucket discovery | No | `ListBuckets` is missing. |
 | `rclone ls remote:bucket` | Expected for direct bucket paths | ListObjectsV2 prefix/delimiter/pagination is implemented, but live rclone validation is still manual/not automated in this PR. |
-| `rclone copy local remote:bucket` | Partial | Basic PutObject, multipart upload, and listing paths exist; live rclone validation is still manual/not automated in this PR. |
+| `rclone copy local remote:bucket` | Partial | Basic PutObject, multipart upload, copy, and listing paths exist; live rclone validation is still manual/not automated in this PR. |
 | `rclone cat remote:bucket/key` | Yes for full-object reads | Basic GetObject works. |
 | `rclone delete remote:bucket/key` | Yes for single keys | DeleteObject works. |
-| Recursive delete or sync | Partial | ListObjectsV2 and DeleteObjects exist; sync still needs live-client validation and may hit CopyObject/metadata gaps. |
+| Recursive delete or sync | Partial | ListObjectsV2, DeleteObjects, and basic CopyObject exist; sync still needs live-client validation and may hit metadata fidelity gaps. |
 | `rclone mount` | Partial | GetObject range support exists, but live mount behavior is not automated in this PR. |
 
 ### s3cmd
@@ -114,7 +115,7 @@ These checks are based on the current S3 API surface and known request patterns 
 | `s3cmd put file s3://bucket/key` | Yes for simple uploads | PutObject works. |
 | `s3cmd get s3://bucket/key file` | Yes for full-object downloads | GetObject works. |
 | `s3cmd del s3://bucket/key` | Yes | DeleteObject works. |
-| Recursive delete or sync | Partial | Prefix-aware listing and DeleteObjects exist; sync remains live-client/manual validation because metadata/copy semantics are still limited. |
+| Recursive delete or sync | Partial | Prefix-aware listing, DeleteObjects, and basic CopyObject exist; sync remains live-client/manual validation because metadata semantics are still limited. |
 
 ### AWS CLI
 
@@ -125,7 +126,7 @@ These checks are based on the current S3 API surface and known request patterns 
 | `aws s3 cp local s3://bucket/key` | Yes for simple uploads | PutObject works; metadata/content-type persistence is missing. |
 | `aws s3 cp s3://bucket/key local` | Yes for full-object downloads | GetObject works. |
 | `aws s3 rm s3://bucket/key` | Yes | DeleteObject works. |
-| `aws s3 sync` | Partial | ListObjectsV2 and DeleteObjects are covered; CopyObject, metadata behavior, and stronger ETag/checksum compatibility remain gaps. |
+| `aws s3 sync` | Partial | ListObjectsV2, DeleteObjects, and basic CopyObject are covered; metadata behavior and stronger ETag/checksum compatibility remain gaps. |
 | `aws s3 presign s3://bucket/key` | Yes for downloads | Presigned SigV4 requests are supported. |
 
 ### MinIO Client (`mc`)
@@ -137,7 +138,7 @@ These checks are based on the current S3 API surface and known request patterns 
 | `mc cp file alias/bucket/key` | Partial | PutObject should work for simple uploads; recursive copy still needs live MinIO client validation. |
 | `mc cat alias/bucket/key` | Yes for full-object reads | Basic GetObject works. |
 | `mc rm alias/bucket/key` | Yes for single keys | DeleteObject works. |
-| Recursive remove or mirror | Partial | ListObjectsV2 and DeleteObjects exist; mirror still needs live-client validation and may hit CopyObject/metadata gaps. |
+| Recursive remove or mirror | Partial | ListObjectsV2, DeleteObjects, and basic CopyObject exist; mirror still needs live-client validation and may hit metadata fidelity gaps. |
 
 ## v0.2.0 Scope Alignment
 
@@ -146,7 +147,7 @@ These checks are based on the current S3 API surface and known request patterns 
 | Critical | THE-6 | ListObjectsV2 plus V1 prefix/delimiter/pagination backfill | Completed for v0.2 validation. |
 | High | THE-9 | GetObject byte Range support and `Accept-Ranges` headers | Completed for v0.2 validation. |
 | High | THE-8 | DeleteObjects multi-delete | Completed for v0.2 validation. |
-| Medium | THE-7 | CopyObject | Parked behind the higher-impact list/range/delete slices. |
+| Medium | THE-7 | CopyObject | Completed for basic same-bucket and cross-bucket copy validation; metadata replacement remains unsupported. |
 
 The public SDK compatibility issue, [#164](https://github.com/siberianbearofficial/sfree/issues/164), should remain open until live SDK/client validation is run and documented. If this matrix merges before live boto3, AWS SDK, and MinIO client checks are executed, update #164 with the matrix link and keep it open as the SDK validation tracker.
 
@@ -161,6 +162,8 @@ Woodpecker-runnable SDK validation lives in `api-go/e2e/test_api_e2e.py` and use
 Covered SDK paths:
 - `test_s3_sdk_list_objects_v2_prefix_delimiter_and_pagination`: `ListObjectsV2` with prefix, delimiter, `MaxKeys`, and continuation token.
 - `test_s3_sdk_get_object_range_returns_partial_content`: `GetObject` with byte `Range`, `ContentRange`, `ContentLength`, and `AcceptRanges`.
+- `test_s3_sdk_head_object_returns_metadata`: `HeadObject` for ETag, LastModified, ContentLength, and ContentType response fields.
+- `test_s3_sdk_copy_object_compatibility`: `CopyObject` for same-bucket copy, cross-bucket copy, missing-source `NoSuchKey`, and unsupported metadata replacement.
 - `test_s3_sdk_delete_objects_removes_multiple_keys`: `DeleteObjects` for multiple keys plus missing-key idempotency.
 - `test_s3_sdk_multipart_upload_flow`: `CreateMultipartUpload`, `UploadPart`, `ListMultipartUploads`, `ListParts`, and `CompleteMultipartUpload`.
 

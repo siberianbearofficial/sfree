@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/manager"
@@ -69,9 +72,9 @@ type sourceHealthResponse struct {
 	LatencyMS       int64     `json:"latency_ms"`
 	ReasonCode      string    `json:"reason_code"`
 	Message         string    `json:"message"`
-	QuotaTotalBytes *int64    `json:"quota_total_bytes"`
-	QuotaUsedBytes  *int64    `json:"quota_used_bytes"`
-	QuotaFreeBytes  *int64    `json:"quota_free_bytes"`
+	QuotaTotalBytes *int64    `json:"quota_total_bytes" extensions:"x-nullable"`
+	QuotaUsedBytes  *int64    `json:"quota_used_bytes" extensions:"x-nullable"`
+	QuotaFreeBytes  *int64    `json:"quota_free_bytes" extensions:"x-nullable"`
 }
 
 type sourceGetter interface {
@@ -95,6 +98,11 @@ func CreateGDriveSource(repo *repository.SourceRepository) gin.HandlerFunc {
 		var req createGDriveSourceRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			slog.WarnContext(c.Request.Context(), "create gdrive source: invalid request", slog.String("error", err.Error()))
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(req.Key) == "" || !json.Valid([]byte(req.Key)) {
+			slog.WarnContext(c.Request.Context(), "create gdrive source: invalid credentials")
 			c.Status(http.StatusBadRequest)
 			return
 		}
@@ -122,7 +130,13 @@ func CreateTelegramSource(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		key, err := telegram.EncodeConfig(telegram.Config{Token: req.Token, ChatID: req.ChatID})
+		cfg, err := telegram.ValidateConfig(telegram.Config{Token: req.Token, ChatID: req.ChatID})
+		if err != nil {
+			slog.WarnContext(c.Request.Context(), "create telegram source: invalid config", slog.String("error", err.Error()))
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		key, err := telegram.EncodeConfig(cfg)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "create telegram source: encode key", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
@@ -152,7 +166,7 @@ func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		key, err := s3compat.EncodeConfig(s3compat.Config{
+		cfg, err := s3compat.ValidateConfig(s3compat.Config{
 			Endpoint:     req.Endpoint,
 			Region:       req.Region,
 			Bucket:       req.Bucket,
@@ -160,6 +174,12 @@ func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
 			SecretAccess: req.SecretAccessKey,
 			PathStyle:    req.PathStyle,
 		})
+		if err != nil {
+			slog.WarnContext(c.Request.Context(), "create s3 source: invalid config", slog.String("error", err.Error()))
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		key, err := s3compat.EncodeConfig(cfg)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "create s3 source: encode key", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
@@ -447,10 +467,13 @@ func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin
 // @Security BasicAuth
 // @Router /api/v1/sources/{id}/files/{file_id}/download [get]
 func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
+	if sourceRepo == nil {
+		return downloadSourceFile(nil, nil)
+	}
 	return downloadSourceFile(sourceRepo, nil)
 }
 
-func downloadSourceFile(sourceRepo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+func downloadSourceFile(sourceRepo sourceGetter, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if sourceRepo == nil {
 			slog.ErrorContext(c.Request.Context(), "download source file: repository is nil")
@@ -502,10 +525,22 @@ func downloadSourceFile(sourceRepo *repository.SourceRepository, factory manager
 		}
 		defer func() { _ = body.Close() }()
 
+		prefix := make([]byte, 1)
+		n, err := io.ReadFull(body, prefix)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			slog.ErrorContext(c.Request.Context(), "download source file: preflight", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		stream := io.Reader(body)
+		if n > 0 {
+			stream = io.MultiReader(bytes.NewReader(prefix[:n]), body)
+		}
+
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(filename)))
 		c.Header("Content-Type", "application/octet-stream")
 		c.Status(http.StatusOK)
-		if _, err := io.Copy(c.Writer, body); err != nil {
+		if _, err := io.Copy(c.Writer, stream); err != nil {
 			slog.ErrorContext(c.Request.Context(), "download source file: stream", slog.String("error", err.Error()))
 		}
 	}

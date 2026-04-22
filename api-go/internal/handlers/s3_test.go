@@ -80,6 +80,35 @@ func TestParseCopySource(t *testing.T) {
 	}
 }
 
+func TestS3ObjectKeyNormalizesGinWildcard(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		param string
+		want  string
+	}{
+		{name: "leading slash key", param: "/dir/object.txt", want: "dir/object.txt"},
+		{name: "normal key", param: "dir/object.txt", want: "dir/object.txt"},
+		{name: "empty wildcard slash", param: "/", want: ""},
+		{name: "empty wildcard", param: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c, _ := testS3GinContext("/api/s3/bucket/" + tt.param)
+			c.Params = gin.Params{{Key: "object", Value: tt.param}}
+
+			if got := s3ObjectKey(c); got != tt.want {
+				t.Fatalf("expected object key %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestParseObjectRange(t *testing.T) {
 	t.Parallel()
 
