@@ -180,7 +180,7 @@ Scope: `api-go` automated tests, Woodpecker validation, recent `origin/main` cha
 - Confirmed open PR #257 adds CLI helper unit coverage; API and smoke Woodpecker checks were pending during this refresh.
 - Confirmed open PR #258 adds multipart abort cleanup-failure preservation coverage; API and smoke Woodpecker checks were pending during this refresh.
 - Confirmed open PR #260 splits web UI Woodpecker validation into separate lint/build and Playwright gates, improving failure localization without changing the test surface.
-- Confirmed open PR #261 adds source provider config validation coverage for handler/client paths; the main remaining risk is matrix completeness around invalid provider-specific fields.
+- Confirmed merged PR #261 adds source provider config validation coverage for handler/client paths; the main remaining risk is matrix completeness around invalid provider-specific fields.
 - Confirmed open PR #262 adds web UI E2E coverage for download failure toasts in bucket/source download flows.
 - Reviewed `.woodpecker/api-go.yml`; backend PRs and pushes to main run lint, Go unit tests, generated docs freshness, and S3-backed Python and Go E2E suites in Woodpecker.
 - Reviewed open PR check state with `gh pr list` and targeted `gh pr view` calls; check rollups were not conclusively named in this environment, so merge readiness still depends on Woodpecker results in the PR UI.
