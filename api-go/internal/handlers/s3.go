@@ -209,6 +209,10 @@ func lookupBucket(c *gin.Context, bucketRepo objectBucketReader) (*repository.Bu
 	return bucketDoc, true
 }
 
+func s3ObjectKey(c *gin.Context) string {
+	return strings.TrimPrefix(c.Param("object"), "/")
+}
+
 func parseCopySource(raw string) (string, string, bool) {
 	raw = strings.TrimSpace(raw)
 	raw = strings.TrimPrefix(raw, "/")
@@ -270,7 +274,7 @@ func parseObjectRange(raw string, total int64) (objectRange, bool) {
 
 func lookupObject(c *gin.Context, bucketRepo objectBucketReader, fileRepo objectFileReader) (*repository.File, int64, bool) {
 	ctx := c.Request.Context()
-	name := strings.TrimPrefix(c.Param("object"), "/")
+	name := s3ObjectKey(c)
 	bucketDoc, ok := lookupBucket(c, bucketRepo)
 	if !ok {
 		return nil, 0, false
@@ -418,7 +422,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		name := strings.TrimPrefix(c.Param("object"), "/")
+		name := s3ObjectKey(c)
 		if name == "" {
 			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 			return
@@ -466,7 +470,7 @@ func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		if !ok {
 			return
 		}
-		destKey := strings.TrimPrefix(c.Param("object"), "/")
+		destKey := s3ObjectKey(c)
 		if destKey == "" {
 			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "empty destination object key")
 			return
@@ -539,7 +543,7 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 		if !ok {
 			return
 		}
-		name := strings.TrimPrefix(c.Param("object"), "/")
+		name := s3ObjectKey(c)
 		if name == "" {
 			c.Status(http.StatusNoContent)
 			return
