@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 func TestClientUploadDownloadDelete(t *testing.T) {
@@ -129,5 +131,35 @@ func TestCheckChat(t *testing.T) {
 	}
 	if err := cli.CheckChat(context.Background()); err != nil {
 		t.Fatalf("check chat: %v", err)
+	}
+}
+
+func TestProbeSourceHealth(t *testing.T) {
+	t.Parallel()
+	const (
+		token  = "token123"
+		chatID = "-100123"
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/bot"+token+"/getChat", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if got := r.FormValue("chat_id"); got != chatID {
+			t.Fatalf("unexpected chat_id: %s", got)
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"id":-100123}}`))
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	cli, err := NewClientWithBaseURL(Config{Token: token, ChatID: chatID}, ts.URL)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	health, err := cli.ProbeSourceHealth(context.Background())
+	if err != nil {
+		t.Fatalf("source health: %v", err)
+	}
+	if health.Status != sourcecap.HealthHealthy || health.ReasonCode != "ok" {
+		t.Fatalf("unexpected health: %+v", health)
 	}
 }

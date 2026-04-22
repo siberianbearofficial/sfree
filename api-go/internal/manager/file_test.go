@@ -9,27 +9,21 @@ import (
 	"io"
 	"testing"
 
-	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/example/sfree/api-go/internal/resilience"
-	"github.com/example/sfree/api-go/internal/s3compat"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type stubSourceClient struct {
-	uploaded     [][]byte
-	uploadErr    error
-	uploadErrAt  int
-	uploadCalls  int
-	downloadErr  error
-	deleted      []string
-	deleteErr    error
-	gdriveFiles  []gdrive.File
-	storageTotal int64
-	storageUsed  int64
-	storageFree  int64
-	s3Objects    []s3compat.ObjectInfo
-	s3Used       int64
+	uploaded    [][]byte
+	uploadErr   error
+	uploadErrAt int
+	uploadCalls int
+	downloadErr error
+	deleted     []string
+	deleteErr   error
+	sourceInfo  sourcecap.Info
 }
 
 type readOnceThenError struct {
@@ -69,16 +63,8 @@ func (c *stubSourceClient) Delete(_ context.Context, name string) error {
 	return c.deleteErr
 }
 
-func (c *stubSourceClient) ListFiles(_ context.Context) ([]gdrive.File, error) {
-	return c.gdriveFiles, nil
-}
-
-func (c *stubSourceClient) StorageInfo(_ context.Context) (int64, int64, int64, error) {
-	return c.storageTotal, c.storageUsed, c.storageFree, nil
-}
-
-func (c *stubSourceClient) ListObjects(_ context.Context) ([]s3compat.ObjectInfo, int64, error) {
-	return c.s3Objects, c.s3Used, nil
+func (c *stubSourceClient) SourceInfo(_ context.Context) (sourcecap.Info, error) {
+	return c.sourceInfo, nil
 }
 
 func TestSourceClientCacheReusesClients(t *testing.T) {
@@ -540,10 +526,12 @@ func TestInspectSourceUsesFactoryForGDrive(t *testing.T) {
 			t.Fatal("expected source pointer to be passed to factory")
 		}
 		return &stubSourceClient{
-			gdriveFiles:  []gdrive.File{{ID: "file-id", Name: "file.txt", Size: 42}},
-			storageTotal: 100,
-			storageUsed:  42,
-			storageFree:  58,
+			sourceInfo: sourcecap.Info{
+				Files:        []sourcecap.File{{ID: "file-id", Name: "file.txt", Size: 42}},
+				StorageTotal: 100,
+				StorageUsed:  42,
+				StorageFree:  58,
+			},
 		}, nil
 	}
 
@@ -572,8 +560,10 @@ func TestInspectSourceUsesFactoryForS3(t *testing.T) {
 			t.Fatal("expected source pointer to be passed to factory")
 		}
 		return &stubSourceClient{
-			s3Objects: []s3compat.ObjectInfo{{Key: "object-key", Size: 12}},
-			s3Used:    12,
+			sourceInfo: sourcecap.Info{
+				Files:       []sourcecap.File{{ID: "object-key", Name: "object-key", Size: 12}},
+				StorageUsed: 12,
+			},
 		}, nil
 	}
 

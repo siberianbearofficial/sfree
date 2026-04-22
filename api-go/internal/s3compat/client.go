@@ -10,6 +10,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 type Config struct {
@@ -137,4 +138,31 @@ func (c *Client) HeadBucket(ctx context.Context) error {
 	}
 	_, err := headFn(ctx, &s3.HeadBucketInput{Bucket: aws.String(c.cfg.Bucket)})
 	return err
+}
+
+func (c *Client) SourceInfo(ctx context.Context) (sourcecap.Info, error) {
+	objects, used, err := c.ListObjects(ctx)
+	if err != nil {
+		return sourcecap.Info{}, err
+	}
+	files := make([]sourcecap.File, 0, len(objects))
+	for _, obj := range objects {
+		files = append(files, sourcecap.File{ID: obj.Key, Name: obj.Key, Size: obj.Size})
+	}
+	return sourcecap.Info{Files: files, StorageUsed: used}, nil
+}
+
+func (c *Client) ProbeSourceHealth(ctx context.Context) (sourcecap.Health, error) {
+	if err := c.HeadBucket(ctx); err != nil {
+		return sourcecap.Health{
+			Status:     sourcecap.HealthUnhealthy,
+			ReasonCode: "probe_failed",
+			Message:    "S3 bucket metadata probe failed.",
+		}, err
+	}
+	return sourcecap.Health{
+		Status:     sourcecap.HealthHealthy,
+		ReasonCode: "ok",
+		Message:    "S3 bucket metadata is reachable.",
+	}, nil
 }
