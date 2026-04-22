@@ -3,10 +3,12 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/manager"
@@ -99,6 +101,11 @@ func CreateGDriveSource(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusBadRequest)
 			return
 		}
+		if strings.TrimSpace(req.Key) == "" || !json.Valid([]byte(req.Key)) {
+			slog.WarnContext(c.Request.Context(), "create gdrive source: invalid credentials")
+			c.Status(http.StatusBadRequest)
+			return
+		}
 		saveSource(c, repo, repository.SourceTypeGDrive, req.Name, req.Key)
 	}
 }
@@ -123,7 +130,13 @@ func CreateTelegramSource(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		key, err := telegram.EncodeConfig(telegram.Config{Token: req.Token, ChatID: req.ChatID})
+		cfg, err := telegram.ValidateConfig(telegram.Config{Token: req.Token, ChatID: req.ChatID})
+		if err != nil {
+			slog.WarnContext(c.Request.Context(), "create telegram source: invalid config", slog.String("error", err.Error()))
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		key, err := telegram.EncodeConfig(cfg)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "create telegram source: encode key", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
@@ -153,7 +166,7 @@ func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		key, err := s3compat.EncodeConfig(s3compat.Config{
+		cfg, err := s3compat.ValidateConfig(s3compat.Config{
 			Endpoint:     req.Endpoint,
 			Region:       req.Region,
 			Bucket:       req.Bucket,
@@ -161,6 +174,12 @@ func CreateS3Source(repo *repository.SourceRepository) gin.HandlerFunc {
 			SecretAccess: req.SecretAccessKey,
 			PathStyle:    req.PathStyle,
 		})
+		if err != nil {
+			slog.WarnContext(c.Request.Context(), "create s3 source: invalid config", slog.String("error", err.Error()))
+			c.Status(http.StatusBadRequest)
+			return
+		}
+		key, err := s3compat.EncodeConfig(cfg)
 		if err != nil {
 			slog.ErrorContext(c.Request.Context(), "create s3 source: encode key", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
