@@ -115,7 +115,13 @@ func registerDocsMetricsRoutes(router *gin.Engine) {
 		c.Redirect(http.StatusMovedPermanently, "/api/docs/index.html")
 	})
 	router.GET("/api/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("/api/openapi.json")))
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	router.GET("/swagger/*any", func(c *gin.Context) {
+		if c.Param("any") == "/doc.json" {
+			c.Redirect(http.StatusMovedPermanently, "/api/openapi.json")
+			return
+		}
+		c.Redirect(http.StatusMovedPermanently, "/api/docs")
+	})
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }
 

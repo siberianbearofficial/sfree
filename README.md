@@ -244,7 +244,7 @@ Run `sfree --help` or `sfree <command> --help` for full usage details.
 
 | Directory | Purpose |
 | --- | --- |
-| `api-go/` | **Primary backend** — Go HTTP API, S3-compatible routes, Swagger docs, MongoDB metadata |
+| `api-go/` | **Primary backend** — Go HTTP API, S3-compatible routes, OpenAPI docs, MongoDB metadata |
 | `webui/` | React 19 + Vite frontend — signup, source management, bucket operations, file upload/download |
 | `api-python-archived/` | Archived Python backend (historical reference only — not maintained) |
 | `docs/` | Architecture notes, quickstart walkthrough, CI docs |

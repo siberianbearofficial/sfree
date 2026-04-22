@@ -122,6 +122,42 @@ func TestOpenAPIDocsRouteRedirectsToIndex(t *testing.T) {
 	}
 }
 
+func TestLegacySwaggerRouteRedirectsToCanonicalDocs(t *testing.T) {
+	r, err := SetupRouter(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "/swagger/index.html", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected 301, got %d", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "/api/docs" {
+		t.Fatalf("expected redirect to /api/docs, got %q", got)
+	}
+}
+
+func TestLegacySwaggerDocJSONRouteRedirectsToOpenAPIJSON(t *testing.T) {
+	r, err := SetupRouter(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "/swagger/doc.json", nil)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected 301, got %d", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "/api/openapi.json" {
+		t.Fatalf("expected redirect to /api/openapi.json, got %q", got)
+	}
+}
+
 func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 	tests := []struct {
 		name string
