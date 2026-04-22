@@ -565,16 +565,20 @@ func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.So
 			return
 		}
 		total := fileContentLength(fileDoc)
-		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamDownloadFileRange); err != nil {
-			slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
+		w := newDeferredResponseWriter(c, func() {
+			setAttachmentDownloadHeaders(c, fileDoc.Name, total)
+			c.Status(http.StatusOK)
+		})
+		if err := streamDownloadFile(c.Request.Context(), sourceRepo, fileDoc, w); err != nil {
+			if !w.isCommitted() {
+				slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			slog.ErrorContext(ctx, "download file: stream failed after response commit", slog.String("error", err.Error()))
 			return
 		}
-		setAttachmentDownloadHeaders(c, fileDoc.Name, total)
-		c.Status(http.StatusOK)
-		if err := streamDownloadFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-			slog.ErrorContext(ctx, "download file: stream failed after response commit", slog.String("error", err.Error()))
-		}
+		w.commitNow()
 	}
 }
 
