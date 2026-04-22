@@ -143,7 +143,7 @@ func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *reposit
 	return svc
 }
 
-func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int) (PutObjectResult, error) {
+func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int, contentType string, userMetadata map[string]string) (PutObjectResult, error) {
 	sources, err := s.sources.ListByIDs(ctx, bucket.SourceIDs)
 	if err != nil {
 		return PutObjectResult{}, err
@@ -157,7 +157,14 @@ func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket
 		return PutObjectResult{}, err
 	}
 
-	fileDoc := repository.File{BucketID: bucket.ID, Name: name, CreatedAt: s.now(), Chunks: chunks}
+	fileDoc := repository.File{
+		BucketID:     bucket.ID,
+		Name:         name,
+		CreatedAt:    s.now(),
+		Chunks:       chunks,
+		ContentType:  contentType,
+		UserMetadata: cloneStringMap(userMetadata),
+	}
 	currentFile, previousFile, err := s.files.ReplaceByName(ctx, fileDoc)
 	if err != nil {
 		_ = s.deleteChunks(ctx, chunks)
@@ -229,7 +236,14 @@ func (s *ObjectService) CopyObject(ctx context.Context, sourceBucket, destBucket
 	}
 
 	chunks := append([]repository.FileChunk(nil), sourceFile.Chunks...)
-	copyFile := repository.File{BucketID: destBucket.ID, Name: destKey, CreatedAt: s.now(), Chunks: chunks}
+	copyFile := repository.File{
+		BucketID:     destBucket.ID,
+		Name:         destKey,
+		CreatedAt:    s.now(),
+		Chunks:       chunks,
+		ContentType:  sourceFile.ContentType,
+		UserMetadata: cloneStringMap(sourceFile.UserMetadata),
+	}
 	currentFile, previousFile, err := s.files.ReplaceByName(ctx, copyFile)
 	if err != nil {
 		return CopyObjectResult{}, err
@@ -371,10 +385,12 @@ func (s *ObjectService) CompleteMultipartUploadRecord(ctx context.Context, bucke
 	}
 
 	fileDoc := repository.File{
-		BucketID:  bucketID,
-		Name:      mu.ObjectKey,
-		CreatedAt: s.now(),
-		Chunks:    allChunks,
+		BucketID:     bucketID,
+		Name:         mu.ObjectKey,
+		CreatedAt:    s.now(),
+		Chunks:       allChunks,
+		ContentType:  mu.ContentType,
+		UserMetadata: cloneStringMap(mu.UserMetadata),
 	}
 	saved, previousFile, err := s.files.ReplaceByName(ctx, fileDoc)
 	if err != nil {
@@ -511,6 +527,17 @@ func multipartPartETag(chunks []repository.FileChunk) string {
 		_, _ = h.Write([]byte(chunk.Name))
 	}
 	return fmt.Sprintf("\"%s\"", hex.EncodeToString(h.Sum(nil)))
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }
 
 func multipartETag(requestedParts []CompleteMultipartPart, partMap map[int]repository.UploadPart) string {

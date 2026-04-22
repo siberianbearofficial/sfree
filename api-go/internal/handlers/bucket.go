@@ -431,7 +431,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		defer func() { _ = f.Close() }()
 
-		result, err := objectSvc.PutObject(ctx, bucketDoc, fh.Filename, f, chunkSize)
+		result, err := objectSvc.PutObject(ctx, bucketDoc, fh.Filename, f, chunkSize, objectContentType(fh.Header.Get("Content-Type")), nil)
 		if err != nil {
 			if errors.Is(err, manager.ErrNoSources) {
 				c.Status(http.StatusBadRequest)
