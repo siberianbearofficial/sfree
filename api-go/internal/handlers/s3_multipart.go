@@ -265,7 +265,7 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 		switch {
 		case errors.Is(err, manager.ErrMultipartUploadNotFound):
 			writeS3Error(c, http.StatusNotFound, "NoSuchUpload", "")
-		case errors.Is(err, manager.ErrNoSources):
+		case isBucketSourceResolutionError(err):
 			writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "no sources configured")
 		default:
 			slog.ErrorContext(ctx, "upload part: store part", slog.String("error", err.Error()))

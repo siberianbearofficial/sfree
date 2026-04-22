@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/cryptoutil"
@@ -10,6 +12,27 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+var ErrSourcesNotFound = errors.New("sources not found")
+
+type SourcesNotFoundError struct {
+	IDs []primitive.ObjectID
+}
+
+func (e SourcesNotFoundError) Error() string {
+	if len(e.IDs) == 0 {
+		return ErrSourcesNotFound.Error()
+	}
+	ids := make([]string, 0, len(e.IDs))
+	for _, id := range e.IDs {
+		ids = append(ids, id.Hex())
+	}
+	return fmt.Sprintf("%s: %s", ErrSourcesNotFound, strings.Join(ids, ", "))
+}
+
+func (e SourcesNotFoundError) Unwrap() error {
+	return ErrSourcesNotFound
+}
 
 type SourceType string
 
@@ -122,13 +145,25 @@ func (r *SourceRepository) ListByIDs(ctx context.Context, ids []primitive.Object
 	if err := cursor.Err(); err != nil {
 		return nil, err
 	}
+	return orderSourcesByIDs(ids, byID)
+}
+
+func orderSourcesByIDs(ids []primitive.ObjectID, byID map[primitive.ObjectID]Source) ([]Source, error) {
+	if len(ids) == 0 {
+		return []Source{}, nil
+	}
 	sources := make([]Source, 0, len(ids))
+	missing := make([]primitive.ObjectID, 0)
 	for _, id := range ids {
 		source, ok := byID[id]
 		if !ok {
+			missing = append(missing, id)
 			continue
 		}
 		sources = append(sources, source)
+	}
+	if len(missing) > 0 {
+		return nil, SourcesNotFoundError{IDs: missing}
 	}
 	return sources, nil
 }

@@ -19,6 +19,8 @@ type fakeObjectSources struct {
 	err     error
 }
 
+var objectServiceTestSourceID = primitive.NewObjectID()
+
 func (f *fakeObjectSources) ListByIDs(context.Context, []primitive.ObjectID) ([]repository.Source, error) {
 	if f.err != nil {
 		return nil, f.err
@@ -390,13 +392,13 @@ func fileKey(bucketID primitive.ObjectID, name string) string {
 func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) *ObjectService {
 	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
 	return &ObjectService{
-		sources: &fakeObjectSources{sources: []repository.Source{{ID: primitive.NewObjectID()}}},
+		sources: &fakeObjectSources{sources: []repository.Source{{ID: objectServiceTestSourceID}}},
 		files:   files,
 		uploadChunks: func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {
 			if _, err := io.Copy(io.Discard, r); err != nil {
 				return nil, err
 			}
-			return []repository.FileChunk{{SourceID: primitive.NewObjectID(), Name: "new-chunk", Size: 4}}, nil
+			return []repository.FileChunk{{SourceID: objectServiceTestSourceID, Name: "new-chunk", Size: 4}}, nil
 		},
 		deleteChunks: func(_ context.Context, chunks []repository.FileChunk) error {
 			*deleted = append(*deleted, chunks...)
@@ -422,7 +424,7 @@ func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
 
-	result, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5)
+	result, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{objectServiceTestSourceID}}, "object.txt", bytes.NewBufferString("data"), 5)
 	if err != nil {
 		t.Fatalf("PutObject returned error: %v", err)
 	}
@@ -444,12 +446,45 @@ func TestObjectServicePutObjectCreateFailureDeletesUploadedChunks(t *testing.T) 
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
 
-	_, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5)
+	_, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{objectServiceTestSourceID}}, "object.txt", bytes.NewBufferString("data"), 5)
 	if err == nil {
 		t.Fatal("expected PutObject create error")
 	}
 	if len(deleted) != 1 || deleted[0].Name != "new-chunk" {
 		t.Fatalf("expected uploaded chunk cleanup after create failure, got %#v", deleted)
+	}
+}
+
+func TestObjectServicePutObjectRejectsPartiallyResolvedSources(t *testing.T) {
+	presentID := primitive.NewObjectID()
+	missingID := primitive.NewObjectID()
+	files := newFakeObjectFiles()
+	uploadCalled := false
+	svc := &ObjectService{
+		sources: &fakeObjectSources{sources: []repository.Source{{ID: presentID}}},
+		files:   files,
+		uploadChunks: func(context.Context, io.Reader, []repository.Source, int, SourceSelector) ([]repository.FileChunk, error) {
+			uploadCalled = true
+			return nil, nil
+		},
+		deleteChunks: func(context.Context, []repository.FileChunk) error {
+			return nil
+		},
+		now: time.Now,
+	}
+
+	_, err := svc.PutObject(context.Background(), &repository.Bucket{
+		ID:        primitive.NewObjectID(),
+		SourceIDs: []primitive.ObjectID{presentID, missingID},
+	}, "object.txt", bytes.NewBufferString("data"), 5)
+	if !errors.Is(err, repository.ErrSourcesNotFound) {
+		t.Fatalf("expected ErrSourcesNotFound, got %v", err)
+	}
+	if uploadCalled {
+		t.Fatal("expected upload to be skipped")
+	}
+	if len(files.byName) != 0 {
+		t.Fatalf("expected no file metadata writes, got %#v", files.byName)
 	}
 }
 
@@ -466,7 +501,7 @@ func TestObjectServicePutObjectOverwriteFailureDeletesUploadedChunks(t *testing.
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
 
-	_, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5)
+	_, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{objectServiceTestSourceID}}, "object.txt", bytes.NewBufferString("data"), 5)
 	if err == nil {
 		t.Fatal("expected PutObject overwrite error")
 	}

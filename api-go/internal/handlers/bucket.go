@@ -433,7 +433,7 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 
 		result, err := objectSvc.PutObject(ctx, bucketDoc, fh.Filename, f, chunkSize)
 		if err != nil {
-			if errors.Is(err, manager.ErrNoSources) {
+			if isBucketSourceResolutionError(err) {
 				c.Status(http.StatusBadRequest)
 				return
 			}
