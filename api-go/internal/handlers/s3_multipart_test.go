@@ -210,6 +210,34 @@ func TestCompletedMultipartChunksPreservesChecksums(t *testing.T) {
 	}
 }
 
+func TestMultipartPartChunksReturnsReplacedPartChunks(t *testing.T) {
+	t.Parallel()
+
+	sourceID := primitive.NewObjectID()
+	parts := []repository.UploadPart{
+		{
+			PartNumber: 1,
+			Chunks: []repository.FileChunk{
+				{SourceID: sourceID, Name: "part-1-old", Order: 0, Size: 5},
+			},
+		},
+		{
+			PartNumber: 2,
+			Chunks: []repository.FileChunk{
+				{SourceID: sourceID, Name: "part-2-kept", Order: 1, Size: 7},
+			},
+		},
+	}
+
+	got := multipartPartChunks(parts, 1)
+	if len(got) != 1 || got[0].Name != "part-1-old" {
+		t.Fatalf("expected previous chunks for replaced part, got %+v", got)
+	}
+	if got := multipartPartChunks(parts, 3); got != nil {
+		t.Fatalf("expected nil chunks for new part, got %+v", got)
+	}
+}
+
 func TestListMultipartUploadsResultXML(t *testing.T) {
 	t.Parallel()
 

@@ -288,15 +288,7 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 		return
 	}
 
-	// Delete old part chunks if re-uploading the same part number.
-	for _, p := range mu.Parts {
-		if p.PartNumber == partNum && len(p.Chunks) > 0 {
-			if delErr := manager.DeleteFileChunks(ctx, sourceRepo, p.Chunks); delErr != nil {
-				slog.WarnContext(ctx, "upload part: delete old part chunks", slog.String("error", delErr.Error()))
-			}
-			break
-		}
-	}
+	previousChunks := multipartPartChunks(mu.Parts, partNum)
 
 	selector := manager.SelectorForBucket(bucketDoc, sources)
 	chunks, err := manager.UploadFileChunksWithStrategy(ctx, c.Request.Body, sources, chunkSize, nil, selector)
@@ -327,9 +319,23 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 		return
 	}
+	if len(previousChunks) > 0 {
+		if delErr := manager.DeleteFileChunks(ctx, sourceRepo, previousChunks); delErr != nil {
+			slog.WarnContext(ctx, "upload part: delete replaced part chunks", slog.String("error", delErr.Error()))
+		}
+	}
 
 	c.Header("ETag", etag)
 	c.Status(http.StatusOK)
+}
+
+func multipartPartChunks(parts []repository.UploadPart, partNumber int) []repository.FileChunk {
+	for _, part := range parts {
+		if part.PartNumber == partNumber {
+			return part.Chunks
+		}
+	}
+	return nil
 }
 
 func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) {
