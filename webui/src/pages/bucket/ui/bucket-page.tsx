@@ -99,6 +99,15 @@ export function BucketPage() {
     setShareFile(file);
   }
 
+  async function handleDownload(file: FileInfo) {
+    if (!id) return;
+    try {
+      await downloadFile(id, file);
+    } catch (err) {
+      showErrorToast(err);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[200px]">
@@ -223,7 +232,7 @@ export function BucketPage() {
                       <Button
                         isIconOnly
                         variant="light"
-                        onPress={() => downloadFile(id!, f)}
+                        onPress={() => handleDownload(f)}
                       >
                         <DownloadIcon className="w-5 h-5" />
                       </Button>
