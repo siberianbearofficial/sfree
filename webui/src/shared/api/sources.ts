@@ -4,6 +4,21 @@ export type Source = {id: string; name: string; type: string; created_at: string
 
 export type SourceFile = {id: string; name: string; size: number};
 
+export type SourceHealthStatus = "healthy" | "degraded" | "unhealthy";
+
+export type SourceHealth = {
+  id: string;
+  type: string;
+  status: SourceHealthStatus;
+  checked_at: string;
+  latency_ms: number;
+  reason_code: string;
+  message: string;
+  quota_total_bytes: number | null;
+  quota_used_bytes: number | null;
+  quota_free_bytes: number | null;
+};
+
 export type SourceInfo = {
   id: string;
   name: string;
@@ -62,6 +77,13 @@ export async function getSourceInfo(id: string): Promise<SourceInfo> {
   return apiJson<SourceInfo>(
     `/sources/${id}/info`,
     "Failed to get source info",
+  );
+}
+
+export async function getSourceHealth(id: string): Promise<SourceHealth> {
+  return apiJson<SourceHealth>(
+    `/sources/${id}/health`,
+    "Failed to check source health",
   );
 }
 

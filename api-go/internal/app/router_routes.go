@@ -94,6 +94,7 @@ func registerSourceRoutes(router *gin.Engine, deps *routerDependencies) {
 	router.POST("/api/v1/sources/telegram", deps.auth, handlers.CreateTelegramSource(deps.sourceRepo))
 	router.POST("/api/v1/sources/s3", deps.auth, handlers.CreateS3Source(deps.sourceRepo))
 	router.GET("/api/v1/sources", deps.auth, handlers.ListSources(deps.sourceRepo))
+	router.GET("/api/v1/sources/:id/health", deps.auth, handlers.GetSourceHealth(deps.sourceRepo))
 	router.GET("/api/v1/sources/:id/info", deps.auth, handlers.GetSourceInfo(deps.sourceRepo))
 	router.GET("/api/v1/sources/:id/files/:file_id/download", deps.auth, handlers.DownloadSourceFile(deps.sourceRepo))
 	router.DELETE("/api/v1/sources/:id", deps.auth, handlers.DeleteSource(deps.sourceRepo, deps.bucketRepo))

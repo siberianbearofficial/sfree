@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"github.com/example/sfree/api-go/internal/s3compat"
 	"github.com/example/sfree/api-go/internal/telegram"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -57,6 +59,23 @@ type sourceInfoResponse struct {
 	StorageTotal int64            `json:"storage_total"`
 	StorageUsed  int64            `json:"storage_used"`
 	StorageFree  int64            `json:"storage_free"`
+}
+
+type sourceHealthResponse struct {
+	ID              string    `json:"id"`
+	Type            string    `json:"type"`
+	Status          string    `json:"status"`
+	CheckedAt       time.Time `json:"checked_at"`
+	LatencyMS       int64     `json:"latency_ms"`
+	ReasonCode      string    `json:"reason_code"`
+	Message         string    `json:"message"`
+	QuotaTotalBytes *int64    `json:"quota_total_bytes"`
+	QuotaUsedBytes  *int64    `json:"quota_used_bytes"`
+	QuotaFreeBytes  *int64    `json:"quota_free_bytes"`
+}
+
+type sourceGetter interface {
+	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.Source, error)
 }
 
 // CreateGDriveSource godoc
@@ -339,6 +358,77 @@ func getSourceInfo(repo *repository.SourceRepository, factory manager.SourceClie
 			StorageTotal: info.StorageTotal,
 			StorageUsed:  info.StorageUsed,
 			StorageFree:  info.StorageFree,
+		})
+	}
+}
+
+// GetSourceHealth godoc
+// @Summary Check source health
+// @Description Runs a lightweight on-demand provider probe. Google Drive returns native quota when available; S3-compatible and Telegram quota fields are null because no cheap native capacity is available.
+// @Tags sources
+// @Param id path string true "Source ID"
+// @Success 200 {object} sourceHealthResponse
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources/{id}/health [get]
+func GetSourceHealth(repo *repository.SourceRepository) gin.HandlerFunc {
+	return getSourceHealth(repo, nil)
+}
+
+func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if repo == nil {
+			slog.ErrorContext(ctx, "get source health: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		userID, ok := authenticatedUserID(c)
+		if !ok {
+			return
+		}
+		id, ok := routeObjectID(c, "id")
+		if !ok {
+			return
+		}
+		src, err := repo.GetByID(c.Request.Context(), id)
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				c.Status(http.StatusNotFound)
+				return
+			}
+			slog.ErrorContext(ctx, "get source health: get source", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if src.UserID != userID {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		health, err := manager.CheckSourceHealth(c.Request.Context(), src, factory)
+		if err != nil {
+			if err == manager.ErrUnsupportedSourceType {
+				c.Status(http.StatusBadRequest)
+				return
+			}
+			slog.ErrorContext(ctx, "get source health: check source", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.JSON(http.StatusOK, sourceHealthResponse{
+			ID:              health.SourceID,
+			Type:            health.SourceType,
+			Status:          string(health.Status),
+			CheckedAt:       health.CheckedAt,
+			LatencyMS:       health.LatencyMS,
+			ReasonCode:      health.ReasonCode,
+			Message:         health.Message,
+			QuotaTotalBytes: health.Quota.TotalBytes,
+			QuotaUsedBytes:  health.Quota.UsedBytes,
+			QuotaFreeBytes:  health.Quota.FreeBytes,
 		})
 	}
 }

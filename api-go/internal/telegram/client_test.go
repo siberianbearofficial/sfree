@@ -105,3 +105,29 @@ func TestConfigCodec(t *testing.T) {
 		t.Fatalf("unexpected parsed config: %+v", parsed)
 	}
 }
+
+func TestCheckChat(t *testing.T) {
+	t.Parallel()
+	const (
+		token  = "token123"
+		chatID = "-100123"
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/bot"+token+"/getChat", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if got := r.FormValue("chat_id"); got != chatID {
+			t.Fatalf("unexpected chat_id: %s", got)
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"id":-100123}}`))
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	cli, err := NewClientWithBaseURL(Config{Token: token, ChatID: chatID}, ts.URL)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	if err := cli.CheckChat(context.Background()); err != nil {
+		t.Fatalf("check chat: %v", err)
+	}
+}
