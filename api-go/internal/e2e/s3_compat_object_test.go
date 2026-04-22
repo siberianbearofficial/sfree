@@ -203,6 +203,7 @@ func TestS3CompatCopyObject(t *testing.T) {
 	if status != http.StatusNotImplemented {
 		t.Fatalf("CopyObject REPLACE: expected 501, got %d: %s", status, body)
 	}
+	assertS3Error(t, body, "NotImplemented")
 
 	status, body = s3Do(t, http.MethodDelete, s3URL(sourceBucket, sourceKey), sourceBucket.AccessKey, sourceBucket.AccessSecret, env.Region, nil)
 	if status != http.StatusNoContent {
