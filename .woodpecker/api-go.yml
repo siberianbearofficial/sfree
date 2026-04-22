@@ -25,6 +25,12 @@ steps:
       - cd api-go
       - go test ./...
 
+  - name: dependency audit
+    image: public.ecr.aws/docker/library/golang:1.24
+    commands:
+      - cd api-go
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   - name: api docs freshness
     image: public.ecr.aws/docker/library/golang:1.24
     commands:
