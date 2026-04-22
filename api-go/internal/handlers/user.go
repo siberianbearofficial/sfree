@@ -21,7 +21,13 @@ type currentUserResponse struct {
 	GitHubID  int64  `json:"github_id,omitempty"`
 }
 
-// GetCurrentUser returns the profile of the authenticated user.
+// GetCurrentUser godoc
+// @Summary Get current user
+// @Tags auth
+// @Success 200 {object} currentUserResponse
+// @Failure 401 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/auth/me [get]
 func GetCurrentUser(repo *repository.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		oid, ok := authenticatedUserID(c)

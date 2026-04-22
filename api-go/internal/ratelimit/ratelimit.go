@@ -11,6 +11,7 @@ type Limiter struct {
 	buckets map[string]*bucket
 	rate    float64 // tokens per second
 	burst   int     // max tokens (bucket capacity)
+	now     func() time.Time
 }
 
 type bucket struct {
@@ -29,10 +30,15 @@ type reservation struct {
 // NewLimiter creates a rate limiter that allows reqsPerMin requests per minute
 // with a burst size equal to reqsPerMin.
 func NewLimiter(reqsPerMin int) *Limiter {
+	return newLimiterWithClock(reqsPerMin, time.Now)
+}
+
+func newLimiterWithClock(reqsPerMin int, now func() time.Time) *Limiter {
 	return &Limiter{
 		buckets: make(map[string]*bucket),
 		rate:    float64(reqsPerMin) / 60.0,
 		burst:   reqsPerMin,
+		now:     now,
 	}
 }
 
@@ -48,7 +54,7 @@ func (l *Limiter) reserve(key string) *reservation {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	now := time.Now()
+	now := l.now()
 	b, exists := l.buckets[key]
 	if !exists {
 		b = &bucket{tokens: float64(l.burst), lastTime: now}
@@ -93,7 +99,7 @@ func (l *Limiter) Cleanup(maxAge time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	cutoff := time.Now().Add(-maxAge)
+	cutoff := l.now().Add(-maxAge)
 	for key, b := range l.buckets {
 		if b.lastTime.Before(cutoff) {
 			delete(l.buckets, key)

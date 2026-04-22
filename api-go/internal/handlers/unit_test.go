@@ -44,6 +44,22 @@ func TestCreateGDriveSourceMissingFields(t *testing.T) {
 	}
 }
 
+func TestCreateGDriveSourceMalformedKeyJSON(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.POST("/sources/gdrive", CreateGDriveSource(nil))
+
+	body, _ := json.Marshal(map[string]string{"name": "gdrive", "key": "{"})
+	req, _ := http.NewRequest(http.MethodPost, "/sources/gdrive", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
 func TestCreateTelegramSourceMissingFields(t *testing.T) {
 	t.Parallel()
 	r := gin.New()
@@ -60,6 +76,38 @@ func TestCreateTelegramSourceMissingFields(t *testing.T) {
 	}
 }
 
+func TestCreateTelegramSourceRejectsBlankConfig(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.POST("/sources/telegram", CreateTelegramSource(nil))
+
+	body, _ := json.Marshal(map[string]string{"name": "tg", "token": "   ", "chat_id": "123"})
+	req, _ := http.NewRequest(http.MethodPost, "/sources/telegram", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCreateTelegramSourceValidConfigReachesPersistence(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.POST("/sources/telegram", CreateTelegramSource(nil))
+
+	body, _ := json.Marshal(map[string]string{"name": "tg", "token": "token", "chat_id": "123"})
+	req, _ := http.NewRequest(http.MethodPost, "/sources/telegram", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+}
+
 func TestCreateS3SourceMissingFields(t *testing.T) {
 	t.Parallel()
 	r := gin.New()
@@ -73,6 +121,72 @@ func TestCreateS3SourceMissingFields(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCreateS3SourceRejectsMalformedEndpoint(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.POST("/sources/s3", CreateS3Source(nil))
+
+	body, _ := json.Marshal(map[string]any{
+		"name":              "s3",
+		"endpoint":          "not a url",
+		"bucket":            "bucket",
+		"access_key_id":     "access",
+		"secret_access_key": "secret",
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/sources/s3", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCreateS3SourceRejectsBlankConfig(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.POST("/sources/s3", CreateS3Source(nil))
+
+	body, _ := json.Marshal(map[string]any{
+		"name":              "s3",
+		"endpoint":          "https://s3.example.com",
+		"bucket":            "   ",
+		"access_key_id":     "access",
+		"secret_access_key": "secret",
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/sources/s3", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCreateS3SourceValidConfigReachesPersistence(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.POST("/sources/s3", CreateS3Source(nil))
+
+	body, _ := json.Marshal(map[string]any{
+		"name":              "s3",
+		"endpoint":          "https://s3.example.com",
+		"bucket":            "bucket",
+		"access_key_id":     "access",
+		"secret_access_key": "secret",
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/sources/s3", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
 	}
 }
 
