@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -447,10 +448,13 @@ func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin
 // @Security BasicAuth
 // @Router /api/v1/sources/{id}/files/{file_id}/download [get]
 func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
+	if sourceRepo == nil {
+		return downloadSourceFile(nil, nil)
+	}
 	return downloadSourceFile(sourceRepo, nil)
 }
 
-func downloadSourceFile(sourceRepo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+func downloadSourceFile(sourceRepo sourceGetter, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if sourceRepo == nil {
 			slog.ErrorContext(c.Request.Context(), "download source file: repository is nil")
@@ -502,10 +506,22 @@ func downloadSourceFile(sourceRepo *repository.SourceRepository, factory manager
 		}
 		defer func() { _ = body.Close() }()
 
+		prefix := make([]byte, 1)
+		n, err := io.ReadFull(body, prefix)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			slog.ErrorContext(c.Request.Context(), "download source file: preflight", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		stream := io.Reader(body)
+		if n > 0 {
+			stream = io.MultiReader(bytes.NewReader(prefix[:n]), body)
+		}
+
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(filename)))
 		c.Header("Content-Type", "application/octet-stream")
 		c.Status(http.StatusOK)
-		if _, err := io.Copy(c.Writer, body); err != nil {
+		if _, err := io.Copy(c.Writer, stream); err != nil {
 			slog.ErrorContext(c.Request.Context(), "download source file: stream", slog.String("error", err.Error()))
 		}
 	}
