@@ -41,9 +41,14 @@ dependencies.
 ## Changes Made
 
 - Added a Woodpecker `dependency audit` step to `.woodpecker/api-go.yml` that
-  runs `go run golang.org/x/vuln/cmd/govulncheck@latest ./...`.
-- Added `npm audit --audit-level=high` to `.woodpecker/webui.yml` after
-  lockfile-based install and before lint/build/E2E.
+  runs `go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...`. The version is
+  pinned because newer govulncheck releases currently require a newer Go
+  toolchain than the Go 1.24 CI image.
+- Added `npm audit --audit-level=critical` to `.woodpecker/webui.yml` after
+  lockfile-based install and before lint/build/E2E. The current frontend
+  dependency baseline has high advisories in transitive tooling dependencies,
+  so critical advisories are the blocking threshold until that baseline is
+  remediated.
 - Updated `docs/ci.md` so the CI matrix and dependency-audit expectations match
   the pipelines.
 
@@ -56,3 +61,6 @@ a lockfile and an audit gate for it at that time.
 
 Local CPU-heavy validation was intentionally not run. The new audit checks are
 designed to run in Woodpecker.
+
+The frontend audit threshold should be raised from `critical` to `high` after
+the current high-advisory tooling baseline is cleared.

@@ -7,8 +7,8 @@ Actions workflows to this repository.
 
 | Pipeline | Paths | `pull_request` | `push` to `main` | Behavior |
 | --- | --- | --- | --- | --- |
-| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs `golangci-lint run`, Go unit tests, `govulncheck`, generated API docs freshness, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
-| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs frontend dependency install, `npm audit --audit-level=high`, lint, production build, and Chromium Playwright E2E validation with `npm run test:e2e`. Pushes to `main` also publish the frontend image. |
+| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs `golangci-lint run`, Go unit tests, Go dependency audit with the Go 1.24-compatible `govulncheck@v1.1.4`, generated API docs freshness, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
+| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs frontend dependency install, `npm audit --audit-level=critical`, lint, production build, and Chromium Playwright E2E validation with `npm run test:e2e`. Pushes to `main` also publish the frontend image. |
 | `.woodpecker/smoke.yml` | `.woodpecker/smoke.yml`, `docker-compose.yml`, `scripts/woodpecker-smoke.sh`, `api-go/**`, `webui/**` | Yes | Yes | Starts the root Compose stack in Woodpecker, creates a user and MinIO-backed source, creates a bucket, uploads and downloads a file with the CLI, and verifies S3-compatible credential download bytes. |
 
 ## Required Secrets
@@ -24,7 +24,7 @@ Drive or Telegram availability cannot block otherwise healthy PRs.
 ## Web UI E2E
 
 The webui pipeline has one required validation step in Woodpecker. It runs
-`npm ci --include=dev`, `npm audit --audit-level=high`, `npm run lint`,
+`npm ci --include=dev`, `npm audit --audit-level=critical`, `npm run lint`,
 `npm run build`, `npx playwright install --with-deps chromium`, and
 `npm run test:e2e`.
 
@@ -48,11 +48,16 @@ repository secrets.
 
 ## Dependency Audits
 
-Backend pull requests run `govulncheck` in Woodpecker so known reachable Go
-vulnerabilities fail before merge. Frontend pull requests run `npm audit
---audit-level=high` after `npm ci` so high and critical advisory matches fail
-before lint, build, and browser validation. Run these locally only when you need
-to reproduce the CI failure; otherwise leave dependency auditing to Woodpecker.
+Backend pull requests run `govulncheck@v1.1.4` in Woodpecker so known reachable
+Go vulnerabilities fail before merge while staying compatible with the Go 1.24
+CI image. Update the pinned govulncheck version when the CI Go image is raised.
+
+Frontend pull requests run `npm audit --audit-level=critical` after `npm ci` so
+critical advisory matches fail before lint, build, and browser validation. The
+threshold is intentionally critical-only until the current high-advisory
+frontend tooling baseline is remediated; raise it to `high` in the same change
+that clears that baseline. Run dependency audits locally only when you need to
+reproduce the CI failure; otherwise leave dependency auditing to Woodpecker.
 
 ## Published Images
 

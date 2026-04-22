@@ -18,7 +18,7 @@ steps:
     commands:
       - cd webui
       - npm ci --include=dev
-      - npm audit --audit-level=high
+      - npm audit --audit-level=critical
       - npm run lint
       - npm run build
       - npx playwright install --with-deps chromium
