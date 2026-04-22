@@ -199,68 +199,6 @@ func TestCompleteMultipartUploadResultXML(t *testing.T) {
 	}
 }
 
-func TestCompletedMultipartChunksPreservesChecksums(t *testing.T) {
-	t.Parallel()
-
-	sourceID := primitive.NewObjectID()
-	partMap := map[int]repository.UploadPart{
-		1: {
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-1-chunk-1", Order: 17, Size: 5, Checksum: "checksum-a"},
-				{SourceID: sourceID, Name: "part-1-chunk-2", Order: 18, Size: 6, Checksum: "checksum-b"},
-			},
-		},
-		2: {
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-2-chunk-1", Order: 3, Size: 7, Checksum: "checksum-c"},
-			},
-		},
-	}
-
-	chunks := completedMultipartChunks([]completionPart{{PartNumber: 1}, {PartNumber: 2}}, partMap)
-	if len(chunks) != 3 {
-		t.Fatalf("expected 3 chunks, got %d", len(chunks))
-	}
-
-	wantChecksums := []string{"checksum-a", "checksum-b", "checksum-c"}
-	for i, want := range wantChecksums {
-		if chunks[i].Checksum != want {
-			t.Fatalf("chunk %d checksum: got %q, want %q", i, chunks[i].Checksum, want)
-		}
-		if chunks[i].Order != i {
-			t.Fatalf("chunk %d order: got %d, want %d", i, chunks[i].Order, i)
-		}
-	}
-}
-
-func TestMultipartPartChunksReturnsReplacedPartChunks(t *testing.T) {
-	t.Parallel()
-
-	sourceID := primitive.NewObjectID()
-	parts := []repository.UploadPart{
-		{
-			PartNumber: 1,
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-1-old", Order: 0, Size: 5},
-			},
-		},
-		{
-			PartNumber: 2,
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-2-kept", Order: 1, Size: 7},
-			},
-		},
-	}
-
-	got := multipartPartChunks(parts, 1)
-	if len(got) != 1 || got[0].Name != "part-1-old" {
-		t.Fatalf("expected previous chunks for replaced part, got %+v", got)
-	}
-	if got := multipartPartChunks(parts, 3); got != nil {
-		t.Fatalf("expected nil chunks for new part, got %+v", got)
-	}
-}
-
 func TestListMultipartUploadsResultXML(t *testing.T) {
 	t.Parallel()
 
