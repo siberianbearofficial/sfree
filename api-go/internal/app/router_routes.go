@@ -109,7 +109,7 @@ func registerPublicShareRoutes(router *gin.Engine, deps *routerDependencies) {
 
 func registerDocsMetricsRoutes(router *gin.Engine) {
 	router.GET("/api/openapi.json", func(c *gin.Context) {
-		c.Data(http.StatusOK, "application/json; charset=utf-8", docs.OpenAPIJSON())
+		c.Data(http.StatusOK, "application/json; charset=utf-8", []byte(docs.SwaggerInfo.ReadDoc()))
 	})
 	router.GET("/api/docs", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/api/docs/index.html")
