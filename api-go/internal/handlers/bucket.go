@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -403,6 +404,7 @@ type uploadFileResponse struct {
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/upload [post]
 func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, chunkSize int) gin.HandlerFunc {
+	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -416,16 +418,6 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 			return
 		}
 		bucketDoc := acc.Bucket
-		sources, err := sourceRepo.ListByIDs(c.Request.Context(), bucketDoc.SourceIDs)
-		if err != nil {
-			slog.ErrorContext(ctx, "upload file: list sources", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if len(sources) == 0 {
-			c.Status(http.StatusBadRequest)
-			return
-		}
 		fh, err := c.FormFile("file")
 		if err != nil {
 			slog.WarnContext(ctx, "upload file: get file", slog.String("error", err.Error()))
@@ -440,36 +432,23 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		defer func() { _ = f.Close() }()
 
-		selector := manager.SelectorForBucket(bucketDoc, sources)
-		chunks, err := manager.UploadFileChunksWithStrategy(ctx, f, sources, chunkSize, nil, selector)
+		result, err := objectSvc.PutObject(ctx, bucketDoc, fh.Filename, f, chunkSize)
 		if err != nil {
-			slog.ErrorContext(ctx, "upload file: upload chunks", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-
-		fileDoc := repository.File{
-			BucketID:  bucketDoc.ID,
-			Name:      fh.Filename,
-			CreatedAt: time.Now().UTC(),
-			Chunks:    chunks,
-		}
-		created, previousFile, err := fileRepo.ReplaceByName(ctx, fileDoc)
-		if err != nil {
-			_ = manager.DeleteFileChunks(ctx, sourceRepo, chunks)
-			slog.ErrorContext(ctx, "upload file: save file", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if previousFile != nil {
-			if err := manager.DeleteFileChunksIfUnreferenced(ctx, sourceRepo, fileRepo, previousFile.Chunks); err != nil {
-				slog.WarnContext(ctx, "upload file: delete old chunks", slog.String("error", err.Error()))
+			if errors.Is(err, manager.ErrNoSources) {
+				c.Status(http.StatusBadRequest)
+				return
 			}
+			slog.ErrorContext(ctx, "upload file: mutate object", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if result.CleanupErr != nil {
+			slog.WarnContext(ctx, "upload file: delete old chunks", slog.String("error", result.CleanupErr.Error()))
 		}
 		c.JSON(http.StatusOK, uploadFileResponse{
-			ID:        created.ID.Hex(),
-			Name:      created.Name,
-			CreatedAt: created.CreatedAt,
+			ID:        result.File.ID.Hex(),
+			Name:      result.File.Name,
+			CreatedAt: result.File.CreatedAt,
 		})
 	}
 }

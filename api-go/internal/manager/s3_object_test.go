@@ -253,6 +253,7 @@ func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) 
 }
 
 func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
+	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
 	bucketID := primitive.NewObjectID()
 	oldSourceID := primitive.NewObjectID()
 	existing := repository.File{
@@ -273,11 +274,90 @@ func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 	if result.File.ID != existing.ID {
 		t.Fatalf("expected update to preserve file id")
 	}
+	if result.File.Name != "object.txt" || !result.File.CreatedAt.Equal(now) {
+		t.Fatalf("expected saved file metadata to match upload, got %#v", result.File)
+	}
 	if len(result.File.Chunks) != 1 || result.File.Chunks[0].Name != "new-chunk" {
 		t.Fatalf("expected saved file to use uploaded chunk, got %#v", result.File.Chunks)
 	}
 	if len(deleted) != 1 || deleted[0].Name != "old-chunk" {
 		t.Fatalf("expected old chunk cleanup, got %#v", deleted)
+	}
+}
+
+func TestObjectServicePutObjectReturnsNoSourcesBeforeUpload(t *testing.T) {
+	files := newFakeObjectFiles()
+	uploadCalled := false
+	svc := &ObjectService{
+		sources: &fakeObjectSources{},
+		files:   files,
+		uploadChunks: func(context.Context, io.Reader, []repository.Source, int, SourceSelector) ([]repository.FileChunk, error) {
+			uploadCalled = true
+			return nil, nil
+		},
+		deleteChunks: func(context.Context, []repository.FileChunk) error {
+			t.Fatal("deleteChunks should not be called")
+			return nil
+		},
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
+	}
+
+	_, err := svc.PutObject(context.Background(), &repository.Bucket{ID: primitive.NewObjectID()}, "object.txt", bytes.NewBufferString("data"), 5)
+	if !errors.Is(err, ErrNoSources) {
+		t.Fatalf("expected ErrNoSources, got %v", err)
+	}
+	if uploadCalled {
+		t.Fatal("expected no upload attempt without sources")
+	}
+	if len(files.byName) != 0 {
+		t.Fatalf("expected no file metadata to be saved, got %#v", files.byName)
+	}
+}
+
+func TestObjectServicePutObjectUsesBucketDistributionStrategy(t *testing.T) {
+	sourceA := repository.Source{ID: primitive.NewObjectID()}
+	sourceB := repository.Source{ID: primitive.NewObjectID()}
+	files := newFakeObjectFiles()
+	var capturedSelector SourceSelector
+	var capturedSources []repository.Source
+	svc := &ObjectService{
+		sources: &fakeObjectSources{sources: []repository.Source{sourceA, sourceB}},
+		files:   files,
+		uploadChunks: func(_ context.Context, r io.Reader, sources []repository.Source, _ int, selector SourceSelector) ([]repository.FileChunk, error) {
+			if _, err := io.Copy(io.Discard, r); err != nil {
+				return nil, err
+			}
+			capturedSelector = selector
+			capturedSources = append([]repository.Source(nil), sources...)
+			return []repository.FileChunk{{SourceID: sourceA.ID, Name: "new-chunk", Size: 4}}, nil
+		},
+		deleteChunks: func(context.Context, []repository.FileChunk) error {
+			return nil
+		},
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
+	}
+	bucket := &repository.Bucket{
+		ID:                   primitive.NewObjectID(),
+		SourceIDs:            []primitive.ObjectID{sourceA.ID, sourceB.ID},
+		DistributionStrategy: repository.StrategyWeighted,
+		SourceWeights: map[string]int{
+			sourceA.ID.Hex(): 2,
+			sourceB.ID.Hex(): 1,
+		},
+	}
+
+	if _, err := svc.PutObject(context.Background(), bucket, "object.txt", bytes.NewBufferString("data"), 5); err != nil {
+		t.Fatalf("PutObject returned error: %v", err)
+	}
+	if _, ok := capturedSelector.(*WeightedSelector); !ok {
+		t.Fatalf("expected weighted selector, got %T", capturedSelector)
+	}
+	if len(capturedSources) != 2 || capturedSources[0].ID != sourceA.ID || capturedSources[1].ID != sourceB.ID {
+		t.Fatalf("expected source order to be preserved, got %#v", capturedSources)
 	}
 }
 
