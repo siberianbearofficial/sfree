@@ -770,7 +770,8 @@ func TestObjectServiceCompleteMultipartUploadBuildsFinalFileAndCleansUnusedChunk
 	oldChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "old-file-chunk", Size: 2}
 	part1ChunkA := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "part-1a", Size: 5, Checksum: "sum-a"}
 	part1ChunkB := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "part-1b", Size: 6, Checksum: "sum-b"}
-	part2Chunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "part-2", Size: 7}
+	part2Chunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "part-2", Size: 7, Checksum: "sum-c"}
+	unusedPartChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "part-3-unused", Size: 8}
 	files := newFakeObjectFiles(repository.File{
 		ID:       primitive.NewObjectID(),
 		BucketID: bucketID,
@@ -789,12 +790,14 @@ func TestObjectServiceCompleteMultipartUploadBuildsFinalFileAndCleansUnusedChunk
 			Parts: []repository.UploadPart{
 				{PartNumber: 1, ETag: `"d41d8cd98f00b204e9800998ecf8427e"`, Chunks: []repository.FileChunk{part1ChunkA, part1ChunkB}},
 				{PartNumber: 2, ETag: `"0cc175b9c0f1b6a831c399e269772661"`, Chunks: []repository.FileChunk{part2Chunk}},
+				{PartNumber: 3, ETag: `"900150983cd24fb0d6963f7d28e17f72"`, Chunks: []repository.FileChunk{unusedPartChunk}},
 			},
 		},
 	}}
 
 	result, err := svc.CompleteMultipartUpload(context.Background(), bucketID, "upload-1", []CompleteMultipartPart{
 		{PartNumber: 1, ETag: "d41d8cd98f00b204e9800998ecf8427e"},
+		{PartNumber: 2, ETag: "0cc175b9c0f1b6a831c399e269772661"},
 	})
 	if err != nil {
 		t.Fatalf("CompleteMultipartUpload returned error: %v", err)
@@ -802,14 +805,17 @@ func TestObjectServiceCompleteMultipartUploadBuildsFinalFileAndCleansUnusedChunk
 	if result.File.Name != "object.txt" {
 		t.Fatalf("expected final object name, got %q", result.File.Name)
 	}
-	if len(result.File.Chunks) != 2 {
-		t.Fatalf("expected two final chunks, got %#v", result.File.Chunks)
+	if len(result.File.Chunks) != 3 {
+		t.Fatalf("expected three final chunks, got %#v", result.File.Chunks)
 	}
-	if result.File.Chunks[0].Order != 0 || result.File.Chunks[1].Order != 1 {
-		t.Fatalf("expected chunks to be renumbered, got %#v", result.File.Chunks)
-	}
-	if result.File.Chunks[0].Checksum != part1ChunkA.Checksum {
-		t.Fatalf("expected checksum to be preserved")
+	wantChecksums := []string{part1ChunkA.Checksum, part1ChunkB.Checksum, part2Chunk.Checksum}
+	for i, want := range wantChecksums {
+		if result.File.Chunks[i].Order != i {
+			t.Fatalf("chunk %d order: got %d, want %d", i, result.File.Chunks[i].Order, i)
+		}
+		if result.File.Chunks[i].Checksum != want {
+			t.Fatalf("chunk %d checksum: got %q, want %q", i, result.File.Chunks[i].Checksum, want)
+		}
 	}
 	if result.File.ContentType != "application/x-ndjson" || result.File.UserMetadata["batch"] != "42" {
 		t.Fatalf("expected multipart metadata to be preserved, got content_type=%q metadata=%#v", result.File.ContentType, result.File.UserMetadata)
@@ -817,10 +823,10 @@ func TestObjectServiceCompleteMultipartUploadBuildsFinalFileAndCleansUnusedChunk
 	if len(deleted) != 2 {
 		t.Fatalf("expected old file chunk and unreferenced part cleanup, got %#v", deleted)
 	}
-	if deleted[0].Name != oldChunk.Name || deleted[1].Name != part2Chunk.Name {
+	if deleted[0].Name != oldChunk.Name || deleted[1].Name != unusedPartChunk.Name {
 		t.Fatalf("unexpected cleanup order: %#v", deleted)
 	}
-	if !strings.HasSuffix(result.ETag, `-1"`) {
+	if !strings.HasSuffix(result.ETag, `-2"`) {
 		t.Fatalf("unexpected multipart etag: %s", result.ETag)
 	}
 	if _, err := svc.multipart.GetByUploadID(context.Background(), "upload-1"); !errors.Is(err, mongo.ErrNoDocuments) {

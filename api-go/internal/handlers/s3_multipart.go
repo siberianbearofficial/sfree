@@ -282,15 +282,6 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 	c.Status(http.StatusOK)
 }
 
-func multipartPartChunks(parts []repository.UploadPart, partNumber int) []repository.FileChunk {
-	for _, part := range parts {
-		if part.PartNumber == partNumber {
-			return part.Chunks
-		}
-	}
-	return nil
-}
-
 func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) {
 	ctx := c.Request.Context()
 	uploadID := c.Query("uploadId")
@@ -358,20 +349,6 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 		Key:      result.Upload.ObjectKey,
 		ETag:     result.ETag,
 	})
-}
-
-func completedMultipartChunks(parts []completionPart, partMap map[int]repository.UploadPart) []repository.FileChunk {
-	var allChunks []repository.FileChunk
-	chunkOrder := 0
-	for _, rp := range parts {
-		up := partMap[rp.PartNumber]
-		for _, ch := range up.Chunks {
-			ch.Order = chunkOrder
-			allChunks = append(allChunks, ch)
-			chunkOrder++
-		}
-	}
-	return allChunks
 }
 
 func abortMultipartUpload(c *gin.Context, bucketRepo objectBucketReader, sourceRepo *repository.SourceRepository, mpRepo multipartUploadAbortStore) {
