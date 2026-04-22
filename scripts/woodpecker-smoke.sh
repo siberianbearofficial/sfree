@@ -2,6 +2,7 @@
 set -eu
 
 base_url="${SFREE_SMOKE_BASE_URL:-http://docker:8080}"
+frontend_url="${SFREE_SMOKE_FRONTEND_URL:-http://docker:3000}"
 suffix="$(date +%s)-$$"
 tmpdir="$(mktemp -d)"
 export COMPOSE_PROJECT_NAME="sfree_smoke_$suffix"
@@ -87,6 +88,7 @@ bucket_key="smoke-bucket-$suffix"
 payload="$tmpdir/payload.txt"
 cli_download="$tmpdir/cli-download.txt"
 s3_download="$tmpdir/s3-download.txt"
+share_download="$tmpdir/share-download.txt"
 
 printf 'sfree smoke payload %s\n' "$suffix" > "$payload"
 
@@ -156,5 +158,16 @@ AWS_DEFAULT_REGION=us-east-1 \
 	"$s3_download" >/dev/null
 cmp "$payload" "$s3_download"
 pass "Downloaded bytes match through S3-compatible credentials"
+
+step "Frontend-origin public share download"
+share_json="$(curl -fsS -u "$username:$password" -H 'Content-Type: application/json' --data '{}' "$base_url/api/v1/buckets/$bucket_id/files/$file_id/share")"
+share_path="$(printf '%s' "$share_json" | jq -r '.url // empty')"
+case "$share_path" in
+	/share/*) ;;
+	*) fail "Share creation response did not include a /share/ URL" ;;
+esac
+curl -fsS "$frontend_url$share_path" -o "$share_download"
+cmp "$payload" "$share_download"
+pass "Downloaded bytes match through the frontend-origin public share URL"
 
 pass "Woodpecker smoke validation completed"
