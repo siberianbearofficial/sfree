@@ -22,6 +22,8 @@ import (
 const (
 	maxDeleteObjects                = 1000
 	maxDeleteObjectsRequestBodySize = 8 * 1024 * 1024
+	defaultObjectContentType        = "application/octet-stream"
+	userMetadataHeaderPrefix        = "x-amz-meta-"
 )
 
 var (
@@ -297,7 +299,41 @@ func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
 	c.Header("ETag", manager.ObjectETag(*fileDoc))
 	c.Header("Last-Modified", fileDoc.CreatedAt.UTC().Format(http.TimeFormat))
 	c.Header("Content-Length", strconv.FormatInt(total, 10))
-	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Type", objectContentType(fileDoc.ContentType))
+	for key, value := range fileDoc.UserMetadata {
+		c.Header(userMetadataHeaderPrefix+key, value)
+	}
+}
+
+func objectContentType(contentType string) string {
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		return defaultObjectContentType
+	}
+	return contentType
+}
+
+func requestObjectContentType(r *http.Request) string {
+	return objectContentType(r.Header.Get("Content-Type"))
+}
+
+func requestObjectUserMetadata(r *http.Request) map[string]string {
+	metadata := make(map[string]string)
+	for name, values := range r.Header {
+		name = strings.ToLower(name)
+		if !strings.HasPrefix(name, userMetadataHeaderPrefix) {
+			continue
+		}
+		key := strings.TrimPrefix(name, userMetadataHeaderPrefix)
+		if key == "" || len(values) == 0 {
+			continue
+		}
+		metadata[key] = values[0]
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }
 
 // preflightObjectRange checks the first response byte before success headers are
@@ -427,7 +463,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		if !ok {
 			return
 		}
-		result, err := objectSvc.PutObject(ctx, bucketDoc, name, c.Request.Body, chunkSize)
+		result, err := objectSvc.PutObject(ctx, bucketDoc, name, c.Request.Body, chunkSize, requestObjectContentType(c.Request), requestObjectUserMetadata(c.Request))
 		if err != nil {
 			if errors.Is(err, manager.ErrNoSources) {
 				writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")

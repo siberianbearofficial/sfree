@@ -211,10 +211,12 @@ func createMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposito
 	}
 	uploadID := primitive.NewObjectID().Hex()
 	mu := repository.MultipartUpload{
-		BucketID:  bucketDoc.ID,
-		ObjectKey: objectKey,
-		UploadID:  uploadID,
-		CreatedAt: time.Now().UTC(),
+		BucketID:     bucketDoc.ID,
+		ObjectKey:    objectKey,
+		UploadID:     uploadID,
+		CreatedAt:    time.Now().UTC(),
+		ContentType:  requestObjectContentType(c.Request),
+		UserMetadata: requestObjectUserMetadata(c.Request),
 	}
 	if _, err := mpRepo.Create(ctx, mu); err != nil {
 		slog.ErrorContext(ctx, "create multipart upload", slog.String("error", err.Error()))

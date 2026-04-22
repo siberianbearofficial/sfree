@@ -25,10 +25,12 @@ func TestFileRepositoryUniqueBucketNameAndReplace(t *testing.T) {
 	firstChunks := []FileChunk{{SourceID: sourceID, Name: "chunk-a", Order: 0, Size: 5}}
 
 	created, previous, err := repo.ReplaceByName(ctx, File{
-		BucketID:  bucketID,
-		Name:      name,
-		CreatedAt: time.Now(),
-		Chunks:    firstChunks,
+		BucketID:     bucketID,
+		Name:         name,
+		CreatedAt:    time.Now(),
+		Chunks:       firstChunks,
+		ContentType:  "text/plain",
+		UserMetadata: map[string]string{"owner": "alice"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -52,10 +54,12 @@ func TestFileRepositoryUniqueBucketNameAndReplace(t *testing.T) {
 
 	secondChunks := []FileChunk{{SourceID: sourceID, Name: "chunk-b", Order: 0, Size: 7}}
 	updated, previous, err := repo.ReplaceByName(ctx, File{
-		BucketID:  bucketID,
-		Name:      name,
-		CreatedAt: time.Now(),
-		Chunks:    secondChunks,
+		BucketID:     bucketID,
+		Name:         name,
+		CreatedAt:    time.Now(),
+		Chunks:       secondChunks,
+		ContentType:  "application/json",
+		UserMetadata: map[string]string{"owner": "bob"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -69,6 +73,9 @@ func TestFileRepositoryUniqueBucketNameAndReplace(t *testing.T) {
 	if len(previous.Chunks) != 1 || previous.Chunks[0].Name != "chunk-a" {
 		t.Fatalf("expected previous chunks, got %+v", previous.Chunks)
 	}
+	if previous.ContentType != "text/plain" || previous.UserMetadata["owner"] != "alice" {
+		t.Fatalf("expected previous metadata, got content_type=%q metadata=%#v", previous.ContentType, previous.UserMetadata)
+	}
 
 	got, err := repo.GetByName(ctx, bucketID, name)
 	if err != nil {
@@ -76,6 +83,9 @@ func TestFileRepositoryUniqueBucketNameAndReplace(t *testing.T) {
 	}
 	if got.ID != created.ID || len(got.Chunks) != 1 || got.Chunks[0].Name != "chunk-b" {
 		t.Fatalf("unexpected authoritative file: %+v", got)
+	}
+	if got.ContentType != "application/json" || got.UserMetadata["owner"] != "bob" {
+		t.Fatalf("unexpected authoritative metadata: content_type=%q metadata=%#v", got.ContentType, got.UserMetadata)
 	}
 
 	files, err := repo.ListByBucket(ctx, bucketID)
