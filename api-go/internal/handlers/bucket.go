@@ -34,6 +34,31 @@ type bucketCreator interface {
 	Create(context.Context, repository.Bucket) (*repository.Bucket, error)
 }
 
+type bucketDeleteStore interface {
+	bucketAccessBucketReader
+	Delete(ctx context.Context, id primitive.ObjectID, userID primitive.ObjectID) error
+}
+
+type bucketGrantBucketDeleter interface {
+	DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error
+}
+
+type bucketContentsDeleter interface {
+	DeleteBucketContents(ctx context.Context, bucketID primitive.ObjectID) (manager.DeleteBucketContentsResult, error)
+}
+
+type objectFileDeleter interface {
+	DeleteFile(ctx context.Context, bucketID, fileID primitive.ObjectID) (manager.DeleteObjectResult, error)
+}
+
+type shareLinkBucketDeleter interface {
+	DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error
+}
+
+type shareLinkFileDeleter interface {
+	DeleteByFile(ctx context.Context, fileID primitive.ObjectID) error
+}
+
 func validateSourceWeights(weights map[string]int, sourceIDs []primitive.ObjectID) error {
 	if len(weights) == 0 {
 		return nil
@@ -324,11 +349,11 @@ func getBucket(bucketRepo bucketAccessBucketReader, grantRepo bucketAccessGrantR
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id} [delete]
-func DeleteBucket(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
-	return DeleteBucketWithFactory(repo, sourceRepo, fileRepo, mpRepo, grantRepo, nil)
+func DeleteBucket(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
+	return DeleteBucketWithFactory(repo, sourceRepo, fileRepo, mpRepo, shareLinkRepo, grantRepo, nil)
 }
 
-func DeleteBucketWithFactory(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, grantRepo *repository.BucketGrantRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+func DeleteBucketWithFactory(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if repo == nil {
@@ -336,39 +361,61 @@ func DeleteBucketWithFactory(repo *repository.BucketRepository, sourceRepo *repo
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-
-		acc := requireBucketAccess(c, repo, grantRepo, repository.RoleOwner)
-		if acc == nil {
-			return
+		var objectSvc bucketContentsDeleter
+		if sourceRepo != nil && fileRepo != nil {
+			objectSvc = manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, factory)
 		}
-
-		if sourceRepo == nil || fileRepo == nil {
-			slog.ErrorContext(ctx, "delete bucket: cleanup repository is nil")
-			c.Status(http.StatusServiceUnavailable)
-			return
-		}
-		objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, factory)
-		if _, err := objectSvc.DeleteBucketContents(ctx, acc.Bucket.ID); err != nil {
-			slog.ErrorContext(ctx, "delete bucket: cleanup contents", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-
-		if err := repo.Delete(ctx, acc.Bucket.ID, acc.Bucket.UserID); err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "delete bucket: failed to delete", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		// Clean up all grants for this bucket.
+		var grantReader bucketAccessGrantReader
+		var grantDeleter bucketGrantBucketDeleter
 		if grantRepo != nil {
-			_ = grantRepo.DeleteByBucket(ctx, acc.Bucket.ID)
+			grantReader = grantRepo
+			grantDeleter = grantRepo
 		}
-		c.Status(http.StatusOK)
+		handleDeleteBucket(c, repo, shareLinkRepo, objectSvc, grantReader, grantDeleter)
 	}
+}
+
+func handleDeleteBucket(c *gin.Context, repo bucketDeleteStore, shareLinkRepo shareLinkBucketDeleter, objectSvc bucketContentsDeleter, grantRepo bucketAccessGrantReader, grantDeleter bucketGrantBucketDeleter) {
+	ctx := c.Request.Context()
+	if repo == nil {
+		slog.ErrorContext(ctx, "delete bucket: repository is nil")
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+
+	acc := requireBucketAccessFor(c, repo, grantRepo, repository.RoleOwner)
+	if acc == nil {
+		return
+	}
+	if shareLinkRepo == nil || objectSvc == nil {
+		slog.ErrorContext(ctx, "delete bucket: cleanup repository is nil")
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+
+	if err := shareLinkRepo.DeleteByBucket(ctx, acc.Bucket.ID); err != nil {
+		slog.ErrorContext(ctx, "delete bucket: cleanup share links", slog.String("error", err.Error()))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if _, err := objectSvc.DeleteBucketContents(ctx, acc.Bucket.ID); err != nil {
+		slog.ErrorContext(ctx, "delete bucket: cleanup contents", slog.String("error", err.Error()))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if err := repo.Delete(ctx, acc.Bucket.ID, acc.Bucket.UserID); err != nil {
+		if err == mongo.ErrNoDocuments {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		slog.ErrorContext(ctx, "delete bucket: failed to delete", slog.String("error", err.Error()))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if grantDeleter != nil {
+		_ = grantDeleter.DeleteByBucket(ctx, acc.Bucket.ID)
+	}
+	c.Status(http.StatusOK)
 }
 
 type updateDistributionRequest struct {
