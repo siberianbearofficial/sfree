@@ -7,7 +7,7 @@ Actions workflows to this repository.
 
 | Pipeline | Paths | `pull_request` | `push` to `main` | Behavior |
 | --- | --- | --- | --- | --- |
-| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs `golangci-lint run`, Go unit tests, Go dependency audit with the Go 1.24-compatible `govulncheck@v1.1.4`, generated API docs freshness, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
+| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs `golangci-lint run`, Go unit tests, Go dependency audit reporting with the Go 1.24-compatible `govulncheck@v1.1.4`, generated API docs freshness, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
 | `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs frontend dependency install, `npm audit --audit-level=critical`, lint, production build, and Chromium Playwright E2E validation with `npm run test:e2e`. Pushes to `main` also publish the frontend image. |
 | `.woodpecker/smoke.yml` | `.woodpecker/smoke.yml`, `docker-compose.yml`, `scripts/woodpecker-smoke.sh`, `api-go/**`, `webui/**` | Yes | Yes | Starts the root Compose stack in Woodpecker, creates a user and MinIO-backed source, creates a bucket, uploads and downloads a file with the CLI, and verifies S3-compatible credential download bytes. |
 
@@ -49,8 +49,12 @@ repository secrets.
 ## Dependency Audits
 
 Backend pull requests run `govulncheck@v1.1.4` in Woodpecker so known reachable
-Go vulnerabilities fail before merge while staying compatible with the Go 1.24
-CI image. Update the pinned govulncheck version when the CI Go image is raised.
+Go vulnerabilities are visible in every PR while staying compatible with the Go
+1.24 CI image. Findings currently report without failing the pipeline because
+the active baseline includes standard-library findings fixed only by moving CI
+to Go 1.25.x, plus dependency updates that need a dedicated remediation PR.
+Tool installation or execution errors still fail the step. Make findings
+blocking after the Go toolchain and module vulnerability baseline is cleared.
 
 Frontend pull requests run `npm audit --audit-level=critical` after `npm ci` so
 critical advisory matches fail before lint, build, and browser validation. The

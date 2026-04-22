@@ -41,9 +41,11 @@ dependencies.
 ## Changes Made
 
 - Added a Woodpecker `dependency audit` step to `.woodpecker/api-go.yml` that
-  runs `go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...`. The version is
-  pinned because newer govulncheck releases currently require a newer Go
-  toolchain than the Go 1.24 CI image.
+  installs and runs `govulncheck@v1.1.4`. The version is pinned because newer
+  govulncheck releases currently require a newer Go toolchain than the Go 1.24
+  CI image. Vulnerability findings are reported but do not fail the pipeline
+  until the current Go 1.24 and module vulnerability baseline is remediated;
+  tool installation and execution errors still fail the step.
 - Added `npm audit --audit-level=critical` to `.woodpecker/webui.yml` after
   lockfile-based install and before lint/build/E2E. The current frontend
   dependency baseline has high advisories in transitive tooling dependencies,
@@ -61,6 +63,12 @@ a lockfile and an audit gate for it at that time.
 
 Local CPU-heavy validation was intentionally not run. The new audit checks are
 designed to run in Woodpecker.
+
+The backend audit currently reports known findings without blocking merge. The
+Woodpecker run found Go standard-library findings fixed in Go 1.25.x and module
+findings in `github.com/golang-jwt/jwt/v5`, `github.com/gin-contrib/cors`, and
+`go.opentelemetry.io/otel/sdk`. Raise the backend audit to blocking after the CI
+Go image and affected modules are updated.
 
 The frontend audit threshold should be raised from `critical` to `high` after
 the current high-advisory tooling baseline is cleared.
