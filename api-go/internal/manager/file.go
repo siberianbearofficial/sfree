@@ -99,7 +99,7 @@ type WeightedSelector struct {
 func NewWeightedSelector(sources []repository.Source, weights map[string]int) *WeightedSelector {
 	cumulativeWeights := make([]int, 0, len(sources))
 	totalWeight := 0
-	for i, src := range sources {
+	for _, src := range sources {
 		w := weights[src.ID.Hex()]
 		if w <= 0 {
 			w = 1
