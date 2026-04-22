@@ -466,6 +466,26 @@ func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin
 // @Tags sources
 // @Produce octet-stream
 // @Param id path string true "Source ID"
+// @Param file_id path string true "File ID (GDrive file ID or S3 object key)"
+// @Success 200 {file} file
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/sources/{id}/files/{file_id}/download [get]
+func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
+	if sourceRepo == nil {
+		return downloadSourceFile(nil, nil)
+	}
+	return downloadSourceFile(sourceRepo, nil)
+}
+
+// DownloadSourceFileByQuery godoc
+// @Summary Download a file from a source
+// @Tags sources
+// @Produce octet-stream
+// @Param id path string true "Source ID"
 // @Param file_id query string true "File ID (GDrive file ID or S3 object key)"
 // @Success 200 {file} file
 // @Failure 400 {string} string ""
@@ -474,12 +494,18 @@ func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/sources/{id}/download [get]
-// @Router /api/v1/sources/{id}/files/{file_id}/download [get]
-func DownloadSourceFile(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
+func DownloadSourceFileByQuery(sourceRepo *repository.SourceRepository) gin.HandlerFunc {
 	if sourceRepo == nil {
 		return downloadSourceFile(nil, nil)
 	}
 	return downloadSourceFile(sourceRepo, nil)
+}
+
+func DownloadSourceFileByQueryWithFactory(sourceRepo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	if sourceRepo == nil {
+		return downloadSourceFile(nil, factory)
+	}
+	return downloadSourceFile(sourceRepo, factory)
 }
 
 func DownloadSourceFileWithFactory(sourceRepo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
