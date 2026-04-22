@@ -193,6 +193,26 @@ func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
 }
 
+func lookupBucket(c *gin.Context, bucketRepo objectBucketReader) (*repository.Bucket, bool) {
+	ctx := c.Request.Context()
+	bucketDoc, err := bucketRepo.GetByKey(ctx, c.Param("bucket"))
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+			return nil, false
+		}
+		slog.ErrorContext(ctx, "lookup bucket", slog.String("error", err.Error()))
+		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		return nil, false
+	}
+	accessKey := c.GetString("accessKey")
+	if accessKey == "" || bucketDoc.AccessKey != accessKey {
+		writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+		return nil, false
+	}
+	return bucketDoc, true
+}
+
 func parseCopySource(raw string) (string, string, bool) {
 	raw = strings.TrimSpace(raw)
 	raw = strings.TrimPrefix(raw, "/")
@@ -254,21 +274,9 @@ func parseObjectRange(raw string, total int64) (objectRange, bool) {
 
 func lookupObject(c *gin.Context, bucketRepo objectBucketReader, fileRepo objectFileReader) (*repository.File, int64, bool) {
 	ctx := c.Request.Context()
-	bucketKey := c.Param("bucket")
 	name := strings.TrimPrefix(c.Param("object"), "/")
-	bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
-			return nil, 0, false
-		}
-		slog.ErrorContext(ctx, "lookup object: get bucket", slog.String("error", err.Error()))
-		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-		return nil, 0, false
-	}
-	accessKey := c.GetString("accessKey")
-	if accessKey == "" || bucketDoc.AccessKey != accessKey {
-		writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+	bucketDoc, ok := lookupBucket(c, bucketRepo)
+	if !ok {
 		return nil, 0, false
 	}
 	fileDoc, err := fileRepo.GetByName(ctx, bucketDoc.ID, name)
@@ -538,20 +546,8 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketKey := c.Param("bucket")
-		bucketDoc, err := bucketRepo.GetByKey(ctx, bucketKey)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
-				return
-			}
-			slog.ErrorContext(ctx, "delete object: get bucket", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
-			return
-		}
-		accessKey := c.GetString("accessKey")
-		if accessKey == "" || bucketDoc.AccessKey != accessKey {
-			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")
+		bucketDoc, ok := lookupBucket(c, bucketRepo)
+		if !ok {
 			return
 		}
 		name := strings.TrimPrefix(c.Param("object"), "/")

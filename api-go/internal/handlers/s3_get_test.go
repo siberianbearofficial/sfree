@@ -13,6 +13,7 @@ import (
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type fakeObjectBucketReader struct {
@@ -31,6 +32,82 @@ type fakeObjectFileReader struct {
 
 func (r fakeObjectFileReader) GetByName(_ context.Context, _ primitive.ObjectID, _ string) (*repository.File, error) {
 	return r.file, r.err
+}
+
+func newLookupObjectTestContext(accessKey string) (*gin.Context, *httptest.ResponseRecorder) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	c.Params = gin.Params{
+		{Key: "bucket", Value: "bucket"},
+		{Key: "object", Value: "/object.txt"},
+	}
+	if accessKey != "" {
+		c.Set("accessKey", accessKey)
+	}
+	return c, w
+}
+
+func TestLookupObjectMissingBucketReturnsNoSuchBucket(t *testing.T) {
+	c, w := newLookupObjectTestContext("access-key")
+
+	fileDoc, total, ok := lookupObject(c, fakeObjectBucketReader{err: mongo.ErrNoDocuments}, fakeObjectFileReader{})
+
+	if ok || fileDoc != nil || total != 0 {
+		t.Fatalf("expected lookup failure, got ok=%v file=%v total=%d", ok, fileDoc, total)
+	}
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>NoSuchBucket</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestLookupObjectWrongAccessKeyReturnsNoSuchBucket(t *testing.T) {
+	c, w := newLookupObjectTestContext("wrong-key")
+	bucketID := primitive.NewObjectID()
+
+	fileDoc, total, ok := lookupObject(c, fakeObjectBucketReader{
+		bucket: &repository.Bucket{
+			ID:        bucketID,
+			Key:       "bucket",
+			AccessKey: "access-key",
+		},
+	}, fakeObjectFileReader{})
+
+	if ok || fileDoc != nil || total != 0 {
+		t.Fatalf("expected lookup failure, got ok=%v file=%v total=%d", ok, fileDoc, total)
+	}
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>NoSuchBucket</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestLookupObjectMissingObjectReturnsNoSuchKey(t *testing.T) {
+	c, w := newLookupObjectTestContext("access-key")
+	bucketID := primitive.NewObjectID()
+
+	fileDoc, total, ok := lookupObject(c, fakeObjectBucketReader{
+		bucket: &repository.Bucket{
+			ID:        bucketID,
+			Key:       "bucket",
+			AccessKey: "access-key",
+		},
+	}, fakeObjectFileReader{err: mongo.ErrNoDocuments})
+
+	if ok || fileDoc != nil || total != 0 {
+		t.Fatalf("expected lookup failure, got ok=%v file=%v total=%d", ok, fileDoc, total)
+	}
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>NoSuchKey</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
 }
 
 func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
