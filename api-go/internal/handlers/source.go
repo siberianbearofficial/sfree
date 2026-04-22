@@ -70,9 +70,9 @@ type sourceHealthResponse struct {
 	LatencyMS       int64     `json:"latency_ms"`
 	ReasonCode      string    `json:"reason_code"`
 	Message         string    `json:"message"`
-	QuotaTotalBytes *int64    `json:"quota_total_bytes"`
-	QuotaUsedBytes  *int64    `json:"quota_used_bytes"`
-	QuotaFreeBytes  *int64    `json:"quota_free_bytes"`
+	QuotaTotalBytes *int64    `json:"quota_total_bytes" extensions:"x-nullable"`
+	QuotaUsedBytes  *int64    `json:"quota_used_bytes" extensions:"x-nullable"`
+	QuotaFreeBytes  *int64    `json:"quota_free_bytes" extensions:"x-nullable"`
 }
 
 type sourceGetter interface {
