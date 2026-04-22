@@ -11,6 +11,14 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+type bucketAccessBucketReader interface {
+	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.Bucket, error)
+}
+
+type bucketAccessGrantReader interface {
+	GetByBucketAndUser(ctx context.Context, bucketID, userID primitive.ObjectID) (*repository.BucketGrant, error)
+}
+
 // bucketAccess holds the result of a permission check.
 type bucketAccess struct {
 	Bucket *repository.Bucket
@@ -33,6 +41,19 @@ func requireBucketAccess(
 	c *gin.Context,
 	bucketRepo bucketLookup,
 	grantRepo bucketGrantLookup,
+	requiredRole repository.BucketRole,
+) *bucketAccess {
+	var grantReader bucketAccessGrantReader
+	if grantRepo != nil {
+		grantReader = grantRepo
+	}
+	return requireBucketAccessFor(c, bucketRepo, grantReader, requiredRole)
+}
+
+func requireBucketAccessFor(
+	c *gin.Context,
+	bucketRepo bucketAccessBucketReader,
+	grantRepo bucketAccessGrantReader,
 	requiredRole repository.BucketRole,
 ) *bucketAccess {
 	bucketID, ok := routeObjectID(c, "id")

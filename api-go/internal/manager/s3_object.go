@@ -87,6 +87,7 @@ type BucketScopedChunkReferenceCounter interface {
 
 type objectFileStore interface {
 	BucketScopedChunkReferenceCounter
+	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.File, error)
 	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
 	ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]repository.File, error)
 	ReplaceByName(ctx context.Context, f repository.File) (*repository.File, *repository.File, error)
@@ -199,6 +200,29 @@ func (s *ObjectService) DeleteObject(ctx context.Context, bucketID primitive.Obj
 	if err := s.files.Delete(ctx, fileDoc.ID); err != nil {
 		if err == mongo.ErrNoDocuments {
 			return DeleteObjectResult{}, nil
+		}
+		return DeleteObjectResult{}, err
+	}
+	return DeleteObjectResult{
+		Deleted:    true,
+		CleanupErr: s.deleteFileChunksIfUnreferenced(ctx, fileDoc.Chunks),
+	}, nil
+}
+
+func (s *ObjectService) DeleteFile(ctx context.Context, bucketID, fileID primitive.ObjectID) (DeleteObjectResult, error) {
+	fileDoc, err := s.files.GetByID(ctx, fileID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return DeleteObjectResult{}, ErrObjectNotFound
+		}
+		return DeleteObjectResult{}, err
+	}
+	if fileDoc.BucketID != bucketID {
+		return DeleteObjectResult{}, ErrObjectNotFound
+	}
+	if err := s.files.Delete(ctx, fileDoc.ID); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return DeleteObjectResult{}, ErrObjectNotFound
 		}
 		return DeleteObjectResult{}, err
 	}

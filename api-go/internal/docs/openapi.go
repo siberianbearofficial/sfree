@@ -1123,6 +1123,49 @@ const openAPIJSON = `{
         }
       }
     },
+    "/api/v1/sources/{id}/health": {
+      "get": {
+        "tags": [
+          "sources"
+        ],
+        "summary": "Check storage source health",
+        "description": "Runs an on-demand lightweight provider probe. Google Drive may return native provider quota. S3-compatible and Telegram quota fields are null because no cheap native capacity value is available.",
+        "security": [
+          {
+            "basicAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source health",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceHealth"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/PlainError"
+          },
+          "401": {
+            "$ref": "#/components/responses/PlainError"
+          },
+          "404": {
+            "$ref": "#/components/responses/PlainError"
+          }
+        }
+      }
+    },
     "/api/v1/sources/{id}/info": {
       "get": {
         "tags": [
@@ -2119,6 +2162,63 @@ const openAPIJSON = `{
           },
           "path_style": {
             "type": "boolean"
+          }
+        }
+      },
+      "SourceHealth": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "gdrive",
+              "telegram",
+              "s3"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "healthy",
+              "degraded",
+              "unhealthy"
+            ]
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "latency_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reason_code": {
+            "type": "string",
+            "description": "Machine-readable health reason, such as ok, probe_failed, client_error, quota_low, or quota_exhausted."
+          },
+          "message": {
+            "type": "string"
+          },
+          "quota_total_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Provider-native quota total when cheaply available. Null means unknown, including S3-compatible and Telegram sources."
+          },
+          "quota_used_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Provider-native quota used when cheaply available. Null means unknown, including S3-compatible and Telegram sources."
+          },
+          "quota_free_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "Provider-native quota free when cheaply available. Null means unknown, including S3-compatible and Telegram sources."
           }
         }
       },
