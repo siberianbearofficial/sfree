@@ -59,7 +59,7 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		chunkData := make([]byte, n)
 		copy(chunkData, buf[:n])
 
-		src, cli, err := pickSourceClient(ctx, sources, selector, clientCache)
+		srcIdx, src, cli, err := pickSourceClient(ctx, sources, selector, clientCache)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "source selection failed")
@@ -81,12 +81,13 @@ func UploadFileChunksWithStrategy(ctx context.Context, r io.Reader, sources []re
 		if uploadErr != nil && len(sources) > 1 {
 			chunkSpan.RecordError(uploadErr)
 			tried := map[primitive.ObjectID]bool{src.ID: true}
-			for attempt := 0; attempt < len(sources)-1; attempt++ {
-				altSrc, altCli, altErr := pickSourceClient(ctx, sources, selector, clientCache)
-				if altErr != nil {
+			for offset := 1; offset < len(sources); offset++ {
+				altSrc := sources[(srcIdx+offset)%len(sources)]
+				if tried[altSrc.ID] {
 					continue
 				}
-				if tried[altSrc.ID] {
+				altCli, altErr := clientCache.get(ctx, altSrc)
+				if altErr != nil {
 					continue
 				}
 				tried[altSrc.ID] = true
@@ -163,14 +164,14 @@ func cleanupUploadedChunks(ctx context.Context, chunks []repository.FileChunk, c
 	}
 }
 
-func pickSourceClient(ctx context.Context, sources []repository.Source, selector SourceSelector, clientCache *sourceClientCache) (repository.Source, sourceClient, error) {
-	_, src, err := selector.NextSource(sources)
+func pickSourceClient(ctx context.Context, sources []repository.Source, selector SourceSelector, clientCache *sourceClientCache) (int, repository.Source, sourceClient, error) {
+	idx, src, err := selector.NextSource(sources)
 	if err != nil {
-		return repository.Source{}, nil, err
+		return 0, repository.Source{}, nil, err
 	}
 	cli, err := clientCache.get(ctx, src)
 	if err != nil {
-		return repository.Source{}, nil, err
+		return 0, repository.Source{}, nil, err
 	}
-	return src, cli, nil
+	return idx, src, cli, nil
 }
