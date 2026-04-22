@@ -24,6 +24,14 @@ const MOCK_BUCKET = {
   key: "my-bucket",
   access_key: "AK123",
   created_at: "2024-01-15T11:00:00Z",
+  role: "owner",
+  shared: false,
+};
+
+const MOCK_VIEWER_BUCKET = {
+  ...MOCK_BUCKET,
+  role: "viewer",
+  shared: true,
 };
 
 const MOCK_BUCKET_CREDS = {
@@ -108,13 +116,28 @@ test.describe("Bucket creation flow", () => {
     await expect(page.getByRole("dialog")).not.toBeVisible();
   });
 
-  test("Upload File button is present on bucket detail page", async ({
+  test("owner bucket detail shows owner actions", async ({
     page,
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
-    await expect(page.getByRole("button", { name: "Upload File" })).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Upload File" })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Share Bucket" })).toBeVisible();
+    await expect(page.getByText("Drag and drop a file here")).toBeVisible();
+  });
+
+  test("viewer bucket detail hides write actions", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1/files", []);
+    await page.goto("/buckets/bkt-1");
+
+    await expect(page.getByRole("button", { name: "Upload File" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Share Bucket" })).not.toBeVisible();
+    await expect(page.getByText("Drag and drop a file here")).not.toBeVisible();
+    await expect(page.getByText("Files shared in this bucket will appear here.")).toBeVisible();
   });
 });

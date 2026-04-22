@@ -59,7 +59,7 @@ export function BucketPage() {
   }, [load]);
 
   async function handleUpload(file: File) {
-    if (!id) return;
+    if (!id || !bucket || !canWriteFiles(bucket)) return;
     try {
       await uploadFile(id, file);
       addToast({title: "File uploaded", description: `${file.name} added to bucket`, color: "success", timeout: 4000});
@@ -76,6 +76,7 @@ export function BucketPage() {
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
+    if (!bucket || !canWriteFiles(bucket)) return;
     const f = e.dataTransfer.files?.[0];
     if (f) handleUpload(f);
   }
@@ -140,9 +141,17 @@ export function BucketPage() {
     );
   }
 
+  const canManage = canManageBucket(bucket);
+  const canWrite = canWriteFiles(bucket);
+
   return (
     <div className="p-8 flex flex-col gap-6">
-      <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
+      <Button
+        isIconOnly
+        aria-label="Back"
+        variant="light"
+        onPress={() => navigate(-1)}
+      >
         <ArrowLeftIcon className="w-5 h-5" />
       </Button>
       <div className="flex flex-col gap-1">
@@ -152,12 +161,12 @@ export function BucketPage() {
         <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
       </div>
       <div className="flex justify-end gap-2">
-        {bucket.role === "owner" && (
+        {canManage && (
           <Button variant="flat" onPress={shareBucket.onOpen}>
             Share Bucket
           </Button>
         )}
-        {(bucket.role === "owner" || bucket.role === "editor") && (
+        {canWrite && (
           <>
             <input
               type="file"
@@ -172,16 +181,22 @@ export function BucketPage() {
         )}
       </div>
       <div
-        className="border-2 border-dashed rounded p-4"
+        className={
+          canWrite ? "border-2 border-dashed rounded p-4" : "border rounded p-4"
+        }
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
       >
         {files.length === 0 ? (
           <EmptyState
             title="No files yet"
-            description="Drag and drop a file here, or use the Upload button."
-            ctaLabel="Upload File"
-            onCtaPress={() => fileInput.current?.click()}
+            description={
+              canWrite
+                ? "Drag and drop a file here, or use the Upload button."
+                : "Files shared in this bucket will appear here."
+            }
+            ctaLabel={canWrite ? "Upload File" : undefined}
+            onCtaPress={canWrite ? () => fileInput.current?.click() : undefined}
           />
         ) : (
           <table className="w-full text-left">
@@ -211,9 +226,10 @@ export function BucketPage() {
                   </td>
                   <td className="py-2">
                     <div className="flex gap-2">
-                      {(bucket.role === "owner" || bucket.role === "editor") && (
+                      {canWrite && (
                         <Button
                           isIconOnly
+                          aria-label={`Share ${f.name}`}
                           variant="light"
                           onPress={() => openShareModal(f)}
                         >
@@ -222,14 +238,16 @@ export function BucketPage() {
                       )}
                       <Button
                         isIconOnly
+                        aria-label={`Download ${f.name}`}
                         variant="light"
                         onPress={() => downloadFile(id!, f)}
                       >
                         <DownloadIcon className="w-5 h-5" />
                       </Button>
-                      {(bucket.role === "owner" || bucket.role === "editor") && (
+                      {canWrite && (
                         <Button
                           isIconOnly
+                          aria-label={`Delete ${f.name}`}
                           variant="light"
                           color="danger"
                           onPress={() => {
@@ -278,4 +296,12 @@ export function BucketPage() {
       />
     </div>
   );
+}
+
+function canManageBucket(bucket: Bucket) {
+  return bucket.role === "owner";
+}
+
+function canWriteFiles(bucket: Bucket) {
+  return bucket.role === "owner" || bucket.role === "editor";
 }
