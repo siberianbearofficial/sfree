@@ -48,11 +48,29 @@ The first implemented slice targets S3 error behavior that protects compatibilit
 
 These checks live in the existing Go S3 E2E suite so they run in the Woodpecker API Go pipeline without new CI commands.
 
-## Prioritized Backlog
+## 2026-04-22 Audit
 
-1. S3 error-shape matrix for missing bucket, missing upload, unsupported copy metadata directive, invalid range, and auth mismatch paths.
-2. HTTP API/S3 parity checks for file metadata after S3 overwrite, copy, delete, and multipart completion.
-3. Negative auth coverage across presigned URLs, wrong bucket keys, wrong access keys, and cross-bucket copy attempts.
+Recent `api-go` changes added or updated coverage for fixed S3 E2E waits, multipart part replacement cleanup ordering, CopyObject `REPLACE` errors, REST file lifecycle through `ObjectService`, bucket deletion cleanup, source health, retry behavior, weighted source validation, bounded SigV4 hashing, file-list search, and short-read upload chunking. Open pull requests at the time of audit included S3 compatibility evidence, source health docs, generated OpenAPI routing, deterministic test timing, multipart abort ownership, multipart abort cleanup failures, SigV4 raw query canonicalization, missing bucket source uploads, direct source download preflight, and download context lifetime.
+
+Covered critical behavior:
+
+- Object write/read roundtrip, overwrite, delete, range reads, `HEAD`, copy, missing-object S3 XML errors, and cross-bucket credential isolation are covered in the Go S3 E2E suite.
+- Chunking, short reads, per-chunk checksum storage, checksum verification, range reconstruction, weighted and round-robin placement, source failover, and source/backend upload failures are covered in manager unit tests.
+- Multipart create/upload/list/complete/abort flows, part replacement cleanup ordering, invalid completion requests, and completed chunk checksum preservation are covered by Go E2E and manager/handler unit tests.
+- Bucket deletion cleanup covers completed objects, pending multipart uploads, shared chunk references, and metadata cleanup ordering.
+- CI routes the API module through Woodpecker lint, `go test ./...`, docs freshness, Python E2E, Go S3 E2E, and the stack smoke workflow.
+
+Test improvement added during this audit:
+
+- `api-go/internal/manager/s3_object_test.go` now asserts `ObjectService.CopyObject` preserves chunk order and checksum metadata, not only chunk name/reference.
+
+Prioritized missing tests:
+
+1. REST/S3 parity after REST file overwrite and delete. Add an integration or E2E check that uploads through `/api/v1/buckets/{id}/upload`, overwrites the same filename, verifies S3 GET returns only the replacement bytes, deletes through the REST file endpoint, and verifies S3 GET returns `NoSuchKey`. This is the highest-value gap because REST lifecycle was recently rerouted through `ObjectService`.
+2. Cross-bucket CopyObject authorization and source lookup matrix. Existing E2E covers same-user cross-bucket copy and service-level cross-user rejection; add S3 handler/E2E coverage for wrong destination credentials, unknown source bucket, unknown source key, and copy from a bucket owned by a different user.
+3. Multipart completion cleanup on partial completion. Current coverage verifies replacement and abort cleanup; add an E2E or manager test that uploads parts 1, 2, and 3, completes only parts 1 and 3, then verifies unrequested part 2 chunks are cleaned while completed object reconstruction remains correct.
+4. Source/backend download failure mapping on S3 `GET` and REST download. Unit tests cover preflight failure behavior with injected checksum errors; add a concrete source-client download failure case to ensure the API returns a clear non-success response before success headers are committed.
+5. Metadata parity after CopyObject and multipart completion. Existing unit coverage protects chunk metadata; add S3 `HEAD`/list checks that size and ETag behavior remain stable after copy and multipart completion.
 
 ## Validation
 
