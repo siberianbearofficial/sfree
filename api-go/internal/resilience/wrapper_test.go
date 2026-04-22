@@ -225,6 +225,25 @@ func TestWrapperRetryUploadSucceeds(t *testing.T) {
 	}
 }
 
+func TestWrapperUploadErrorDropsReturnedName(t *testing.T) {
+	inner := &mockClient{uploadErr: errors.New("upload failed")}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	name, err := w.Upload(context.Background(), "file.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected upload error")
+	}
+	if name != "" {
+		t.Fatalf("expected empty name on upload error, got %q", name)
+	}
+}
+
 type bodyDrainingUploadClient struct {
 	want      string
 	callCount atomic.Int32

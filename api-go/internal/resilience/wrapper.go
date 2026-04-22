@@ -216,8 +216,12 @@ func (w *wrapper) Upload(ctx context.Context, name string, r io.Reader) (string,
 			}
 		}
 		var err error
-		result, err = w.inner.Upload(reqCtx, name, body)
-		return err
+		uploadedName, err := w.inner.Upload(reqCtx, name, body)
+		if err != nil {
+			return err
+		}
+		result = uploadedName
+		return nil
 	})
 	return result, err
 }
