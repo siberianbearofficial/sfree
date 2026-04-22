@@ -2,7 +2,30 @@
 
 Date: 2026-04-22
 
-Scope: `api-go` automated tests, Woodpecker validation, recent `origin/main` changes, and open backend/web UI PRs as of 2026-04-22 07:17 UTC.
+Scope: `api-go` automated tests, Woodpecker validation, recent `origin/main` changes, and open backend/web UI PRs as of 2026-04-22 09:20 UTC.
+
+## THE-650 Refresh
+
+This refresh rechecked `origin/main` at `214fdd7` and the current open PR list. No local CPU-heavy suites were run.
+
+Newly reviewed inputs since the 07:17 UTC audit:
+
+- Open PR [#270](https://github.com/siberianbearofficial/sfree/pull/270) rejects malformed share-link creation bodies and adds focused handler tests for empty body, valid expiry, malformed JSON, and wrong-type `expires_in`.
+- Open PR [#269](https://github.com/siberianbearofficial/sfree/pull/269) refreshes the API Go testing plan and adds a stronger `ObjectService.CopyObject` unit assertion for chunk order and checksum metadata preservation.
+- Open PR [#268](https://github.com/siberianbearofficial/sfree/pull/268) aligns S3 compatibility evidence with `origin/main` and adds `docs/**` to the smoke pipeline path filter so docs-only PRs get a Woodpecker smoke status.
+- Open PR [#267](https://github.com/siberianbearofficial/sfree/pull/267) regenerates source-health OpenAPI docs and should be covered by the existing docs freshness gate.
+- Open PR [#266](https://github.com/siberianbearofficial/sfree/pull/266) removes the separate served OpenAPI source and routes `/api/openapi.json`, `/api/docs`, and legacy `/swagger` to generated docs; existing route tests and `make docs-check` are the key regressions.
+- Open PR [#265](https://github.com/siberianbearofficial/sfree/pull/265) removes test sleeps from resilience and rate-limit unit tests using deterministic clocks.
+- Open PR [#264](https://github.com/siberianbearofficial/sfree/pull/264) requires bucket ownership checks before aborting multipart uploads and adds handler tests that cross-bucket abort returns `NoSuchUpload` without deleting foreign chunks or metadata.
+- Open PR [#231](https://github.com/siberianbearofficial/sfree/pull/231) remains open for minimal S3 object metadata persistence. The branch includes handler, manager, repository, Go S3 E2E, and Python SDK E2E coverage for Content-Type and `x-amz-meta-*` storage, HEAD/GET return headers, ranged GET headers, CopyObject COPY preservation, overwrite metadata replacement, and multipart completion metadata preservation.
+
+Updated priority adjustments:
+
+1. Keep PR [#264](https://github.com/siberianbearofficial/sfree/pull/264) as the highest-risk recent regression until merged, because cross-bucket multipart abort can delete another bucket's upload state if uncovered. Its focused handler tests are the right scope; Woodpecker should run the broader unit/E2E gates.
+2. After PR [#231](https://github.com/siberianbearofficial/sfree/pull/231), add one compatibility regression only when advanced metadata behavior is implemented: checksum headers, object tags, response header overrides, or metadata-directive REPLACE. The current minimal metadata path already has strong enough coverage for the implemented surface.
+3. Add a docs-route regression only if PR [#266](https://github.com/siberianbearofficial/sfree/pull/266) merges without a Woodpecker docs freshness pass. The risk is stale generated docs being served, not product logic.
+4. Keep the missing-source upload handler/status coverage from the earlier list. PR [#245](https://github.com/siberianbearofficial/sfree/pull/245) covers repository and manager behavior, but public REST/S3 error shape remains the user-visible gap.
+5. Keep SDK/live-client compatibility tests bounded to core workflows. The next high-value live-client additions are still presigned GET/PUT via the Python SDK path and one rclone/aws-cli sync smoke in CI if product direction confirms those clients are target users.
 
 ## Recent Inputs
 
