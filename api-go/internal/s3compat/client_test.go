@@ -75,3 +75,27 @@ func TestListObjectsFollowsPagination(t *testing.T) {
 		t.Fatalf("unexpected total: %d", total)
 	}
 }
+
+func TestHeadBucketUsesBucketMetadataProbe(t *testing.T) {
+	t.Parallel()
+	cli := &Client{cfg: Config{Bucket: "bucket"}}
+	calls := 0
+	cli.headBucket = func(_ context.Context, input *s3.HeadBucketInput, _ ...func(*s3.Options)) (*s3.HeadBucketOutput, error) {
+		calls++
+		if aws.ToString(input.Bucket) != "bucket" {
+			t.Fatalf("unexpected bucket: %s", aws.ToString(input.Bucket))
+		}
+		return &s3.HeadBucketOutput{}, nil
+	}
+	cli.listObjectsV2 = func(context.Context, *s3.ListObjectsV2Input, ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+		t.Fatal("health probe must not list objects")
+		return nil, nil
+	}
+
+	if err := cli.HeadBucket(context.Background()); err != nil {
+		t.Fatalf("head bucket: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("unexpected calls count: %d", calls)
+	}
+}

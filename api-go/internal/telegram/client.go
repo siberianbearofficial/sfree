@@ -214,3 +214,33 @@ func (c *Client) Delete(ctx context.Context, name string) error {
 	}
 	return nil
 }
+
+func (c *Client) CheckChat(ctx context.Context) error {
+	form := url.Values{}
+	form.Set("chat_id", c.chatID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseAPIURL+"/getChat", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram getChat failed: status=%d body=%s", resp.StatusCode, string(data))
+	}
+	var parsed struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return err
+	}
+	if !parsed.OK {
+		return fmt.Errorf("telegram getChat invalid response")
+	}
+	return nil
+}

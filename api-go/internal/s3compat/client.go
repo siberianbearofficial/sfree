@@ -30,6 +30,7 @@ type Client struct {
 	cfg           Config
 	s3            *s3.Client
 	listObjectsV2 func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+	headBucket    func(ctx context.Context, params *s3.HeadBucketInput, optFns ...func(*s3.Options)) (*s3.HeadBucketOutput, error)
 }
 
 func EncodeConfig(cfg Config) (string, error) {
@@ -76,7 +77,7 @@ func NewClient(ctx context.Context, cfg Config) (*Client, error) {
 		opts.BaseEndpoint = aws.String(cfg.Endpoint)
 		opts.UsePathStyle = cfg.PathStyle
 	})
-	return &Client{cfg: cfg, s3: s3Client, listObjectsV2: s3Client.ListObjectsV2}, nil
+	return &Client{cfg: cfg, s3: s3Client, listObjectsV2: s3Client.ListObjectsV2, headBucket: s3Client.HeadBucket}, nil
 }
 
 func (c *Client) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
@@ -127,4 +128,13 @@ func (c *Client) ListObjects(ctx context.Context) ([]ObjectInfo, int64, error) {
 		token = resp.NextContinuationToken
 	}
 	return objects, total, nil
+}
+
+func (c *Client) HeadBucket(ctx context.Context) error {
+	headFn := c.headBucket
+	if headFn == nil {
+		headFn = c.s3.HeadBucket
+	}
+	_, err := headFn(ctx, &s3.HeadBucketInput{Bucket: aws.String(c.cfg.Bucket)})
+	return err
 }

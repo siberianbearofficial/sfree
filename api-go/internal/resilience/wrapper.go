@@ -459,3 +459,99 @@ func (w *wrapper) ListObjects(ctx context.Context) ([]s3compat.ObjectInfo, int64
 	w.cb.RecordFailure()
 	return nil, 0, lastErr
 }
+
+func (w *wrapper) HeadBucket(ctx context.Context) error {
+	inner, ok := w.inner.(interface {
+		HeadBucket(context.Context) error
+	})
+	if !ok {
+		return ErrUnsupportedOperation
+	}
+	if err := w.cb.Allow(); err != nil {
+		return err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying head bucket",
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return err
+			}
+		}
+
+		reqCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
+		err := inner.HeadBucket(reqCtx)
+		cancel()
+		if err == nil {
+			w.cb.RecordSuccess()
+			return nil
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return lastErr
+}
+
+func (w *wrapper) CheckChat(ctx context.Context) error {
+	inner, ok := w.inner.(interface {
+		CheckChat(context.Context) error
+	})
+	if !ok {
+		return ErrUnsupportedOperation
+	}
+	if err := w.cb.Allow(); err != nil {
+		return err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying telegram chat check",
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return err
+			}
+		}
+
+		reqCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
+		err := inner.CheckChat(reqCtx)
+		cancel()
+		if err == nil {
+			w.cb.RecordSuccess()
+			return nil
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return lastErr
+}
