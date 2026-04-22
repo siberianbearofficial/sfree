@@ -194,7 +194,7 @@ func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.
 			return
 		}
 
-		total := fileContentLength(fileDoc)
+		total := manager.FileSize(*fileDoc)
 		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamDownloadFileRange); err != nil {
 			slog.ErrorContext(ctx, "get shared file: stream", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)

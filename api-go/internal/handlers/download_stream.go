@@ -30,14 +30,6 @@ var (
 	streamDownloadFileRange fileRangeStreamFunc = manager.StreamFileRange
 )
 
-func fileContentLength(fileDoc *repository.File) int64 {
-	var total int64
-	for _, ch := range fileDoc.Chunks {
-		total += ch.Size
-	}
-	return total
-}
-
 func preflightFileRange(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, start, end int64, streamRange fileRangeStreamFunc) error {
 	if end < start {
 		return nil

@@ -487,15 +487,11 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 		}
 		resp := make([]fileResponse, 0, len(files))
 		for _, f := range files {
-			var size int64
-			for _, ch := range f.Chunks {
-				size += ch.Size
-			}
 			resp = append(resp, fileResponse{
 				ID:        f.ID.Hex(),
 				Name:      f.Name,
 				CreatedAt: f.CreatedAt,
-				Size:      size,
+				Size:      manager.FileSize(f),
 			})
 		}
 		c.JSON(http.StatusOK, resp)
@@ -564,7 +560,7 @@ func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.So
 			c.Status(http.StatusNotFound)
 			return
 		}
-		total := fileContentLength(fileDoc)
+		total := manager.FileSize(*fileDoc)
 		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamDownloadFileRange); err != nil {
 			slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)

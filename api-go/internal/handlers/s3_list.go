@@ -76,15 +76,11 @@ func parseListMaxKeys(c *gin.Context) (int, bool) {
 }
 
 func fileListBucketEntry(file repository.File) listBucketEntry {
-	var size int64
-	for _, chunk := range file.Chunks {
-		size += chunk.Size
-	}
 	return listBucketEntry{
 		Key:          file.Name,
 		LastModified: file.CreatedAt.UTC().Format(time.RFC3339),
 		ETag:         manager.ObjectETag(file),
-		Size:         size,
+		Size:         manager.FileSize(file),
 		StorageClass: "STANDARD",
 	}
 }
