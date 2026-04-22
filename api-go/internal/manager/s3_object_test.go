@@ -387,9 +387,9 @@ func fileKey(bucketID primitive.ObjectID, name string) string {
 	return bucketID.Hex() + "/" + name
 }
 
-func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) *ObjectService {
+func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) *objectService {
 	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
-	return &ObjectService{
+	return &objectService{
 		sources: &fakeObjectSources{sources: []repository.Source{{ID: primitive.NewObjectID()}}},
 		files:   files,
 		uploadChunks: func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {

@@ -302,7 +302,7 @@ func DeleteBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		objectSvc := manager.NewObjectService(sourceRepo, fileRepo, mpRepo)
+		objectSvc := manager.NewBucketCleanupService(sourceRepo, fileRepo, mpRepo)
 		if _, err := objectSvc.DeleteBucketContents(ctx, acc.Bucket.ID); err != nil {
 			slog.ErrorContext(ctx, "delete bucket: cleanup contents", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
@@ -403,7 +403,7 @@ type uploadFileResponse struct {
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/upload [post]
 func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, chunkSize int) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	objectSvc := manager.NewObjectWriteService(sourceRepo, fileRepo)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -591,7 +591,7 @@ func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.So
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id} [delete]
 func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	objectSvc := manager.NewObjectDeleteService(sourceRepo, fileRepo)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {

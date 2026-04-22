@@ -114,7 +114,7 @@ type objectMultipartStore interface {
 type objectChunkUploader func(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, selector SourceSelector) ([]repository.FileChunk, error)
 type objectChunkDeleter func(ctx context.Context, chunks []repository.FileChunk) error
 
-type ObjectService struct {
+type objectService struct {
 	sources      objectSourceStore
 	files        objectFileStore
 	multipart    objectMultipartStore
@@ -123,27 +123,106 @@ type ObjectService struct {
 	now          func() time.Time
 }
 
-func NewObjectService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) *ObjectService {
-	svc := &ObjectService{
+type ObjectWriteService struct {
+	service *objectService
+}
+
+type MultipartPartWriteService struct {
+	service *objectService
+}
+
+type ObjectDeleteService struct {
+	service *objectService
+}
+
+type BucketCleanupService struct {
+	service *objectService
+}
+
+type MultipartCompletionService struct {
+	service *objectService
+}
+
+func NewObjectWriteService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) *ObjectWriteService {
+	svc := newObjectServiceBase(sourceRepo)
+	svc.files = fileRepo
+	return &ObjectWriteService{service: svc}
+}
+
+func NewMultipartPartWriteService(sourceRepo *repository.SourceRepository, mpRepo *repository.MultipartUploadRepository) *MultipartPartWriteService {
+	svc := newObjectServiceBase(sourceRepo)
+	svc.multipart = mpRepo
+	return &MultipartPartWriteService{service: svc}
+}
+
+func NewObjectDeleteService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) *ObjectDeleteService {
+	svc := newObjectServiceBase(sourceRepo)
+	svc.files = fileRepo
+	return &ObjectDeleteService{service: svc}
+}
+
+func NewBucketCleanupService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) *BucketCleanupService {
+	svc := newObjectServiceBase(sourceRepo)
+	svc.files = fileRepo
+	svc.multipart = mpRepo
+	return &BucketCleanupService{service: svc}
+}
+
+func NewMultipartCompletionService(sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) *MultipartCompletionService {
+	svc := newObjectServiceBase(sourceRepo)
+	svc.files = fileRepo
+	svc.multipart = mpRepo
+	return &MultipartCompletionService{service: svc}
+}
+
+func newObjectServiceBase(sourceRepo *repository.SourceRepository) *objectService {
+	return &objectService{
 		sources: sourceRepo,
-		files:   fileRepo,
 		uploadChunks: func(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, selector SourceSelector) ([]repository.FileChunk, error) {
 			return UploadFileChunksWithStrategy(ctx, r, sources, chunkSize, nil, selector)
+		},
+		deleteChunks: func(ctx context.Context, chunks []repository.FileChunk) error {
+			return DeleteFileChunks(ctx, sourceRepo, chunks)
 		},
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
 	}
-	if mpRepo != nil {
-		svc.multipart = mpRepo
-	}
-	svc.deleteChunks = func(ctx context.Context, chunks []repository.FileChunk) error {
-		return DeleteFileChunks(ctx, sourceRepo, chunks)
-	}
-	return svc
 }
 
-func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int) (PutObjectResult, error) {
+func (s *ObjectWriteService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int) (PutObjectResult, error) {
+	return s.service.PutObject(ctx, bucket, name, body, chunkSize)
+}
+
+func (s *ObjectWriteService) CopyObject(ctx context.Context, sourceBucket, destBucket *repository.Bucket, sourceKey, destKey string) (CopyObjectResult, error) {
+	return s.service.CopyObject(ctx, sourceBucket, destBucket, sourceKey, destKey)
+}
+
+func (s *MultipartPartWriteService) UploadMultipartPartRecord(ctx context.Context, bucket *repository.Bucket, mu *repository.MultipartUpload, partNumber int, body io.Reader, chunkSize int) (UploadMultipartPartResult, error) {
+	return s.service.UploadMultipartPartRecord(ctx, bucket, mu, partNumber, body, chunkSize)
+}
+
+func (s *ObjectDeleteService) DeleteObject(ctx context.Context, bucketID primitive.ObjectID, name string) (DeleteObjectResult, error) {
+	return s.service.DeleteObject(ctx, bucketID, name)
+}
+
+func (s *ObjectDeleteService) DeleteFile(ctx context.Context, bucketID, fileID primitive.ObjectID) (DeleteObjectResult, error) {
+	return s.service.DeleteFile(ctx, bucketID, fileID)
+}
+
+func (s *BucketCleanupService) DeleteBucketContents(ctx context.Context, bucketID primitive.ObjectID) (DeleteBucketContentsResult, error) {
+	return s.service.DeleteBucketContents(ctx, bucketID)
+}
+
+func (s *MultipartCompletionService) CompleteMultipartUpload(ctx context.Context, bucketID primitive.ObjectID, uploadID string, requestedParts []CompleteMultipartPart) (CompleteMultipartUploadResult, error) {
+	return s.service.CompleteMultipartUpload(ctx, bucketID, uploadID, requestedParts)
+}
+
+func (s *MultipartCompletionService) CompleteMultipartUploadRecord(ctx context.Context, bucketID primitive.ObjectID, mu *repository.MultipartUpload, requestedParts []CompleteMultipartPart) (CompleteMultipartUploadResult, error) {
+	return s.service.CompleteMultipartUploadRecord(ctx, bucketID, mu, requestedParts)
+}
+
+func (s *objectService) PutObject(ctx context.Context, bucket *repository.Bucket, name string, body io.Reader, chunkSize int) (PutObjectResult, error) {
 	sources, err := s.sources.ListByIDs(ctx, bucket.SourceIDs)
 	if err != nil {
 		return PutObjectResult{}, err
@@ -170,7 +249,7 @@ func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket
 	return PutObjectResult{File: *currentFile, CleanupErr: cleanupErr}, nil
 }
 
-func (s *ObjectService) UploadMultipartPartRecord(ctx context.Context, bucket *repository.Bucket, mu *repository.MultipartUpload, partNumber int, body io.Reader, chunkSize int) (UploadMultipartPartResult, error) {
+func (s *objectService) UploadMultipartPartRecord(ctx context.Context, bucket *repository.Bucket, mu *repository.MultipartUpload, partNumber int, body io.Reader, chunkSize int) (UploadMultipartPartResult, error) {
 	if bucket == nil || mu == nil || mu.BucketID != bucket.ID {
 		return UploadMultipartPartResult{}, ErrMultipartUploadNotFound
 	}
@@ -215,7 +294,7 @@ func (s *ObjectService) UploadMultipartPartRecord(ctx context.Context, bucket *r
 	return UploadMultipartPartResult{Part: part, ETag: part.ETag, CleanupErr: cleanupErr}, nil
 }
 
-func (s *ObjectService) CopyObject(ctx context.Context, sourceBucket, destBucket *repository.Bucket, sourceKey, destKey string) (CopyObjectResult, error) {
+func (s *objectService) CopyObject(ctx context.Context, sourceBucket, destBucket *repository.Bucket, sourceKey, destKey string) (CopyObjectResult, error) {
 	if sourceBucket.ID != destBucket.ID && sourceBucket.UserID != destBucket.UserID {
 		return CopyObjectResult{}, ErrAccessDenied
 	}
@@ -241,7 +320,7 @@ func (s *ObjectService) CopyObject(ctx context.Context, sourceBucket, destBucket
 	return CopyObjectResult{File: *currentFile, CleanupErr: cleanupErr}, nil
 }
 
-func (s *ObjectService) DeleteObject(ctx context.Context, bucketID primitive.ObjectID, name string) (DeleteObjectResult, error) {
+func (s *objectService) DeleteObject(ctx context.Context, bucketID primitive.ObjectID, name string) (DeleteObjectResult, error) {
 	fileDoc, err := s.files.GetByName(ctx, bucketID, name)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -261,7 +340,7 @@ func (s *ObjectService) DeleteObject(ctx context.Context, bucketID primitive.Obj
 	}, nil
 }
 
-func (s *ObjectService) DeleteFile(ctx context.Context, bucketID, fileID primitive.ObjectID) (DeleteObjectResult, error) {
+func (s *objectService) DeleteFile(ctx context.Context, bucketID, fileID primitive.ObjectID) (DeleteObjectResult, error) {
 	fileDoc, err := s.files.GetByID(ctx, fileID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -284,7 +363,7 @@ func (s *ObjectService) DeleteFile(ctx context.Context, bucketID, fileID primiti
 	}, nil
 }
 
-func (s *ObjectService) DeleteBucketContents(ctx context.Context, bucketID primitive.ObjectID) (DeleteBucketContentsResult, error) {
+func (s *objectService) DeleteBucketContents(ctx context.Context, bucketID primitive.ObjectID) (DeleteBucketContentsResult, error) {
 	files, err := s.files.ListByBucket(ctx, bucketID)
 	if err != nil {
 		return DeleteBucketContentsResult{}, err
@@ -316,7 +395,7 @@ func (s *ObjectService) DeleteBucketContents(ctx context.Context, bucketID primi
 	}, nil
 }
 
-func (s *ObjectService) CompleteMultipartUpload(ctx context.Context, bucketID primitive.ObjectID, uploadID string, requestedParts []CompleteMultipartPart) (CompleteMultipartUploadResult, error) {
+func (s *objectService) CompleteMultipartUpload(ctx context.Context, bucketID primitive.ObjectID, uploadID string, requestedParts []CompleteMultipartPart) (CompleteMultipartUploadResult, error) {
 	mu, err := s.multipart.GetByUploadID(ctx, uploadID)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -327,7 +406,7 @@ func (s *ObjectService) CompleteMultipartUpload(ctx context.Context, bucketID pr
 	return s.CompleteMultipartUploadRecord(ctx, bucketID, mu, requestedParts)
 }
 
-func (s *ObjectService) CompleteMultipartUploadRecord(ctx context.Context, bucketID primitive.ObjectID, mu *repository.MultipartUpload, requestedParts []CompleteMultipartPart) (CompleteMultipartUploadResult, error) {
+func (s *objectService) CompleteMultipartUploadRecord(ctx context.Context, bucketID primitive.ObjectID, mu *repository.MultipartUpload, requestedParts []CompleteMultipartPart) (CompleteMultipartUploadResult, error) {
 	if mu == nil {
 		return CompleteMultipartUploadResult{}, ErrMultipartUploadNotFound
 	}
@@ -411,11 +490,11 @@ func (s *ObjectService) CompleteMultipartUploadRecord(ctx context.Context, bucke
 	}, nil
 }
 
-func (s *ObjectService) deleteFileChunksIfUnreferenced(ctx context.Context, chunks []repository.FileChunk) error {
+func (s *objectService) deleteFileChunksIfUnreferenced(ctx context.Context, chunks []repository.FileChunk) error {
 	return deleteFileChunksIfUnreferenced(ctx, s.files, s.deleteChunks, chunks)
 }
 
-func (s *ObjectService) deleteBucketChunksIfUnreferenced(ctx context.Context, bucketID primitive.ObjectID, chunks []repository.FileChunk) error {
+func (s *objectService) deleteBucketChunksIfUnreferenced(ctx context.Context, bucketID primitive.ObjectID, chunks []repository.FileChunk) error {
 	return deleteBucketChunksIfUnreferenced(ctx, bucketID, s.files, s.multipart, s.deleteChunks, chunks)
 }
 

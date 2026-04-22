@@ -259,7 +259,7 @@ func uploadPart(c *gin.Context, bucketRepo *repository.BucketRepository, sourceR
 		return
 	}
 
-	objectSvc := manager.NewObjectService(sourceRepo, nil, mpRepo)
+	objectSvc := manager.NewMultipartPartWriteService(sourceRepo, mpRepo)
 	result, err := objectSvc.UploadMultipartPartRecord(ctx, bucketDoc, mu, partNum, c.Request.Body, chunkSize)
 	if err != nil {
 		switch {
@@ -320,7 +320,7 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 		requestedParts = append(requestedParts, manager.CompleteMultipartPart{PartNumber: rp.PartNumber, ETag: rp.ETag})
 	}
 
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, mpRepo)
+	objectSvc := manager.NewMultipartCompletionService(sourceRepo, fileRepo, mpRepo)
 	result, err := objectSvc.CompleteMultipartUploadRecord(ctx, bucketDoc.ID, mu, requestedParts)
 	if err != nil {
 		switch {

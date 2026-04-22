@@ -411,7 +411,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [put]
 func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	objectSvc := manager.NewObjectWriteService(sourceRepo, fileRepo)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -455,7 +455,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [put]
 func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	objectSvc := manager.NewObjectWriteService(sourceRepo, fileRepo)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -528,7 +528,7 @@ func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [delete]
 func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	objectSvc := manager.NewObjectDeleteService(sourceRepo, fileRepo)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -558,7 +558,7 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 }
 
 func DeleteObjects(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	objectSvc := manager.NewObjectDeleteService(sourceRepo, fileRepo)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
