@@ -9,7 +9,7 @@ import {useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
   downloadFile,
-  listBuckets,
+  getBucket,
   listFiles,
   uploadFile,
 } from "../../../shared/api/buckets";
@@ -44,8 +44,11 @@ export function BucketPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [buckets, fs] = await Promise.all([listBuckets(), listFiles(id)]);
-      setBucket(buckets.find((b) => b.id === id) || null);
+      const [loadedBucket, fs] = await Promise.all([
+        getBucket(id),
+        listFiles(id),
+      ]);
+      setBucket(loadedBucket);
       setFiles(fs);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load bucket");
