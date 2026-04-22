@@ -383,6 +383,72 @@ func TestObjectServiceUploadMultipartPartSetFailureDeletesOnlyNewChunks(t *testi
 	}
 }
 
+func TestObjectServiceAbortMultipartUploadDeletesChunksThenMetadata(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	sourceID := primitive.NewObjectID()
+	chunkA := repository.FileChunk{SourceID: sourceID, Name: "part-1", Size: 5}
+	chunkB := repository.FileChunk{SourceID: sourceID, Name: "part-2", Size: 7}
+	var deleted []repository.FileChunk
+	svc := testObjectService(newFakeObjectFiles(), &deleted)
+	svc.multipart = &fakeMultipartUploads{uploads: map[string]repository.MultipartUpload{
+		"upload-1": {
+			BucketID: bucketID,
+			UploadID: "upload-1",
+			Parts: []repository.UploadPart{
+				{PartNumber: 1, Chunks: []repository.FileChunk{chunkA}},
+				{PartNumber: 2, Chunks: []repository.FileChunk{chunkB}},
+			},
+		},
+	}}
+
+	if err := svc.AbortMultipartUpload(context.Background(), "upload-1"); err != nil {
+		t.Fatalf("AbortMultipartUpload returned error: %v", err)
+	}
+	if len(deleted) != 2 || deleted[0].Name != chunkA.Name || deleted[1].Name != chunkB.Name {
+		t.Fatalf("expected all part chunks to be deleted, got %#v", deleted)
+	}
+	if _, err := svc.multipart.GetByUploadID(context.Background(), "upload-1"); !errors.Is(err, mongo.ErrNoDocuments) {
+		t.Fatalf("expected multipart upload metadata to be deleted, got %v", err)
+	}
+}
+
+func TestObjectServiceAbortMultipartUploadKeepsMetadataWhenCleanupFails(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	sourceID := primitive.NewObjectID()
+	cleanupErr := errors.New("delete part chunk failed")
+	chunk := repository.FileChunk{SourceID: sourceID, Name: "part-1", Size: 5}
+	var deleted []repository.FileChunk
+	svc := testObjectService(newFakeObjectFiles(), &deleted)
+	svc.multipart = &fakeMultipartUploads{uploads: map[string]repository.MultipartUpload{
+		"upload-1": {
+			BucketID: bucketID,
+			UploadID: "upload-1",
+			Parts: []repository.UploadPart{
+				{PartNumber: 1, Chunks: []repository.FileChunk{chunk}},
+			},
+		},
+	}}
+	svc.deleteChunks = func(_ context.Context, chunks []repository.FileChunk) error {
+		deleted = append(deleted, chunks...)
+		return cleanupErr
+	}
+
+	err := svc.AbortMultipartUpload(context.Background(), "upload-1")
+	if !errors.Is(err, cleanupErr) {
+		t.Fatalf("expected cleanup error, got %v", err)
+	}
+	if len(deleted) != 1 || deleted[0].Name != chunk.Name {
+		t.Fatalf("expected part cleanup attempt, got %#v", deleted)
+	}
+	upload, err := svc.multipart.GetByUploadID(context.Background(), "upload-1")
+	if err != nil {
+		t.Fatalf("expected multipart upload metadata to remain, got %v", err)
+	}
+	if len(upload.Parts) != 1 || len(upload.Parts[0].Chunks) != 1 || upload.Parts[0].Chunks[0].Name != chunk.Name {
+		t.Fatalf("expected retained part metadata, got %#v", upload.Parts)
+	}
+}
+
 func fileKey(bucketID primitive.ObjectID, name string) string {
 	return bucketID.Hex() + "/" + name
 }

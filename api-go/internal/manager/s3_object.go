@@ -111,6 +111,11 @@ type objectMultipartStore interface {
 	DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error
 }
 
+type MultipartUploadAbortStore interface {
+	GetByUploadID(ctx context.Context, uploadID string) (*repository.MultipartUpload, error)
+	Delete(ctx context.Context, uploadID string) error
+}
+
 type objectChunkUploader func(ctx context.Context, r io.Reader, sources []repository.Source, chunkSize int, selector SourceSelector) ([]repository.FileChunk, error)
 type objectChunkDeleter func(ctx context.Context, chunks []repository.FileChunk) error
 
@@ -409,6 +414,48 @@ func (s *ObjectService) CompleteMultipartUploadRecord(ctx context.Context, bucke
 		ETag:        multipartETag(requestedParts, partMap),
 		CleanupErrs: cleanupErrs,
 	}, nil
+}
+
+func (s *ObjectService) AbortMultipartUpload(ctx context.Context, uploadID string) error {
+	return AbortMultipartUpload(ctx, s.multipart, s.deleteChunks, uploadID)
+}
+
+func (s *ObjectService) AbortMultipartUploadRecord(ctx context.Context, mu *repository.MultipartUpload) error {
+	return AbortMultipartUploadRecord(ctx, s.multipart, s.deleteChunks, mu)
+}
+
+func AbortMultipartUpload(ctx context.Context, multipart MultipartUploadAbortStore, deleteChunks func(context.Context, []repository.FileChunk) error, uploadID string) error {
+	mu, err := multipart.GetByUploadID(ctx, uploadID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return ErrMultipartUploadNotFound
+		}
+		return err
+	}
+	return AbortMultipartUploadRecord(ctx, multipart, deleteChunks, mu)
+}
+
+func AbortMultipartUploadRecord(ctx context.Context, multipart MultipartUploadAbortStore, deleteChunks func(context.Context, []repository.FileChunk) error, mu *repository.MultipartUpload) error {
+	if mu == nil {
+		return ErrMultipartUploadNotFound
+	}
+
+	var cleanupErrs []error
+	for _, part := range mu.Parts {
+		if err := deleteChunks(ctx, part.Chunks); err != nil {
+			cleanupErrs = append(cleanupErrs, err)
+		}
+	}
+	if err := errors.Join(cleanupErrs...); err != nil {
+		return err
+	}
+	if err := multipart.Delete(ctx, mu.UploadID); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return ErrMultipartUploadNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *ObjectService) deleteFileChunksIfUnreferenced(ctx context.Context, chunks []repository.FileChunk) error {

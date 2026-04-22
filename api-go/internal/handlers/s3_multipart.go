@@ -397,17 +397,17 @@ func abortMultipartUpload(c *gin.Context, bucketRepo objectBucketReader, sourceR
 		return
 	}
 
-	for _, p := range mu.Parts {
-		if delErr := manager.DeleteFileChunks(ctx, sourceRepo, p.Chunks); delErr != nil {
-			slog.WarnContext(ctx, "abort multipart: delete part chunks",
-				slog.Int("part_number", p.PartNumber),
-				slog.String("error", delErr.Error()),
-			)
+	err = manager.AbortMultipartUploadRecord(ctx, mpRepo, func(ctx context.Context, chunks []repository.FileChunk) error {
+		return manager.DeleteFileChunks(ctx, sourceRepo, chunks)
+	}, mu)
+	if err != nil {
+		if errors.Is(err, manager.ErrMultipartUploadNotFound) {
+			writeS3Error(c, http.StatusNotFound, "NoSuchUpload", "")
+			return
 		}
-	}
-
-	if err := mpRepo.Delete(ctx, uploadID); err != nil {
-		slog.WarnContext(ctx, "abort multipart: delete upload record", slog.String("error", err.Error()))
+		slog.ErrorContext(ctx, "abort multipart: cleanup", slog.String("error", err.Error()))
+		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		return
 	}
 
 	c.Status(http.StatusNoContent)
