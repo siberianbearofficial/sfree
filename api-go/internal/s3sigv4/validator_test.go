@@ -106,6 +106,76 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 	}
 }
 
+func TestCanonicalizeQueryRawEncoding(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		presign bool
+		want    string
+	}{
+		{
+			name: "plus space duplicate blank sorted",
+			raw:  "prefix=photos+raw&space=photos%20raw&encoded=photos%2Braw&empty=&acl&dup=b&dup=a",
+			want: "acl=&dup=a&dup=b&empty=&encoded=photos%2Braw&prefix=photos%2Braw&space=photos%20raw",
+		},
+		{
+			name: "encoded percent plus and space stay distinct",
+			raw:  "token=raw%252Bencoded&token=raw%2Bplus&token=raw+plus&token=raw%20space",
+			want: "token=raw%20space&token=raw%252Bencoded&token=raw%2Bplus&token=raw%2Bplus",
+		},
+		{
+			name:    "presign excludes signature",
+			raw:     "X-Amz-Signature=abc&x=1&X-Amz-Date=20260422T000000Z",
+			presign: true,
+			want:    "X-Amz-Date=20260422T000000Z&x=1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u, err := url.Parse("https://sfree.example.com/api/s3/bucket?" + tt.raw)
+			if err != nil {
+				t.Fatalf("parse url: %v", err)
+			}
+			if got := canonicalizeQuery(u, tt.presign); got != tt.want {
+				t.Fatalf("canonical query mismatch:\nexpected: %s\nactual:   %s", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestValidatorHeaderAuthCanonicalQueryTreatsRawPlusAsPlus(t *testing.T) {
+	accessKey := "mybucketkey"
+	secretKey := "mysecretkey123"
+	now := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	scope := now.Format("20060102") + "/us-east-1/s3/aws4_request"
+	rawQuery := "encoded=photos%2Braw&list-type=2&prefix=photos+raw&space=photos%20raw"
+	req, err := http.NewRequest("GET", "https://sfree.example.com/api/s3/mybucket?"+rawQuery, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	amzDate := now.Format("20060102T150405Z")
+	req.Header.Set("X-Amz-Date", amzDate)
+	signedHeaders := "host;x-amz-date"
+	payloadHash := emptyPayloadHash()
+	canonicalQuery := "encoded=photos%2Braw&list-type=2&prefix=photos%2Braw&space=photos%20raw"
+	canonReq := "GET\n/api/s3/mybucket\n" + canonicalQuery + "\nhost:sfree.example.com\nx-amz-date:" + amzDate + "\n\n" + signedHeaders + "\n" + payloadHash
+	stringToSign := buildStringToSign("AWS4-HMAC-SHA256", now, scope, canonReq)
+	sig := computeSignature(secretKey, now.Format("20060102"), "us-east-1", "s3", stringToSign)
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+accessKey+"/"+scope+", SignedHeaders="+signedHeaders+", Signature="+sig)
+
+	v := Validator{Now: func() time.Time { return now }}
+	res, err := v.Validate(context.Background(), req, accessKey, secretKey)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	lines := strings.Split(res.CanonicalRequest, "\n")
+	if len(lines) < 3 || lines[2] != canonicalQuery {
+		t.Fatalf("canonical query mismatch:\nexpected: %s\nactual canonical request:\n%s", canonicalQuery, res.CanonicalRequest)
+	}
+}
+
 func TestValidatorPresignS3GetObject(t *testing.T) {
 	accessKey := "mybucketkey"
 	secretKey := "mysecretkey123"

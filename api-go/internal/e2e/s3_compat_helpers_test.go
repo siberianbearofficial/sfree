@@ -396,20 +396,28 @@ func s3CanonicalQuery(u *url.URL) string {
 	if u == nil {
 		return ""
 	}
-	values, _ := url.ParseQuery(u.RawQuery)
+	return s3CanonicalRawQuery(u.RawQuery, false)
+}
+
+func s3CanonicalRawQuery(rawQuery string, presign bool) string {
 	type kv struct {
 		k string
 		v string
 	}
 	items := make([]kv, 0)
-	for k, vs := range values {
-		if len(vs) == 0 {
-			items = append(items, kv{k: k})
+	for _, part := range strings.Split(rawQuery, "&") {
+		if part == "" {
 			continue
 		}
-		for _, v := range vs {
-			items = append(items, kv{k: k, v: v})
+		name, value, _ := strings.Cut(part, "=")
+		decodedName := s3QueryPartUnescape(name)
+		if presign && strings.EqualFold(decodedName, "X-Amz-Signature") {
+			continue
 		}
+		items = append(items, kv{
+			k: s3EncodeQuery(decodedName),
+			v: s3EncodeQuery(s3QueryPartUnescape(value)),
+		})
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].k == items[j].k {
@@ -422,11 +430,19 @@ func s3CanonicalQuery(u *url.URL) string {
 		if i > 0 {
 			b.WriteByte('&')
 		}
-		b.WriteString(s3EncodeQuery(item.k))
+		b.WriteString(item.k)
 		b.WriteByte('=')
-		b.WriteString(s3EncodeQuery(item.v))
+		b.WriteString(item.v)
 	}
 	return b.String()
+}
+
+func s3QueryPartUnescape(s string) string {
+	decoded, err := url.PathUnescape(s)
+	if err != nil {
+		return s
+	}
+	return decoded
 }
 
 func s3EncodeQuery(s string) string {
@@ -560,13 +576,19 @@ func presignS3URL(rawURL, method, accessKey, secretKey, region string, expiresSe
 		canonURI = "/"
 	}
 
-	// Build canonical query string (sorted, without X-Amz-Signature).
-	canonQuery := fmt.Sprintf("X-Amz-Algorithm=AWS4-HMAC-SHA256"+
-		"&X-Amz-Credential=%s"+
-		"&X-Amz-Date=%s"+
-		"&X-Amz-Expires=%d"+
-		"&X-Amz-SignedHeaders=%s",
-		url.QueryEscape(cred), amzDate, expiresSec, signedHeaders)
+	authValues := url.Values{}
+	authValues.Set("X-Amz-Algorithm", "AWS4-HMAC-SHA256")
+	authValues.Set("X-Amz-Credential", cred)
+	authValues.Set("X-Amz-Date", amzDate)
+	authValues.Set("X-Amz-Expires", fmt.Sprintf("%d", expiresSec))
+	authValues.Set("X-Amz-SignedHeaders", signedHeaders)
+	authQuery := strings.ReplaceAll(authValues.Encode(), "+", "%20")
+
+	unsignedRawQuery := authQuery
+	if u.RawQuery != "" {
+		unsignedRawQuery = u.RawQuery + "&" + authQuery
+	}
+	canonQuery := s3CanonicalRawQuery(unsignedRawQuery, true)
 
 	canonHeaders := fmt.Sprintf("host:%s\n", u.Host)
 	payloadHash := "UNSIGNED-PAYLOAD"
@@ -590,6 +612,7 @@ func presignS3URL(rawURL, method, accessKey, secretKey, region string, expiresSe
 	kSigning := s3HmacSHA256(kService, []byte("aws4_request"))
 	sig := s3HmacSHA256(kSigning, []byte(stringToSign))
 
-	return fmt.Sprintf("%s://%s%s?%s&X-Amz-Signature=%s",
-		u.Scheme, u.Host, u.EscapedPath(), canonQuery, hex.EncodeToString(sig)), nil
+	signedRawQuery := unsignedRawQuery + "&X-Amz-Signature=" + hex.EncodeToString(sig)
+	return fmt.Sprintf("%s://%s%s?%s",
+		u.Scheme, u.Host, u.EscapedPath(), signedRawQuery), nil
 }

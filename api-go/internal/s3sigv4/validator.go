@@ -447,24 +447,24 @@ func canonicalizeQuery(u *url.URL, presign bool) string {
 	if u == nil {
 		return ""
 	}
-	values, _ := url.ParseQuery(u.RawQuery)
-
 	type kv struct {
 		k string
 		v string
 	}
 	var items []kv
-	for k, vs := range values {
-		if presign && strings.EqualFold(k, "X-Amz-Signature") {
+	for _, part := range strings.Split(u.RawQuery, "&") {
+		if part == "" {
 			continue
 		}
-		if len(vs) == 0 {
-			items = append(items, kv{k: k, v: ""})
+		name, value, _ := strings.Cut(part, "=")
+		decodedName := queryPartUnescape(name)
+		if presign && strings.EqualFold(decodedName, "X-Amz-Signature") {
 			continue
 		}
-		for _, v := range vs {
-			items = append(items, kv{k: k, v: v})
-		}
+		items = append(items, kv{
+			k: awsPercentEncodeQuery(decodedName),
+			v: awsPercentEncodeQuery(queryPartUnescape(value)),
+		})
 	}
 
 	sort.Slice(items, func(i, j int) bool {
@@ -479,11 +479,19 @@ func canonicalizeQuery(u *url.URL, presign bool) string {
 		if i > 0 {
 			sb.WriteByte('&')
 		}
-		sb.WriteString(awsPercentEncodeQuery(it.k))
+		sb.WriteString(it.k)
 		sb.WriteByte('=')
-		sb.WriteString(awsPercentEncodeQuery(it.v))
+		sb.WriteString(it.v)
 	}
 	return sb.String()
+}
+
+func queryPartUnescape(s string) string {
+	decoded, err := url.PathUnescape(s)
+	if err != nil {
+		return s
+	}
+	return decoded
 }
 
 func awsPercentEncodeQuery(s string) string {
