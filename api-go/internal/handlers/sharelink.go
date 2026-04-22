@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,6 +20,10 @@ const shareTokenLength = 32
 
 type createShareRequest struct {
 	ExpiresIn *int `json:"expires_in"` // seconds until expiry, optional
+}
+
+type shareLinkCreator interface {
+	Create(ctx context.Context, sl repository.ShareLink) (*repository.ShareLink, error)
 }
 
 type shareLinkResponse struct {
@@ -51,8 +59,24 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
+		var grantReader bucketAccessGrantReader
+		if grantRepo != nil {
+			grantReader = grantRepo
+		}
+		createShareLink(bucketRepo, fileRepo, shareLinkRepo, grantReader)(c)
+	}
+}
 
-		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleEditor)
+func createShareLink(bucketRepo bucketAccessBucketReader, fileRepo fileByIDReader, shareLinkRepo shareLinkCreator, grantRepo bucketAccessGrantReader) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if bucketRepo == nil || fileRepo == nil || shareLinkRepo == nil {
+			slog.ErrorContext(ctx, "create share link: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+
+		acc := requireBucketAccessFor(c, bucketRepo, grantRepo, repository.RoleEditor)
 		if acc == nil {
 			return
 		}
@@ -84,8 +108,10 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 		}
 
 		var req createShareRequest
-		// Body is optional; ignore bind errors for empty body.
-		_ = c.ShouldBindJSON(&req)
+		if err := decodeOptionalCreateShareRequest(c, &req); err != nil {
+			c.Status(http.StatusBadRequest)
+			return
+		}
 
 		token, err := cryptoutil.RandomString(shareTokenLength)
 		if err != nil {
@@ -124,6 +150,18 @@ func CreateShareLink(bucketRepo *repository.BucketRepository, fileRepo *reposito
 			CreatedAt: created.CreatedAt,
 		})
 	}
+}
+
+func decodeOptionalCreateShareRequest(c *gin.Context, req *createShareRequest) error {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return err
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+	return json.Unmarshal(body, req)
 }
 
 // GetSharedFile godoc
