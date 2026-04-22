@@ -242,14 +242,11 @@ func TestS3CompatPresignedURLExpired(t *testing.T) {
 	objectKey := "presign-expired-" + suffix + ".txt"
 	s3URL := fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, objectKey)
 
-	// Generate presigned URL with 1-second expiry.
-	presignedURL, err := presignS3URL(s3URL, "GET", bucket.AccessKey, bucket.AccessSecret, env.Region, 1)
+	signedAt := time.Now().UTC().Add(-2 * time.Second)
+	presignedURL, err := presignS3URLAt(s3URL, "GET", bucket.AccessKey, bucket.AccessSecret, env.Region, signedAt, 1)
 	if err != nil {
 		t.Fatalf("presign URL: %v", err)
 	}
-
-	// Wait for expiry.
-	time.Sleep(2 * time.Second)
 
 	resp, err := http.Get(presignedURL)
 	if err != nil {
