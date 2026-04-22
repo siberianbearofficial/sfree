@@ -6,8 +6,9 @@ frontend_url="${SFREE_SMOKE_FRONTEND_URL:-http://docker:3000}"
 suffix="$(date +%s)-$$"
 tmpdir="$(mktemp -d)"
 export COMPOSE_PROJECT_NAME="sfree_smoke_$suffix"
-export AWS_CONFIG_FILE="$tmpdir/aws-config"
 export AWS_EC2_METADATA_DISABLED=true
+tools_image="sfree-smoke-tools:$suffix"
+tools_container=""
 
 compose() {
 	docker compose -f docker-compose.yml "$@"
@@ -33,6 +34,10 @@ cleanup() {
 		compose logs --tail=160 api webui minio minio-init mongo || true
 	fi
 	compose down -v --remove-orphans || true
+	if [ -n "$tools_container" ]; then
+		docker rm -f "$tools_container" >/dev/null 2>&1 || true
+	fi
+	docker image rm -f "$tools_image" >/dev/null 2>&1 || true
 	rm -rf "$tmpdir"
 	exit "$status"
 }
@@ -52,8 +57,17 @@ for i in $(seq 1 60); do
 done
 
 step "Build CLI"
-(cd api-go && go build -o "$tmpdir/sfree" ./cmd/sfree-cli)
-pass "sfree CLI builds"
+docker build \
+	--build-arg "GO_IMAGE=$GO_IMAGE" \
+	-f api-go/Dockerfile.smoke-tools \
+	-t "$tools_image" \
+	api-go
+tools_container="$(docker create "$tools_image")"
+docker cp "$tools_container:/out/sfree" "$tmpdir/sfree"
+docker cp "$tools_container:/out/smoke-helper" "$tmpdir/smoke-helper"
+docker rm "$tools_container"
+tools_container=""
+pass "sfree CLI and smoke helper build"
 
 step "Start Compose stack"
 for image in "$GO_IMAGE" "$NODE_IMAGE" "$NGINX_IMAGE" "$MONGO_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
@@ -72,7 +86,7 @@ pass "Woodpecker starts the root Compose stack"
 
 step "Wait for API readiness"
 for i in $(seq 1 120); do
-	if curl -fsS "$base_url/readyz" >/dev/null; then
+	if "$tmpdir/smoke-helper" ready "$base_url/readyz"; then
 		pass "API is ready"
 		break
 	fi
@@ -93,22 +107,12 @@ share_download="$tmpdir/share-download.txt"
 printf 'sfree smoke payload %s\n' "$suffix" > "$payload"
 
 step "Create user via API"
-user_payload="$(jq -n --arg username "$username" '{username: $username}')"
-user_json="$(curl -fsS -H 'Content-Type: application/json' --data "$user_payload" "$base_url/api/v1/users")"
-password="$(printf '%s' "$user_json" | jq -r '.password // empty')"
+password="$("$tmpdir/smoke-helper" create-user "$base_url" "$username")"
 [ -n "$password" ] || fail "User creation response did not include a password"
 pass "User creation via API works"
 
 step "Configure MinIO source via API"
-source_payload="$(jq -n \
-	--arg name "$source_name" \
-	--arg endpoint "http://minio:9000" \
-	--arg bucket "sfree-data" \
-	--arg access_key_id "minioadmin" \
-	--arg secret_access_key "minioadmin" \
-	'{name: $name, endpoint: $endpoint, bucket: $bucket, access_key_id: $access_key_id, secret_access_key: $secret_access_key, region: "us-east-1", path_style: true}')"
-source_json="$(curl -fsS -u "$username:$password" -H 'Content-Type: application/json' --data "$source_payload" "$base_url/api/v1/sources/s3")"
-source_id="$(printf '%s' "$source_json" | jq -r '.id // empty')"
+source_id="$("$tmpdir/smoke-helper" create-source "$base_url" "$username" "$password" "$source_name")"
 [ -n "$source_id" ] || fail "S3 source creation response did not include an id"
 pass "S3-compatible MinIO source can be configured"
 
@@ -147,26 +151,17 @@ cmp "$payload" "$cli_download"
 pass "sfree download returns matching bytes"
 
 step "S3 credential download"
-mkdir -p "$(dirname "$AWS_CONFIG_FILE")"
-printf '[default]\ns3 =\n    addressing_style = path\n' > "$AWS_CONFIG_FILE"
-AWS_ACCESS_KEY_ID="$access_key" \
-AWS_SECRET_ACCESS_KEY="$access_secret" \
-AWS_DEFAULT_REGION=us-east-1 \
-	aws --endpoint-url "$base_url/api/s3" s3api get-object \
-	--bucket "$bucket_key" \
-	--key "$(basename "$payload")" \
-	"$s3_download" >/dev/null
+"$tmpdir/smoke-helper" s3-get "$base_url/api/s3" "$access_key" "$access_secret" "$bucket_key" "$(basename "$payload")" "$s3_download"
 cmp "$payload" "$s3_download"
 pass "Downloaded bytes match through S3-compatible credentials"
 
 step "Frontend-origin public share download"
-share_json="$(curl -fsS -u "$username:$password" -H 'Content-Type: application/json' --data '{}' "$base_url/api/v1/buckets/$bucket_id/files/$file_id/share")"
-share_path="$(printf '%s' "$share_json" | jq -r '.url // empty')"
+share_path="$("$tmpdir/smoke-helper" share-url "$base_url" "$username" "$password" "$bucket_id" "$file_id")"
 case "$share_path" in
 	/share/*) ;;
 	*) fail "Share creation response did not include a /share/ URL" ;;
 esac
-curl -fsS "$frontend_url$share_path" -o "$share_download"
+"$tmpdir/smoke-helper" download-url "$frontend_url$share_path" "$share_download"
 cmp "$payload" "$share_download"
 pass "Downloaded bytes match through the frontend-origin public share URL"
 
