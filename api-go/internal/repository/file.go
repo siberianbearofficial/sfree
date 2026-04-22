@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"regexp"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -161,7 +162,15 @@ func (r *FileRepository) CountByChunk(ctx context.Context, sourceID primitive.Ob
 }
 
 func (r *FileRepository) ListByBucket(ctx context.Context, bucketID primitive.ObjectID) ([]File, error) {
-	return r.ListByBucketWithPrefix(ctx, bucketID, "")
+	return r.ListByBucketByNameQuery(ctx, bucketID, "")
+}
+
+func (r *FileRepository) ListByBucketByNameQuery(ctx context.Context, bucketID primitive.ObjectID, query string) ([]File, error) {
+	filter := bson.M{"bucket_id": bucketID}
+	if query = strings.TrimSpace(query); query != "" {
+		filter["name"] = bson.M{"$regex": regexp.QuoteMeta(query), "$options": "i"}
+	}
+	return r.listByBucketFilter(ctx, filter)
 }
 
 func (r *FileRepository) ListByBucketWithPrefix(ctx context.Context, bucketID primitive.ObjectID, prefix string) ([]File, error) {
@@ -169,6 +178,10 @@ func (r *FileRepository) ListByBucketWithPrefix(ctx context.Context, bucketID pr
 	if prefix != "" {
 		filter["name"] = bson.M{"$regex": "^" + regexp.QuoteMeta(prefix)}
 	}
+	return r.listByBucketFilter(ctx, filter)
+}
+
+func (r *FileRepository) listByBucketFilter(ctx context.Context, filter bson.M) ([]File, error) {
 	cursor, err := r.coll.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "name", Value: 1}}))
 	if err != nil {
 		return nil, err

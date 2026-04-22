@@ -664,6 +664,14 @@ const openAPIJSON = `{
         "parameters": [
           {
             "$ref": "#/components/parameters/ID"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Case-insensitive filename search query"
           }
         ],
         "responses": {

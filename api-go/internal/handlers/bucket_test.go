@@ -16,6 +16,7 @@ import (
 	"github.com/example/sfree/api-go/internal/db"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -91,4 +92,105 @@ func TestCreateBucket(t *testing.T) {
 	if w2.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w2.Code)
 	}
+}
+
+func TestListFilesSearchQueryWithGrantAccess(t *testing.T) {
+	bucketRepo, fileRepo, grantRepo := newBucketFileHandlerTestRepos(t)
+	ctx := context.Background()
+	ownerID := primitive.NewObjectID()
+	viewerID := primitive.NewObjectID()
+	bucket := createBucketFileTestBucket(t, ctx, bucketRepo, ownerID)
+	otherBucket := createBucketFileTestBucket(t, ctx, bucketRepo, primitive.NewObjectID())
+
+	if _, err := grantRepo.Create(ctx, repository.BucketGrant{
+		BucketID:  bucket.ID,
+		UserID:    viewerID,
+		Role:      repository.RoleViewer,
+		GrantedBy: ownerID,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UTC()
+	for _, file := range []repository.File{
+		{BucketID: bucket.ID, Name: "annual-report.pdf", CreatedAt: now},
+		{BucketID: bucket.ID, Name: "notes.txt", CreatedAt: now},
+		{BucketID: otherBucket.ID, Name: "other-report.pdf", CreatedAt: now},
+	} {
+		if _, err := fileRepo.Create(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	router := gin.New()
+	router.GET("/buckets/:id/files", setUserID(viewerID.Hex()), ListFiles(bucketRepo, fileRepo, grantRepo))
+	req, _ := http.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files?q=REPORT", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp []fileResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(resp) != 1 || resp[0].Name != "annual-report.pdf" {
+		t.Fatalf("unexpected files: %+v", resp)
+	}
+
+	noAccessRouter := gin.New()
+	noAccessRouter.GET("/buckets/:id/files", setUserID(primitive.NewObjectID().Hex()), ListFiles(bucketRepo, fileRepo, grantRepo))
+	noAccessReq, _ := http.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files?q=report", nil)
+	noAccessW := httptest.NewRecorder()
+	noAccessRouter.ServeHTTP(noAccessW, noAccessReq)
+	if noAccessW.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", noAccessW.Code)
+	}
+}
+
+func newBucketFileHandlerTestRepos(t *testing.T) (*repository.BucketRepository, *repository.FileRepository, *repository.BucketGrantRepository) {
+	t.Helper()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mongoConn, err := db.Connect(context.Background(), cfg.Mongo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testDB := mongoConn.Client.Database("sfree_bucket_file_handlers_" + primitive.NewObjectID().Hex())
+	t.Cleanup(func() {
+		_ = testDB.Drop(context.Background())
+		_ = mongoConn.Close(context.Background())
+	})
+	bucketRepo, err := repository.NewBucketRepository(testDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileRepo, err := repository.NewFileRepository(testDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grantRepo, err := repository.NewBucketGrantRepository(testDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bucketRepo, fileRepo, grantRepo
+}
+
+func createBucketFileTestBucket(t *testing.T, ctx context.Context, repo *repository.BucketRepository, ownerID primitive.ObjectID) *repository.Bucket {
+	t.Helper()
+	suffix := primitive.NewObjectID().Hex()
+	bucket, err := repo.Create(ctx, repository.Bucket{
+		UserID:          ownerID,
+		Key:             "bucket-" + suffix,
+		AccessKey:       "access-" + suffix,
+		AccessSecretEnc: "secret-" + suffix,
+		CreatedAt:       time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bucket
 }
