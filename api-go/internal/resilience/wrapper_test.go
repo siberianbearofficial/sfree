@@ -138,6 +138,8 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 		MaxRetries:       0,
 	}
 	w := Wrap(inner, cfg)
+	clock := newFakeClock()
+	w.(*wrapper).cb = newCircuitBreakerWithClock(cfg.FailureThreshold, cfg.RecoveryTimeout, clock.Now)
 
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
@@ -155,7 +157,7 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 
 	// Fix the backend.
 	inner.uploadErr = nil
-	time.Sleep(60 * time.Millisecond)
+	clock.Advance(50 * time.Millisecond)
 
 	// Should succeed (half-open probe).
 	name, err := w.Upload(ctx, "ok.txt", strings.NewReader("data"))
