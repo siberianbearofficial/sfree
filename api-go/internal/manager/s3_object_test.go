@@ -408,12 +408,12 @@ func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) 
 	}
 }
 
-func TestNewObjectServiceWithSourceClientFactoryUsesFactoryForUploads(t *testing.T) {
+func TestObjectWriteServiceWithSourceClientFactoryUsesFactoryForUploads(t *testing.T) {
 	t.Parallel()
 
 	sourceID := primitive.NewObjectID()
 	calls := 0
-	svc := NewObjectServiceWithSourceClientFactory(nil, nil, nil, func(_ context.Context, src *repository.Source) (SourceClient, error) {
+	svc := NewObjectWriteServiceWithSourceClientFactory(nil, nil, func(_ context.Context, src *repository.Source) (SourceClient, error) {
 		calls++
 		if src.ID != sourceID {
 			t.Fatalf("expected source %s, got %s", sourceID.Hex(), src.ID.Hex())
@@ -421,7 +421,7 @@ func TestNewObjectServiceWithSourceClientFactoryUsesFactoryForUploads(t *testing
 		return &stubSourceClient{}, nil
 	})
 
-	chunks, err := svc.uploadChunks(context.Background(), bytes.NewReader([]byte("payload")), []repository.Source{{ID: sourceID}}, len("payload"), &RoundRobinSelector{})
+	chunks, err := svc.service.uploadChunks(context.Background(), bytes.NewReader([]byte("payload")), []repository.Source{{ID: sourceID}}, len("payload"), &RoundRobinSelector{})
 	if err != nil {
 		t.Fatalf("upload chunks: %v", err)
 	}
