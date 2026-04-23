@@ -179,7 +179,6 @@ func requestObjectUserMetadata(r *http.Request) map[string]string {
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [head]
-
 func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || fileRepo == nil {
