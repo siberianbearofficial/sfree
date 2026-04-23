@@ -32,6 +32,7 @@ type fakeObjectFiles struct {
 	replaceErr error
 	deleteErr  error
 	listErr    error
+	events     *[]string
 }
 
 func newFakeObjectFiles(files ...repository.File) *fakeObjectFiles {
@@ -107,6 +108,9 @@ func (f *fakeObjectFiles) ListByBucket(_ context.Context, bucketID primitive.Obj
 }
 
 func (f *fakeObjectFiles) DeleteByBucket(_ context.Context, bucketID primitive.ObjectID) error {
+	if f.events != nil {
+		*f.events = append(*f.events, "delete file metadata")
+	}
 	if f.deleteErr != nil {
 		return f.deleteErr
 	}
@@ -254,6 +258,9 @@ func (f *fakeMultipartUploads) CountByPartChunkExcludingBucket(_ context.Context
 }
 
 func (f *fakeMultipartUploads) DeleteByBucket(_ context.Context, bucketID primitive.ObjectID) error {
+	if f.events != nil {
+		*f.events = append(*f.events, "delete multipart metadata")
+	}
 	if f.delErr != nil {
 		return f.delErr
 	}
@@ -728,6 +735,7 @@ func TestObjectServiceDeleteBucketContentsRemovesMetadataAndUnreferencedChunks(t
 	bucketID := primitive.NewObjectID()
 	otherBucketID := primitive.NewObjectID()
 	sourceID := primitive.NewObjectID()
+	var events []string
 	fileOnlyChunk := repository.FileChunk{SourceID: sourceID, Name: "file-only", Size: 3}
 	fileSharedChunk := repository.FileChunk{SourceID: sourceID, Name: "file-shared", Size: 5}
 	partOnlyChunk := repository.FileChunk{SourceID: sourceID, Name: "part-only", Size: 7}
@@ -736,6 +744,7 @@ func TestObjectServiceDeleteBucketContentsRemovesMetadataAndUnreferencedChunks(t
 		repository.File{ID: primitive.NewObjectID(), BucketID: bucketID, Name: "object.txt", Chunks: []repository.FileChunk{fileOnlyChunk, fileSharedChunk}},
 		repository.File{ID: primitive.NewObjectID(), BucketID: otherBucketID, Name: "survivor.txt", Chunks: []repository.FileChunk{fileSharedChunk}},
 	)
+	files.events = &events
 	uploads := &fakeMultipartUploads{uploads: map[string]repository.MultipartUpload{
 		"delete-upload": {
 			BucketID:  bucketID,
@@ -754,9 +763,17 @@ func TestObjectServiceDeleteBucketContentsRemovesMetadataAndUnreferencedChunks(t
 			},
 		},
 	}}
+	uploads.events = &events
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
 	svc.multipart = uploads
+	svc.deleteChunks = func(_ context.Context, chunks []repository.FileChunk) error {
+		deleted = append(deleted, chunks...)
+		for _, chunk := range chunks {
+			events = append(events, "delete chunk "+chunk.Name)
+		}
+		return nil
+	}
 
 	result, err := svc.DeleteBucketContents(context.Background(), bucketID)
 	if err != nil {
@@ -787,20 +804,28 @@ func TestObjectServiceDeleteBucketContentsRemovesMetadataAndUnreferencedChunks(t
 	if deletedNames[fileSharedChunk.Name] || deletedNames[partSharedChunk.Name] {
 		t.Fatalf("expected shared chunks to remain, got %#v", deleted)
 	}
+	if len(events) < 2 || events[0] != "delete file metadata" || events[1] != "delete multipart metadata" {
+		t.Fatalf("expected metadata deletion before chunk cleanup, got %#v", events)
+	}
 }
 
 func TestObjectServiceDeleteBucketContentsReturnsChunkCleanupError(t *testing.T) {
 	bucketID := primitive.NewObjectID()
 	cleanupErr := errors.New("delete chunks failed")
+	var events []string
 	files := newFakeObjectFiles(repository.File{
 		ID:       primitive.NewObjectID(),
 		BucketID: bucketID,
 		Name:     "object.txt",
 		Chunks:   []repository.FileChunk{{SourceID: primitive.NewObjectID(), Name: "delete-me", Size: 3}},
 	})
+	files.events = &events
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
-	svc.deleteChunks = func(context.Context, []repository.FileChunk) error {
+	svc.deleteChunks = func(_ context.Context, chunks []repository.FileChunk) error {
+		for _, chunk := range chunks {
+			events = append(events, "delete chunk "+chunk.Name)
+		}
 		return cleanupErr
 	}
 
@@ -808,8 +833,11 @@ func TestObjectServiceDeleteBucketContentsReturnsChunkCleanupError(t *testing.T)
 	if !errors.Is(err, cleanupErr) {
 		t.Fatalf("expected cleanup error, got %v", err)
 	}
-	if _, err := files.GetByName(context.Background(), bucketID, "object.txt"); err != nil {
-		t.Fatalf("expected file metadata to remain after cleanup failure, got %v", err)
+	if _, err := files.GetByName(context.Background(), bucketID, "object.txt"); !errors.Is(err, mongo.ErrNoDocuments) {
+		t.Fatalf("expected file metadata removed before cleanup failure, got %v", err)
+	}
+	if len(events) != 2 || events[0] != "delete file metadata" || events[1] != "delete chunk delete-me" {
+		t.Fatalf("expected chunk cleanup after metadata deletion, got %#v", events)
 	}
 }
 
@@ -830,8 +858,8 @@ func TestObjectServiceDeleteBucketContentsReturnsFileMetadataDeleteError(t *test
 	if !errors.Is(err, deleteErr) {
 		t.Fatalf("expected file metadata delete error, got %v", err)
 	}
-	if len(deleted) != 1 || deleted[0].Name != "delete-me" {
-		t.Fatalf("expected chunk cleanup before metadata delete failure, got %#v", deleted)
+	if len(deleted) != 0 {
+		t.Fatalf("expected no chunk cleanup after metadata delete failure, got %#v", deleted)
 	}
 	if _, err := files.GetByName(context.Background(), bucketID, "object.txt"); err != nil {
 		t.Fatalf("expected file metadata to remain after delete failure, got %v", err)
@@ -864,6 +892,9 @@ func TestObjectServiceDeleteBucketContentsReturnsMultipartMetadataDeleteError(t 
 	_, err := svc.DeleteBucketContents(context.Background(), bucketID)
 	if !errors.Is(err, deleteErr) {
 		t.Fatalf("expected multipart metadata delete error, got %v", err)
+	}
+	if len(deleted) != 0 {
+		t.Fatalf("expected no chunk cleanup after multipart metadata delete failure, got %#v", deleted)
 	}
 	if _, err := files.GetByName(context.Background(), bucketID, "object.txt"); !errors.Is(err, mongo.ErrNoDocuments) {
 		t.Fatalf("expected file metadata deleted before multipart delete failure, got %v", err)
