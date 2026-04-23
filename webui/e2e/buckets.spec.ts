@@ -151,6 +151,7 @@ test.describe("Bucket creation flow", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 
@@ -162,6 +163,7 @@ test.describe("Bucket creation flow", () => {
   test("viewer bucket detail hides write actions", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 
