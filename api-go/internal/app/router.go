@@ -13,12 +13,20 @@ import (
 )
 
 func SetupRouter(m *db.Mongo, cfg *config.Config) (*gin.Engine, error) {
+	return setupRouter(m, cfg, routerSetupOptions{})
+}
+
+type routerSetupOptions struct {
+	constructors routerDependencyConstructors
+}
+
+func setupRouter(m *db.Mongo, cfg *config.Config, opts routerSetupOptions) (*gin.Engine, error) {
 	router := gin.New()
 
 	limiters := registerMiddleware(router, cfg)
 	registerProbeRoutes(router, m, limiters)
 
-	deps, err := newRouterDependencies(m, cfg)
+	deps, err := newRouterDependencies(m, cfg, opts.constructors)
 	if err != nil {
 		return nil, err
 	}
