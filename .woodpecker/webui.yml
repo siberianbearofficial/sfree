@@ -15,6 +15,8 @@ when:
 steps:
   - name: validate
     image: node:20
+    when:
+      - event: pull_request
     commands:
       - cd webui
       - npm ci --include=dev
@@ -24,6 +26,8 @@ steps:
 
   - name: e2e tests
     image: node:20
+    when:
+      - event: pull_request
     commands:
       - cd webui
       - npm ci --include=dev
