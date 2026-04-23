@@ -542,10 +542,12 @@ func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 
 func TestObjectServicePutObjectPersistsChecksumETagIndependentOfLifecycleMetadata(t *testing.T) {
 	bucketID := primitive.NewObjectID()
-	sourceID := primitive.NewObjectID()
+	sourceID := objectServiceTestSourceID
 	files := newFakeObjectFiles()
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
+	svc.sources = &fakeObjectSources{sources: []repository.Source{{ID: sourceID}}}
+	bucket := &repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{sourceID}}
 	names := []string{"first-provider-name", "second-provider-name"}
 	uploadCalls := 0
 	svc.uploadChunks = func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {
@@ -567,11 +569,11 @@ func TestObjectServicePutObjectPersistsChecksumETagIndependentOfLifecycleMetadat
 		return tm
 	}
 
-	first, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
+	first, err := svc.PutObject(context.Background(), bucket, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
 	if err != nil {
 		t.Fatalf("first PutObject returned error: %v", err)
 	}
-	second, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
+	second, err := svc.PutObject(context.Background(), bucket, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
 	if err != nil {
 		t.Fatalf("second PutObject returned error: %v", err)
 	}
@@ -687,7 +689,7 @@ func TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination(t
 	userID := primitive.NewObjectID()
 	sourceBucketID := primitive.NewObjectID()
 	destBucketID := primitive.NewObjectID()
-	sourceChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "source-chunk", Size: 12}
+	sourceChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "source-chunk", Order: 3, Size: 12, Checksum: "source-sum"}
 	oldDestChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "old-dest-chunk", Size: 8}
 	sourceETag := `"source-etag"`
 	files := newFakeObjectFiles(
@@ -709,6 +711,9 @@ func TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination(t
 	}
 	if len(result.File.Chunks) != 1 || result.File.Chunks[0].Name != sourceChunk.Name {
 		t.Fatalf("expected copied file to reference source chunk, got %#v", result.File.Chunks)
+	}
+	if result.File.Chunks[0].Order != sourceChunk.Order || result.File.Chunks[0].Checksum != sourceChunk.Checksum {
+		t.Fatalf("expected copied file to preserve chunk metadata, got %#v", result.File.Chunks[0])
 	}
 	if result.File.ContentType != "image/png" || result.File.UserMetadata["owner"] != "alice" {
 		t.Fatalf("expected copied metadata, got content_type=%q metadata=%#v", result.File.ContentType, result.File.UserMetadata)

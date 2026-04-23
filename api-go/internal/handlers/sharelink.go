@@ -200,7 +200,7 @@ func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.
 			return
 		}
 
-		total := fileContentLength(fileDoc)
+		total := manager.FileSize(*fileDoc)
 		w := newDeferredResponseWriter(c, func() {
 			setAttachmentDownloadHeaders(c, fileDoc.Name, total)
 			c.Status(http.StatusOK)
