@@ -35,6 +35,9 @@ func NewShareLinkRepository(db *mongo.Database) (*ShareLinkRepository, error) {
 			Keys: bson.D{{Key: "file_id", Value: 1}},
 		},
 		{
+			Keys: bson.D{{Key: "bucket_id", Value: 1}},
+		},
+		{
 			Keys: bson.D{{Key: "user_id", Value: 1}},
 		},
 	})
@@ -127,4 +130,14 @@ func (r *ShareLinkRepository) Delete(ctx context.Context, id primitive.ObjectID,
 		return mongo.ErrNoDocuments
 	}
 	return nil
+}
+
+func (r *ShareLinkRepository) DeleteByFile(ctx context.Context, fileID primitive.ObjectID) error {
+	_, err := r.coll.DeleteMany(ctx, bson.M{"file_id": fileID})
+	return err
+}
+
+func (r *ShareLinkRepository) DeleteByBucket(ctx context.Context, bucketID primitive.ObjectID) error {
+	_, err := r.coll.DeleteMany(ctx, bson.M{"bucket_id": bucketID})
+	return err
 }
