@@ -47,6 +47,13 @@ const MOCK_FILES = [
   },
 ];
 
+const LARGE_TEXT_FILE = {
+  id: "file-3",
+  name: "huge.log",
+  size: 1_500_000,
+  created_at: "2024-01-22T08:15:00Z",
+};
+
 test.describe("File listing and download", () => {
   test("bucket detail shows bucket info", async ({ page }) => {
     await injectAuth(page);
@@ -205,6 +212,34 @@ test.describe("File listing and download", () => {
     await expect(
       page.getByText("The server returned an error. Try again later."),
     ).toBeVisible();
+  });
+
+  test("large text previews do not download the file", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+    await mockGet(page, "/buckets/bkt-1/files", [LARGE_TEXT_FILE]);
+
+    let previewRequests = 0;
+    await page.route("**/api/v1/buckets/bkt-1/files/file-3/download", async (route) => {
+      previewRequests += 1;
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+        body: "should not load",
+      });
+    });
+
+    await page.goto("/buckets/bkt-1");
+    await page.getByRole("button", { name: "huge.log" }).click();
+
+    await expect(
+      page.getByText("Preview unavailable for large text files"),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Files larger than 1 MB must be downloaded to inspect."),
+    ).toBeVisible();
+    await expect.poll(() => previewRequests).toBe(0);
   });
 
   test("back button is present and navigates back", async ({ page }) => {
