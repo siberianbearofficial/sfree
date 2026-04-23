@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -28,6 +30,10 @@ type createBucketResponse struct {
 	AccessKey    string    `json:"access_key"`
 	AccessSecret string    `json:"access_secret"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+type bucketCreator interface {
+	Create(context.Context, repository.Bucket) (*repository.Bucket, error)
 }
 
 type bucketResponse struct {
@@ -91,6 +97,19 @@ func respondBadSourceWeights(c *gin.Context, err error) bool {
 	return true
 }
 
+func isNilDependency(dep any) bool {
+	if dep == nil {
+		return true
+	}
+	value := reflect.ValueOf(dep)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
+}
+
 // CreateBucket godoc
 // @Summary Create bucket
 // @Tags buckets
@@ -103,7 +122,7 @@ func respondBadSourceWeights(c *gin.Context, err error) bool {
 // @Failure 409 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets [post]
-func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, secretKey string) gin.HandlerFunc {
+func CreateBucket(repo bucketCreator, sourceRepo sourceGetter, secretKey string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		var req createBucketRequest
@@ -112,7 +131,7 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if repo == nil || sourceRepo == nil {
+		if isNilDependency(repo) || isNilDependency(sourceRepo) {
 			slog.ErrorContext(ctx, "create bucket: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
@@ -140,6 +159,7 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			return
 		}
 		sourceIDs := make([]primitive.ObjectID, 0, len(req.SourceIDs))
+		seenSourceIDs := make(map[primitive.ObjectID]struct{}, len(req.SourceIDs))
 		for _, sourceIDHex := range req.SourceIDs {
 			sourceID, err := primitive.ObjectIDFromHex(sourceIDHex)
 			if err != nil {
@@ -160,6 +180,11 @@ func CreateBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 				c.Status(http.StatusBadRequest)
 				return
 			}
+			if _, ok := seenSourceIDs[sourceID]; ok {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("source_ids contains duplicate source id %q", sourceIDHex)})
+				return
+			}
+			seenSourceIDs[sourceID] = struct{}{}
 			sourceIDs = append(sourceIDs, sourceID)
 		}
 		strategy := repository.DistributionStrategy(req.DistributionStrategy)

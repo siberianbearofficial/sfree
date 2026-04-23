@@ -542,7 +542,7 @@ func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 
 func TestObjectServicePutObjectPersistsChecksumETagIndependentOfLifecycleMetadata(t *testing.T) {
 	bucketID := primitive.NewObjectID()
-	sourceID := primitive.NewObjectID()
+	sourceID := objectServiceTestSourceID
 	files := newFakeObjectFiles()
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
