@@ -10,6 +10,7 @@ import (
 
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -107,6 +108,14 @@ func TestMultipartUploadRepositorySetPartReplacesWithoutDroppingParts(t *testing
 	if err != mongo.ErrNoDocuments {
 		t.Fatalf("expected ErrNoDocuments for missing upload, got %v", err)
 	}
+}
+
+func TestMultipartUploadRepositoryCreatesPartChunkReferenceIndex(t *testing.T) {
+	testDB, _ := newMultipartRepositoryTestDB(t)
+	assertMongoIndex(t, testDB.Collection("multipart_uploads"), multipartPartChunkNameBucketIndex, bson.D{
+		{Key: "parts.chunks.name", Value: 1},
+		{Key: "bucket_id", Value: 1},
+	})
 }
 
 func assertMultipartPart(t *testing.T, parts []UploadPart, partNumber int, etag string, chunkName string) {

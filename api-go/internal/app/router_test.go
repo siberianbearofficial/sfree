@@ -7,9 +7,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
 	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/resilience"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -85,21 +88,44 @@ func TestOpenAPIJSONRoute(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 	if contentType := w.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
-		t.Fatalf("expected OpenAPI JSON content type, got %q", contentType)
+		t.Fatalf("expected API docs JSON content type, got %q", contentType)
 	}
 	var doc struct {
-		OpenAPI string                         `json:"openapi"`
+		Swagger string                         `json:"swagger"`
 		Paths   map[string]map[string]struct{} `json:"paths"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
-		t.Fatalf("expected valid OpenAPI JSON: %v", err)
+		t.Fatalf("expected valid API docs JSON: %v", err)
 	}
-	if doc.OpenAPI != "3.0.3" {
-		t.Fatalf("expected OpenAPI 3.0.3, got %q", doc.OpenAPI)
+	if doc.Swagger != "2.0" {
+		t.Fatalf("expected Swagger 2.0, got %q", doc.Swagger)
 	}
-	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/s3/{bucket}", "/api/s3/{bucket}/{objectKey}"} {
+	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("expected OpenAPI path %s", path)
+		}
+	}
+}
+
+func TestRegisterSourceRoutesIncludesQueryDownloadRoute(t *testing.T) {
+	r := gin.New()
+	registerSourceRoutes(r, &routerDependencies{
+		auth: func(c *gin.Context) {
+			c.Next()
+		},
+		sourceRepo: &repository.SourceRepository{},
+	})
+
+	expectedRoutes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/sources/:id/download"},
+		{http.MethodGet, "/api/v1/sources/:id/files/:file_id/download"},
+	}
+	for _, expected := range expectedRoutes {
+		if !hasRoute(r, expected.method, expected.path) {
+			t.Fatalf("expected %s %s to be registered", expected.method, expected.path)
 		}
 	}
 }
@@ -205,6 +231,46 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 				t.Fatalf("expected repository name in error, got %v", err)
 			}
 		})
+	}
+}
+
+func TestRouterSourceClientResilienceConfigUsesOverrides(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.SourceClient.TimeoutSeconds = 7
+	cfg.SourceClient.FailureThreshold = 3
+	cfg.SourceClient.RecoverySeconds = 11
+	cfg.SourceClient.MaxRetries = 4
+	cfg.SourceClient.RetryBaseDelayMs = 25
+	cfg.SourceClient.RetryMaxDelayMs = 250
+
+	got := routerSourceClientResilienceConfig(cfg)
+
+	if got.Timeout != 7*time.Second {
+		t.Fatalf("expected timeout override, got %s", got.Timeout)
+	}
+	if got.FailureThreshold != 3 {
+		t.Fatalf("expected failure threshold override, got %d", got.FailureThreshold)
+	}
+	if got.RecoveryTimeout != 11*time.Second {
+		t.Fatalf("expected recovery timeout override, got %s", got.RecoveryTimeout)
+	}
+	if got.MaxRetries != 4 {
+		t.Fatalf("expected max retries override, got %d", got.MaxRetries)
+	}
+	if got.RetryBaseDelay != 25*time.Millisecond {
+		t.Fatalf("expected retry base delay override, got %s", got.RetryBaseDelay)
+	}
+	if got.RetryMaxDelay != 250*time.Millisecond {
+		t.Fatalf("expected retry max delay override, got %s", got.RetryMaxDelay)
+	}
+}
+
+func TestRouterSourceClientResilienceConfigKeepsDefaultsForZeroValues(t *testing.T) {
+	got := routerSourceClientResilienceConfig(&config.Config{})
+	want := resilience.DefaultWrapperConfig()
+
+	if got != want {
+		t.Fatalf("expected default resilience config, got %#v want %#v", got, want)
 	}
 }
 

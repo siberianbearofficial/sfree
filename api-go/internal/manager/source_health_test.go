@@ -8,20 +8,14 @@ import (
 	"testing"
 
 	"github.com/example/sfree/api-go/internal/repository"
-	"github.com/example/sfree/api-go/internal/s3compat"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type healthTestClient struct {
-	storageTotal int64
-	storageUsed  int64
-	storageFree  int64
-	storageErr   error
-	headErr      error
-	chatErr      error
-	headCalls    int
-	chatCalls    int
-	listCalls    int
+	health     sourcecap.Health
+	healthErr  error
+	probeCalls int
 }
 
 func (c *healthTestClient) Upload(context.Context, string, io.Reader) (string, error) {
@@ -36,28 +30,20 @@ func (c *healthTestClient) Delete(context.Context, string) error {
 	return nil
 }
 
-func (c *healthTestClient) StorageInfo(context.Context) (int64, int64, int64, error) {
-	return c.storageTotal, c.storageUsed, c.storageFree, c.storageErr
-}
-
-func (c *healthTestClient) HeadBucket(context.Context) error {
-	c.headCalls++
-	return c.headErr
-}
-
-func (c *healthTestClient) CheckChat(context.Context) error {
-	c.chatCalls++
-	return c.chatErr
-}
-
-func (c *healthTestClient) ListObjects(context.Context) ([]s3compat.ObjectInfo, int64, error) {
-	c.listCalls++
-	return nil, 0, nil
+func (c *healthTestClient) ProbeSourceHealth(context.Context) (sourcecap.Health, error) {
+	c.probeCalls++
+	return c.health, c.healthErr
 }
 
 func TestCheckSourceHealthGDriveReturnsQuota(t *testing.T) {
 	t.Parallel()
-	cli := &healthTestClient{storageTotal: 1000, storageUsed: 400, storageFree: 600}
+	total, used, free := int64(1000), int64(400), int64(600)
+	cli := &healthTestClient{health: sourcecap.Health{
+		Status:     sourcecap.HealthHealthy,
+		ReasonCode: "ok",
+		Message:    "Google Drive metadata is reachable.",
+		Quota:      sourcecap.Quota{TotalBytes: &total, UsedBytes: &used, FreeBytes: &free},
+	}}
 	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeGDrive}
 
 	health, err := CheckSourceHealth(context.Background(), src, func(context.Context, *repository.Source) (SourceClient, error) {
@@ -76,7 +62,11 @@ func TestCheckSourceHealthGDriveReturnsQuota(t *testing.T) {
 
 func TestCheckSourceHealthGDriveLowQuotaIsDegraded(t *testing.T) {
 	t.Parallel()
-	cli := &healthTestClient{storageTotal: 1000, storageUsed: 970, storageFree: 30}
+	cli := &healthTestClient{health: sourcecap.Health{
+		Status:     sourcecap.HealthDegraded,
+		ReasonCode: "quota_low",
+		Message:    "Google Drive quota is nearly exhausted.",
+	}}
 	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeGDrive}
 
 	health, err := CheckSourceHealth(context.Background(), src, func(context.Context, *repository.Source) (SourceClient, error) {
@@ -92,7 +82,11 @@ func TestCheckSourceHealthGDriveLowQuotaIsDegraded(t *testing.T) {
 
 func TestCheckSourceHealthS3UsesBucketMetadataProbe(t *testing.T) {
 	t.Parallel()
-	cli := &healthTestClient{}
+	cli := &healthTestClient{health: sourcecap.Health{
+		Status:     sourcecap.HealthHealthy,
+		ReasonCode: "ok",
+		Message:    "S3 bucket metadata is reachable.",
+	}}
 	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeS3}
 
 	health, err := CheckSourceHealth(context.Background(), src, func(context.Context, *repository.Source) (SourceClient, error) {
@@ -104,11 +98,8 @@ func TestCheckSourceHealthS3UsesBucketMetadataProbe(t *testing.T) {
 	if health.Status != SourceHealthHealthy {
 		t.Fatalf("unexpected health: %+v", health)
 	}
-	if cli.headCalls != 1 {
-		t.Fatalf("expected one head bucket call, got %d", cli.headCalls)
-	}
-	if cli.listCalls != 0 {
-		t.Fatalf("health check must not list objects, got %d calls", cli.listCalls)
+	if cli.probeCalls != 1 {
+		t.Fatalf("expected one health probe call, got %d", cli.probeCalls)
 	}
 	if health.Quota.TotalBytes != nil || health.Quota.UsedBytes != nil || health.Quota.FreeBytes != nil {
 		t.Fatalf("expected unknown quota for s3, got %+v", health.Quota)
@@ -117,7 +108,14 @@ func TestCheckSourceHealthS3UsesBucketMetadataProbe(t *testing.T) {
 
 func TestCheckSourceHealthTelegramFailureIsUnhealthy(t *testing.T) {
 	t.Parallel()
-	cli := &healthTestClient{chatErr: errors.New("chat not found")}
+	cli := &healthTestClient{
+		health: sourcecap.Health{
+			Status:     sourcecap.HealthUnhealthy,
+			ReasonCode: "probe_failed",
+			Message:    "Telegram bot or chat is not reachable.",
+		},
+		healthErr: errors.New("chat not found"),
+	}
 	src := &repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
 
 	health, err := CheckSourceHealth(context.Background(), src, func(context.Context, *repository.Source) (SourceClient, error) {
@@ -129,8 +127,8 @@ func TestCheckSourceHealthTelegramFailureIsUnhealthy(t *testing.T) {
 	if health.Status != SourceHealthUnhealthy || health.ReasonCode != "probe_failed" {
 		t.Fatalf("unexpected health: %+v", health)
 	}
-	if cli.chatCalls != 1 {
-		t.Fatalf("expected one chat check, got %d", cli.chatCalls)
+	if cli.probeCalls != 1 {
+		t.Fatalf("expected one health probe call, got %d", cli.probeCalls)
 	}
 }
 
