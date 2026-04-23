@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -79,6 +80,51 @@ type sourceHealthResponse struct {
 
 type sourceGetter interface {
 	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.Source, error)
+}
+
+func ownedSourceFromRoute(c *gin.Context, repo sourceGetter, operation string) (*repository.Source, bool) {
+	ctx := c.Request.Context()
+	if nilSourceGetter(repo) {
+		slog.ErrorContext(ctx, operation+": repository is nil")
+		c.Status(http.StatusServiceUnavailable)
+		return nil, false
+	}
+	userID, ok := authenticatedUserID(c)
+	if !ok {
+		return nil, false
+	}
+	id, ok := routeObjectID(c, "id")
+	if !ok {
+		return nil, false
+	}
+	src, err := repo.GetByID(ctx, id)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			c.Status(http.StatusNotFound)
+			return nil, false
+		}
+		slog.ErrorContext(ctx, operation+": get source", slog.String("error", err.Error()))
+		c.Status(http.StatusInternalServerError)
+		return nil, false
+	}
+	if src.UserID != userID {
+		c.Status(http.StatusNotFound)
+		return nil, false
+	}
+	return src, true
+}
+
+func nilSourceGetter(repo sourceGetter) bool {
+	if repo == nil {
+		return true
+	}
+	value := reflect.ValueOf(repo)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // CreateGDriveSource godoc
@@ -333,31 +379,8 @@ func GetSourceInfoWithFactory(repo *repository.SourceRepository, factory manager
 func getSourceInfo(repo *repository.SourceRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		if repo == nil {
-			slog.ErrorContext(ctx, "get source info: repository is nil")
-			c.Status(http.StatusServiceUnavailable)
-			return
-		}
-		userID, ok := authenticatedUserID(c)
+		src, ok := ownedSourceFromRoute(c, repo, "get source info")
 		if !ok {
-			return
-		}
-		id, ok := routeObjectID(c, "id")
-		if !ok {
-			return
-		}
-		src, err := repo.GetByID(c.Request.Context(), id)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "get source info: get source", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if src.UserID != userID {
-			c.Status(http.StatusNotFound)
 			return
 		}
 		info, err := manager.InspectSource(c.Request.Context(), src, factory)
@@ -409,31 +432,8 @@ func GetSourceHealthWithFactory(repo *repository.SourceRepository, factory manag
 func getSourceHealth(repo sourceGetter, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		if repo == nil {
-			slog.ErrorContext(ctx, "get source health: repository is nil")
-			c.Status(http.StatusServiceUnavailable)
-			return
-		}
-		userID, ok := authenticatedUserID(c)
+		src, ok := ownedSourceFromRoute(c, repo, "get source health")
 		if !ok {
-			return
-		}
-		id, ok := routeObjectID(c, "id")
-		if !ok {
-			return
-		}
-		src, err := repo.GetByID(c.Request.Context(), id)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "get source health: get source", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if src.UserID != userID {
-			c.Status(http.StatusNotFound)
 			return
 		}
 		health, err := manager.CheckSourceHealth(c.Request.Context(), src, factory)
@@ -490,36 +490,13 @@ func DownloadSourceFileWithFactory(sourceRepo *repository.SourceRepository, fact
 
 func downloadSourceFile(sourceRepo sourceGetter, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if sourceRepo == nil {
-			slog.ErrorContext(c.Request.Context(), "download source file: repository is nil")
-			c.Status(http.StatusServiceUnavailable)
-			return
-		}
-		userID, ok := authenticatedUserID(c)
-		if !ok {
-			return
-		}
-		id, ok := routeObjectID(c, "id")
+		src, ok := ownedSourceFromRoute(c, sourceRepo, "download source file")
 		if !ok {
 			return
 		}
 		fileID := c.Param("file_id")
 		if fileID == "" {
 			c.Status(http.StatusBadRequest)
-			return
-		}
-		src, err := sourceRepo.GetByID(c.Request.Context(), id)
-		if err != nil {
-			if err == mongo.ErrNoDocuments {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(c.Request.Context(), "download source file: get source", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if src.UserID != userID {
-			c.Status(http.StatusNotFound)
 			return
 		}
 

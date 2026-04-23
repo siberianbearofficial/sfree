@@ -77,6 +77,35 @@ func TestGetSourceHealthMissingSource(t *testing.T) {
 	}
 }
 
+func TestGetSourceHealthTypedNilRepository(t *testing.T) {
+	t.Parallel()
+	var repo *repository.SourceRepository
+	r := gin.New()
+	r.GET("/sources/:id/health", setUserID(validUserID()), getSourceHealth(repo, nil))
+
+	req, _ := http.NewRequest(http.MethodGet, "/sources/"+primitive.NewObjectID().Hex()+"/health", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+}
+
+func TestGetSourceHealthRepositoryError(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.GET("/sources/:id/health", setUserID(validUserID()), getSourceHealth(fakeSourceGetter{err: errors.New("database unavailable")}, nil))
+
+	req, _ := http.NewRequest(http.MethodGet, "/sources/"+primitive.NewObjectID().Hex()+"/health", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
 func TestGetSourceHealthNonOwnedSource(t *testing.T) {
 	t.Parallel()
 	source := &repository.Source{
