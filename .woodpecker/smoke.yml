@@ -32,6 +32,8 @@ steps:
       MONGO_IMAGE: public.ecr.aws/docker/library/mongo:7.0.32-rc2-jammy
       MINIO_IMAGE: quay.io/minio/minio:RELEASE.2025-01-20T14-49-07Z
       MINIO_MC_IMAGE: quay.io/minio/mc:latest
+      MINIO_IMAGE_FALLBACK: minio/minio:RELEASE.2025-01-20T14-49-07Z
+      MINIO_MC_IMAGE_FALLBACK: minio/mc:latest
     commands:
       - apk add --no-cache aws-cli curl docker-cli docker-cli-compose jq
       - chmod +x scripts/woodpecker-smoke.sh

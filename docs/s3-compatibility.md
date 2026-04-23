@@ -8,7 +8,7 @@ Reference: [Amazon S3 API operations](https://docs.aws.amazon.com/AmazonS3/lates
 
 ## Summary
 
-SFree supports the core object lifecycle: upload, download, head, copy, single-delete, multi-delete, ListObjectsV2, byte-range downloads, and multipart upload. The main compatibility gaps are bucket-discovery calls used by general-purpose clients, metadata fidelity, checksums, and advanced bucket/object APIs.
+SFree supports the core object lifecycle: upload, download, head, copy, single-delete, multi-delete, ListObjectsV2, byte-range downloads, and multipart upload. The main compatibility gaps are bucket-discovery calls used by general-purpose clients, checksums, and advanced bucket/object APIs.
 
 Validated v0.2 SDK compatibility scope:
 
@@ -17,6 +17,7 @@ Validated v0.2 SDK compatibility scope:
 3. DeleteObjects multi-delete.
 4. CopyObject for same-user same-bucket and cross-bucket copies.
 5. Multipart upload lifecycle.
+6. PutObject/HeadObject/GetObject preservation for `Content-Type` and `x-amz-meta-*` user metadata.
 
 Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, and policy APIs are not v0.2.0 targets.
 
@@ -26,11 +27,11 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 
 | S3 operation | Status | Notes |
 | --- | --- | --- |
-| GetObject | Partial | Basic full-object download and byte `Range` requests work. Conditional headers, response header overrides, and checksum-related response semantics are missing. |
-| PutObject | Partial | Basic upload and overwrite work. Content-Type, user metadata, object tags, storage class, checksum validation, and server-side encryption headers are ignored. |
+| GetObject | Partial | Basic full-object download and byte `Range` requests work. Stored Content-Type and user metadata are returned. Conditional headers, response header overrides, and checksum-related response semantics are missing. |
+| PutObject | Partial | Basic upload and overwrite work. Content-Type and `x-amz-meta-*` user metadata are persisted. Object tags, storage class, checksum validation, and server-side encryption headers are ignored. |
 | DeleteObject | Implemented | Single-object delete is idempotent and returns no content for missing keys. |
-| HeadObject | Partial | Returns ETag, Last-Modified, Content-Length, and Content-Type. Range awareness, checksum headers, metadata, and conditional request behavior are missing. |
-| CopyObject | Partial | Basic same-bucket and cross-bucket copies are implemented and covered by Go and Python SDK E2E. `x-amz-metadata-directive: REPLACE` returns XML `NotImplemented`; broader metadata-copy fidelity remains limited while metadata persistence is not on `origin/main`. |
+| HeadObject | Partial | Returns ETag, Last-Modified, Content-Length, Content-Type, and user metadata. Range awareness, checksum headers, and conditional request behavior are missing. |
+| CopyObject | Partial | Basic same-bucket and cross-bucket copies are implemented and covered by Go and Python SDK E2E. COPY preserves object bytes, Content-Type, and user metadata. `x-amz-metadata-directive: REPLACE` returns XML `NotImplemented`. |
 | DeleteObjects | Implemented | SDK multi-delete is covered by `test_s3_sdk_delete_objects_removes_multiple_keys`, including missing-key idempotency. |
 | GetObjectAcl / PutObjectAcl | Missing | ACLs are not modeled in the S3 API. |
 | GetObjectTagging / PutObjectTagging / DeleteObjectTagging | Missing | Object tags are not stored. |
@@ -49,9 +50,9 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 
 | S3 operation | Status | Notes |
 | --- | --- | --- |
-| CreateMultipartUpload | Implemented | `POST /api/s3/{bucket}/{key}?uploads`. |
+| CreateMultipartUpload | Implemented | `POST /api/s3/{bucket}/{key}?uploads`; captures Content-Type and user metadata for completion. |
 | UploadPart | Implemented | `PUT /api/s3/{bucket}/{key}?uploadId=...&partNumber=...`. |
-| CompleteMultipartUpload | Implemented | Validates part existence, ETags, and ascending part order. |
+| CompleteMultipartUpload | Implemented | Validates part existence, ETags, ascending part order, and persists metadata captured during CreateMultipartUpload. |
 | AbortMultipartUpload | Implemented | Deletes uploaded part chunks and the multipart record. |
 | ListMultipartUploads | Partial | Lists active uploads for a bucket but lacks prefix, delimiter, key-marker, upload-id-marker, and pagination support. |
 | ListParts | Partial | Lists uploaded parts but lacks pagination and part-number-marker support. |
@@ -78,8 +79,8 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | Virtual-hosted-style addressing | Missing | Only path-style routing under `/api/s3/{bucket}` is supported. |
 | Range requests | Partial | GetObject byte ranges and `Accept-Ranges` are covered by Go e2e and the Python SDK e2e fixture. HeadObject range behavior is not validated as a v0.2 SDK path. |
 | Conditional requests | Missing | `If-Match`, `If-None-Match`, `If-Modified-Since`, and related headers are not evaluated. |
-| User metadata | Missing | `x-amz-meta-*` headers are not persisted or returned. |
-| Content-Type persistence | Missing | Downloads always return `application/octet-stream`. |
+| User metadata | Partial | `x-amz-meta-*` headers are stored with lowercase keys, returned on HeadObject/GetObject, replaced on overwrite, and preserved by CopyObject COPY. Metadata search/listing and tags are not supported. |
+| Content-Type persistence | Partial | PutObject and CreateMultipartUpload store request Content-Type; HeadObject/GetObject return it and legacy objects default to `application/octet-stream`. |
 | Checksums | Missing | S3 checksum headers are not validated or returned. |
 | Server-side encryption headers | Missing | SSE request headers are not interpreted. |
 
@@ -123,10 +124,10 @@ These checks are based on the current S3 API surface and known request patterns 
 | --- | --- | --- |
 | `aws s3 ls` | No | `ListBuckets` is missing. |
 | `aws s3 ls s3://bucket/` | Expected for direct bucket paths | High-level `aws s3` listing uses ListObjectsV2, which is now covered through SDK tests; live AWS CLI validation is not automated in this PR. |
-| `aws s3 cp local s3://bucket/key` | Yes for simple uploads | PutObject works; metadata/content-type persistence is missing. |
+| `aws s3 cp local s3://bucket/key` | Yes for simple uploads | PutObject works, including Content-Type and user metadata persistence. |
 | `aws s3 cp s3://bucket/key local` | Yes for full-object downloads | GetObject works. |
 | `aws s3 rm s3://bucket/key` | Yes | DeleteObject works. |
-| `aws s3 sync` | Partial | ListObjectsV2, DeleteObjects, and basic CopyObject are covered; metadata behavior and stronger ETag/checksum compatibility remain gaps. |
+| `aws s3 sync` | Partial | ListObjectsV2, DeleteObjects, CopyObject COPY, and basic metadata behavior are covered; stronger ETag/checksum compatibility remains a gap. |
 | `aws s3 presign s3://bucket/key` | Yes for downloads | Presigned SigV4 requests are supported. |
 
 ### MinIO Client (`mc`)

@@ -30,6 +30,24 @@ var (
 	streamDownloadFileRange fileRangeStreamFunc = manager.StreamFileRange
 )
 
+func fileStreamFuncForFactory(factory manager.SourceClientFactory) fileStreamFunc {
+	if factory == nil {
+		return streamDownloadFile
+	}
+	return func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer) error {
+		return manager.StreamFileWithFactory(ctx, sourceRepo, fileDoc, w, factory)
+	}
+}
+
+func fileRangeStreamFuncForFactory(factory manager.SourceClientFactory) fileRangeStreamFunc {
+	if factory == nil {
+		return streamDownloadFileRange
+	}
+	return func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer, start, end int64) error {
+		return manager.StreamFileRangeWithFactory(ctx, sourceRepo, fileDoc, w, start, end, factory)
+	}
+}
+
 func preflightFileRange(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, start, end int64, streamRange fileRangeStreamFunc) error {
 	if end < start {
 		return nil

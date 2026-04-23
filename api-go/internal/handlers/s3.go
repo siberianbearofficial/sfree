@@ -22,6 +22,8 @@ import (
 const (
 	maxDeleteObjects                = 1000
 	maxDeleteObjectsRequestBodySize = 8 * 1024 * 1024
+	defaultObjectContentType        = "application/octet-stream"
+	userMetadataHeaderPrefix        = "x-amz-meta-"
 )
 
 var (
@@ -297,15 +299,49 @@ func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
 	c.Header("ETag", manager.ObjectETag(*fileDoc))
 	c.Header("Last-Modified", fileDoc.CreatedAt.UTC().Format(http.TimeFormat))
 	c.Header("Content-Length", strconv.FormatInt(total, 10))
-	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Type", objectContentType(fileDoc.ContentType))
+	for key, value := range fileDoc.UserMetadata {
+		c.Header(userMetadataHeaderPrefix+key, value)
+	}
+}
+
+func objectContentType(contentType string) string {
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		return defaultObjectContentType
+	}
+	return contentType
+}
+
+func requestObjectContentType(r *http.Request) string {
+	return objectContentType(r.Header.Get("Content-Type"))
+}
+
+func requestObjectUserMetadata(r *http.Request) map[string]string {
+	metadata := make(map[string]string)
+	for name, values := range r.Header {
+		name = strings.ToLower(name)
+		if !strings.HasPrefix(name, userMetadataHeaderPrefix) {
+			continue
+		}
+		key := strings.TrimPrefix(name, userMetadataHeaderPrefix)
+		if key == "" || len(values) == 0 {
+			continue
+		}
+		metadata[key] = values[0]
+	}
+	if len(metadata) == 0 {
+		return nil
+	}
+	return metadata
 }
 
 // preflightObjectRange checks the first response byte before success headers are
 // committed. Later source failures are logged and surface to clients as an
 // incomplete body under the declared Content-Length, which preserves large
 // object streaming without staging the full response in memory or on disk.
-func preflightObjectRange(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, start, end int64) error {
-	return preflightFileRange(ctx, sourceRepo, fileDoc, start, end, streamS3ObjectRange)
+func preflightObjectRange(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, start, end int64, streamRange fileRangeStreamFunc) error {
+	return preflightFileRange(ctx, sourceRepo, fileDoc, start, end, streamRange)
 }
 
 // HeadObject godoc
@@ -343,15 +379,29 @@ func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.Fi
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [get]
 func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return GetObjectWithFactory(bucketRepo, sourceRepo, fileRepo, nil)
+}
+
+func GetObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 		return func(c *gin.Context) {
 			c.Status(http.StatusServiceUnavailable)
 		}
 	}
-	return getObject(bucketRepo, sourceRepo, fileRepo)
+	return getObject(bucketRepo, sourceRepo, fileRepo, factory)
 }
 
-func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepository, fileRepo objectFileReader) gin.HandlerFunc {
+func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepository, fileRepo objectFileReader, factory manager.SourceClientFactory) gin.HandlerFunc {
+	streamFile := streamS3Object
+	streamRange := streamS3ObjectRange
+	if factory != nil {
+		streamFile = func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer) error {
+			return manager.StreamFileWithFactory(ctx, sourceRepo, fileDoc, w, factory)
+		}
+		streamRange = func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer, start, end int64) error {
+			return manager.StreamFileRangeWithFactory(ctx, sourceRepo, fileDoc, w, start, end, factory)
+		}
+	}
 	return func(c *gin.Context) {
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
@@ -363,14 +413,14 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		}
 		rangeHeader := c.GetHeader("Range")
 		if rangeHeader == "" {
-			if err := preflightObjectRange(c.Request.Context(), sourceRepo, fileDoc, 0, total-1); err != nil {
+			if err := preflightObjectRange(c.Request.Context(), sourceRepo, fileDoc, 0, total-1, streamRange); err != nil {
 				slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
 				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 				return
 			}
 			setObjectHeaders(c, fileDoc, total)
 			c.Status(http.StatusOK)
-			if err := streamS3Object(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
+			if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
 				slog.ErrorContext(c.Request.Context(), "get object: stream failed after response commit", slog.String("error", err.Error()))
 			}
 			return
@@ -383,7 +433,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 			writeS3Error(c, http.StatusRequestedRangeNotSatisfiable, "InvalidRange", "The requested range is not satisfiable")
 			return
 		}
-		if err := preflightObjectRange(c.Request.Context(), sourceRepo, fileDoc, objRange.start, objRange.end); err != nil {
+		if err := preflightObjectRange(c.Request.Context(), sourceRepo, fileDoc, objRange.start, objRange.end, streamRange); err != nil {
 			slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
 			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 			return
@@ -392,7 +442,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
 		c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
 		c.Status(http.StatusPartialContent)
-		if err := streamS3ObjectRange(c.Request.Context(), sourceRepo, fileDoc, c.Writer, objRange.start, objRange.end); err != nil {
+		if err := streamRange(c.Request.Context(), sourceRepo, fileDoc, c.Writer, objRange.start, objRange.end); err != nil {
 			slog.ErrorContext(c.Request.Context(), "get object: stream failed after response commit", slog.String("error", err.Error()))
 		}
 	}
@@ -411,7 +461,11 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [put]
 func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	return PutObjectWithFactory(bucketRepo, sourceRepo, fileRepo, chunkSize, nil)
+}
+
+func PutObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int, factory manager.SourceClientFactory) gin.HandlerFunc {
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -427,7 +481,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 		if !ok {
 			return
 		}
-		result, err := objectSvc.PutObject(ctx, bucketDoc, name, c.Request.Body, chunkSize)
+		result, err := objectSvc.PutObject(ctx, bucketDoc, name, c.Request.Body, chunkSize, requestObjectContentType(c.Request), requestObjectUserMetadata(c.Request))
 		if err != nil {
 			if errors.Is(err, manager.ErrNoSources) {
 				writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
@@ -455,7 +509,11 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [put]
 func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	return CopyObjectWithFactory(bucketRepo, sourceRepo, fileRepo, nil)
+}
+
+func CopyObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -528,7 +586,11 @@ func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 // @Failure 500 {string} string ""
 // @Router /api/s3/{bucket}/{object} [delete]
 func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	return DeleteObjectWithFactory(bucketRepo, sourceRepo, fileRepo, nil)
+}
+
+func DeleteObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -558,7 +620,11 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 }
 
 func DeleteObjects(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	return DeleteObjectsWithFactory(bucketRepo, sourceRepo, fileRepo, nil)
+}
+
+func DeleteObjectsWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {

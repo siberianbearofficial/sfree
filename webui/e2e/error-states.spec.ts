@@ -16,8 +16,7 @@ test.describe("Error states", () => {
     page,
   }) => {
     await injectAuth(page);
-    // API returns empty bucket list — bucket ID won't match
-    await mockGet(page, "/buckets", []);
+    await mockGet(page, "/buckets/does-not-exist", { error: "not found" }, 404);
     await mockGet(page, "/buckets/does-not-exist/files", []);
     await page.goto("/buckets/does-not-exist");
 
