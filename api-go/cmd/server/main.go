@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/example/sfree/api-go/internal/app"
 	"github.com/example/sfree/api-go/internal/config"
