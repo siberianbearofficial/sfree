@@ -169,6 +169,7 @@ func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket
 		ContentType:  contentType,
 		UserMetadata: cloneStringMap(userMetadata),
 	}
+	fileDoc.ETag = newObjectETag(fileDoc)
 	currentFile, previousFile, err := s.files.ReplaceByName(ctx, fileDoc)
 	if err != nil {
 		_ = s.deleteChunks(ctx, chunks)
@@ -248,6 +249,7 @@ func (s *ObjectService) CopyObject(ctx context.Context, sourceBucket, destBucket
 		ContentType:  sourceFile.ContentType,
 		UserMetadata: cloneStringMap(sourceFile.UserMetadata),
 	}
+	copyFile.ETag = copyObjectETag(*sourceFile)
 	currentFile, previousFile, err := s.files.ReplaceByName(ctx, copyFile)
 	if err != nil {
 		return CopyObjectResult{}, err
@@ -388,11 +390,13 @@ func (s *ObjectService) CompleteMultipartUploadRecord(ctx context.Context, bucke
 		}
 	}
 
+	etag := multipartETag(requestedParts, partMap)
 	fileDoc := repository.File{
 		BucketID:     bucketID,
 		Name:         mu.ObjectKey,
 		CreatedAt:    s.now(),
 		Chunks:       allChunks,
+		ETag:         etag,
 		ContentType:  mu.ContentType,
 		UserMetadata: cloneStringMap(mu.UserMetadata),
 	}
@@ -426,7 +430,7 @@ func (s *ObjectService) CompleteMultipartUploadRecord(ctx context.Context, bucke
 	return CompleteMultipartUploadResult{
 		File:        *saved,
 		Upload:      *mu,
-		ETag:        multipartETag(requestedParts, partMap),
+		ETag:        etag,
 		CleanupErrs: cleanupErrs,
 	}, nil
 }
@@ -516,6 +520,44 @@ func bucketCleanupChunks(files []repository.File, uploads []repository.Multipart
 }
 
 func ObjectETag(file repository.File) string {
+	if file.ETag != "" {
+		return file.ETag
+	}
+	return legacyObjectETag(file)
+}
+
+func newObjectETag(file repository.File) string {
+	if etag, ok := checksumObjectETag(file.Chunks); ok {
+		return etag
+	}
+	return legacyObjectETag(file)
+}
+
+func copyObjectETag(source repository.File) string {
+	if source.ETag != "" {
+		return source.ETag
+	}
+	if etag, ok := checksumObjectETag(source.Chunks); ok {
+		return etag
+	}
+	return legacyObjectETag(source)
+}
+
+func checksumObjectETag(chunks []repository.FileChunk) (string, bool) {
+	h := sha256.New()
+	for _, chunk := range chunks {
+		if chunk.Checksum == "" {
+			return "", false
+		}
+		_, _ = h.Write([]byte(chunk.Checksum))
+		_, _ = h.Write([]byte(":"))
+		_, _ = h.Write([]byte(strconv.FormatInt(chunk.Size, 10)))
+		_, _ = h.Write([]byte(";"))
+	}
+	return "\"" + hex.EncodeToString(h.Sum(nil)) + "\"", true
+}
+
+func legacyObjectETag(file repository.File) string {
 	h := sha256.New()
 	_, _ = h.Write([]byte(file.Name))
 	_, _ = h.Write([]byte(file.CreatedAt.UTC().Format(time.RFC3339Nano)))

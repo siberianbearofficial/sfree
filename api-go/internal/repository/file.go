@@ -28,6 +28,7 @@ type File struct {
 	Name         string             `bson:"name"`
 	CreatedAt    time.Time          `bson:"created_at"`
 	Chunks       []FileChunk        `bson:"chunks"`
+	ETag         string             `bson:"etag,omitempty"`
 	ContentType  string             `bson:"content_type,omitempty"`
 	UserMetadata map[string]string  `bson:"user_metadata,omitempty"`
 }
@@ -289,6 +290,7 @@ func (r *FileRepository) UpdateByID(ctx context.Context, f File) (*File, error) 
 		"name":          f.Name,
 		"created_at":    f.CreatedAt,
 		"chunks":        f.Chunks,
+		"etag":          f.ETag,
 		"content_type":  f.ContentType,
 		"user_metadata": f.UserMetadata,
 	}})
@@ -335,6 +337,7 @@ func (r *FileRepository) replaceByName(ctx context.Context, f File, upsert bool)
 			"name":          f.Name,
 			"created_at":    f.CreatedAt,
 			"chunks":        f.Chunks,
+			"etag":          f.ETag,
 			"content_type":  f.ContentType,
 			"user_metadata": f.UserMetadata,
 		},

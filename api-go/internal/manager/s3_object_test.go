@@ -465,6 +465,52 @@ func TestObjectServicePutObjectUpdatesFileAndDeletesOldChunks(t *testing.T) {
 	}
 }
 
+func TestObjectServicePutObjectPersistsChecksumETagIndependentOfLifecycleMetadata(t *testing.T) {
+	bucketID := primitive.NewObjectID()
+	sourceID := primitive.NewObjectID()
+	files := newFakeObjectFiles()
+	var deleted []repository.FileChunk
+	svc := testObjectService(files, &deleted)
+	names := []string{"first-provider-name", "second-provider-name"}
+	uploadCalls := 0
+	svc.uploadChunks = func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {
+		if _, err := io.Copy(io.Discard, r); err != nil {
+			return nil, err
+		}
+		name := names[uploadCalls]
+		uploadCalls++
+		return []repository.FileChunk{{SourceID: sourceID, Name: name, Size: 4, Checksum: "same-content-checksum"}}, nil
+	}
+	times := []time.Time{
+		time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC),
+		time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC),
+	}
+	nowCalls := 0
+	svc.now = func() time.Time {
+		tm := times[nowCalls]
+		nowCalls++
+		return tm
+	}
+
+	first, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
+	if err != nil {
+		t.Fatalf("first PutObject returned error: %v", err)
+	}
+	second, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
+	if err != nil {
+		t.Fatalf("second PutObject returned error: %v", err)
+	}
+	if first.File.ETag == "" {
+		t.Fatal("expected first put to persist an ETag")
+	}
+	if second.File.ETag != first.File.ETag {
+		t.Fatalf("expected same content checksum to keep ETag stable, first=%s second=%s", first.File.ETag, second.File.ETag)
+	}
+	if ObjectETag(second.File) != second.File.ETag {
+		t.Fatalf("expected served ETag to use persisted value")
+	}
+}
+
 func TestObjectServicePutObjectOverwriteReplacesMetadata(t *testing.T) {
 	bucketID := primitive.NewObjectID()
 	existing := repository.File{
@@ -535,8 +581,9 @@ func TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination(t
 	destBucketID := primitive.NewObjectID()
 	sourceChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "source-chunk", Size: 12}
 	oldDestChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "old-dest-chunk", Size: 8}
+	sourceETag := `"source-etag"`
 	files := newFakeObjectFiles(
-		repository.File{ID: primitive.NewObjectID(), BucketID: sourceBucketID, Name: "source.txt", ContentType: "image/png", UserMetadata: map[string]string{"owner": "alice"}, Chunks: []repository.FileChunk{sourceChunk}},
+		repository.File{ID: primitive.NewObjectID(), BucketID: sourceBucketID, Name: "source.txt", ETag: sourceETag, ContentType: "image/png", UserMetadata: map[string]string{"owner": "alice"}, Chunks: []repository.FileChunk{sourceChunk}},
 		repository.File{ID: primitive.NewObjectID(), BucketID: destBucketID, Name: "dest.txt", Chunks: []repository.FileChunk{oldDestChunk}},
 	)
 	var deleted []repository.FileChunk
@@ -558,8 +605,44 @@ func TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination(t
 	if result.File.ContentType != "image/png" || result.File.UserMetadata["owner"] != "alice" {
 		t.Fatalf("expected copied metadata, got content_type=%q metadata=%#v", result.File.ContentType, result.File.UserMetadata)
 	}
+	if result.File.ETag != sourceETag {
+		t.Fatalf("expected copy to preserve source ETag, got %s", result.File.ETag)
+	}
 	if len(deleted) != 1 || deleted[0].Name != oldDestChunk.Name {
 		t.Fatalf("expected overwritten destination chunk cleanup, got %#v", deleted)
+	}
+}
+
+func TestObjectServiceCopyObjectDerivesChecksumETagForLegacySource(t *testing.T) {
+	userID := primitive.NewObjectID()
+	sourceBucketID := primitive.NewObjectID()
+	destBucketID := primitive.NewObjectID()
+	sourceChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "source-provider-name", Size: 12, Checksum: "content-checksum"}
+	files := newFakeObjectFiles(
+		repository.File{
+			ID:        primitive.NewObjectID(),
+			BucketID:  sourceBucketID,
+			Name:      "source.txt",
+			CreatedAt: time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
+			Chunks:    []repository.FileChunk{sourceChunk},
+		},
+	)
+	var deleted []repository.FileChunk
+	svc := testObjectService(files, &deleted)
+
+	result, err := svc.CopyObject(
+		context.Background(),
+		&repository.Bucket{ID: sourceBucketID, UserID: userID},
+		&repository.Bucket{ID: destBucketID, UserID: userID},
+		"source.txt",
+		"dest.txt",
+	)
+	if err != nil {
+		t.Fatalf("CopyObject returned error: %v", err)
+	}
+	want := newObjectETag(repository.File{Chunks: []repository.FileChunk{sourceChunk}})
+	if result.File.ETag != want {
+		t.Fatalf("expected checksum-derived destination ETag %s, got %s", want, result.File.ETag)
 	}
 }
 
@@ -853,6 +936,12 @@ func TestObjectServiceCompleteMultipartUploadBuildsFinalFileAndCleansUnusedChunk
 	}
 	if !strings.HasSuffix(result.ETag, `-2"`) {
 		t.Fatalf("unexpected multipart etag: %s", result.ETag)
+	}
+	if result.File.ETag != result.ETag {
+		t.Fatalf("expected multipart completion ETag to be persisted, file=%s result=%s", result.File.ETag, result.ETag)
+	}
+	if ObjectETag(result.File) != result.ETag {
+		t.Fatalf("expected served object ETag to match multipart completion ETag")
 	}
 	if _, err := svc.multipart.GetByUploadID(context.Background(), "upload-1"); !errors.Is(err, mongo.ErrNoDocuments) {
 		t.Fatalf("expected multipart upload record cleanup, got %v", err)
