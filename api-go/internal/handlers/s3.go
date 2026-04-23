@@ -295,11 +295,7 @@ func lookupObject(c *gin.Context, bucketRepo objectBucketReader, fileRepo object
 		writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
 		return nil, 0, false
 	}
-	var total int64
-	for _, ch := range fileDoc.Chunks {
-		total += ch.Size
-	}
-	return fileDoc, total, true
+	return fileDoc, manager.FileSize(*fileDoc), true
 }
 
 func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {

@@ -66,14 +66,6 @@ func fileStreamFuncForFactory(factory manager.SourceClientFactory) fileStreamFun
 	}
 }
 
-func fileContentLength(fileDoc *repository.File) int64 {
-	var total int64
-	for _, ch := range fileDoc.Chunks {
-		total += ch.Size
-	}
-	return total
-}
-
 func setAttachmentDownloadHeaders(c *gin.Context, filename string, total int64) {
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(filename)))
 	c.Header("Content-Type", "application/octet-stream")
