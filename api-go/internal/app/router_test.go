@@ -115,7 +115,7 @@ func TestRegisterSourceRoutesIncludesQueryDownloadRoute(t *testing.T) {
 			c.Next()
 		},
 		sourceRepo: &repository.SourceRepository{},
-	})
+	}, nil)
 
 	expectedRoutes := []struct {
 		method string
