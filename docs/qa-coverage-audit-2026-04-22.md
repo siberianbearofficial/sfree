@@ -109,25 +109,28 @@ Scope: `api-go` automated tests, Woodpecker validation, recent `origin/main` cha
 4. Add weighted upload failover regression coverage around PR #282.
    Acceptance: when the weighted primary source fails upload, the manager retries an eligible alternate source, preserves the expected file/chunk metadata, and does not repeatedly select the failed source for the same chunk.
 
-5. Expand malformed/unsupported request error-shape coverage at SDK and raw HTTP levels.
+5. Add cross-surface file size consistency coverage after THE-732 settles.
+   Acceptance: REST bucket file listings/details, source-backed file metadata, S3 HEAD, S3 GET headers, and web UI file-size display agree on byte counts for the same stored object without relying on stale or provider-specific size fields.
+
+6. Expand malformed/unsupported request error-shape coverage at SDK and raw HTTP levels.
    Acceptance: remaining missing-bucket, missing-upload, invalid-range, unsupported-operation, and malformed query combinations return XML S3 errors with stable status codes instead of generic JSON or empty responses.
 
-6. Add focused advanced metadata compatibility coverage only when product support expands beyond PR #231's minimal scope.
+7. Add focused advanced metadata compatibility coverage only when product support expands beyond PR #231's minimal scope.
    Acceptance: supported checksum headers, object tags, response header overrides, or `x-amz-metadata-directive: REPLACE` each get one SDK or raw-HTTP regression when implemented; unsupported metadata features return stable S3 XML errors.
 
-7. Add SDK-level presigned URL coverage if the Python SDK compatibility suite is expected to be the long-term compatibility matrix rather than a focused SDK smoke branch.
+8. Add SDK-level presigned URL coverage if the Python SDK compatibility suite is expected to be the long-term compatibility matrix rather than a focused SDK smoke branch.
    Acceptance: aiobotocore-generated presigned GET/PUT URLs work without client-specific signing hacks and return stable S3-compatible responses.
 
-8. Keep one public-route overwrite/delete regression for every user-visible cleanup path that manager-only coverage cannot prove.
+9. Keep one public-route overwrite/delete regression for every user-visible cleanup path that manager-only coverage cannot prove.
    Acceptance: repeated S3 PUT, REST upload over an existing file, CopyObject over an existing destination, CompleteMultipartUpload over an existing key, and bucket delete leave exactly the expected file/multipart records, preserve retrievable latest content where applicable, and clean only chunks no longer referenced by any file or multipart upload.
 
-9. Add web UI failure-state coverage for download failures not covered by PR #262.
+10. Add web UI failure-state coverage for download failures not covered by PR #262.
    Acceptance: bucket-file preview/download and source-file download failures show actionable errors without navigating away, and success paths still close or retain UI state according to existing behavior. Keep this in `webui/e2e/files.spec.ts` or the closest existing Playwright suite and run it only through Woodpecker.
 
-10. Add a lightweight permission regression for grant listing only if product requirements expect route-bucket scoping symmetry beyond update/delete.
+11. Add a lightweight permission regression for grant listing only if product requirements expect route-bucket scoping symmetry beyond update/delete.
    Acceptance: listing grants for bucket A never exposes grants from bucket B even when grant IDs or users overlap in setup fixtures.
 
-11. Add a REST bucket-delete integration regression if users depend on REST route semantics beyond the S3 bucket deletion path now covered by PR #237.
+12. Add a REST bucket-delete integration regression if users depend on REST route semantics beyond the S3 bucket deletion path now covered by PR #237.
    Acceptance: deleting a bucket with objects and incomplete multipart uploads through the REST route returns the expected HTTP status, removes the bucket, and leaves no retrievable object or multipart residue through repository-backed checks.
 
 ## Work Completed In This Audit

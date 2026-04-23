@@ -148,6 +148,31 @@ func TestParseObjectRange(t *testing.T) {
 	}
 }
 
+func TestRequestObjectMetadataExtraction(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-amz-meta-Owner", "Alice")
+	req.Header.Set("X-Amz-Meta-Trace-ID", "abc-123")
+
+	if got := requestObjectContentType(req); got != "application/json" {
+		t.Fatalf("expected content type, got %q", got)
+	}
+	got := requestObjectUserMetadata(req)
+	if got["owner"] != "Alice" || got["trace-id"] != "abc-123" {
+		t.Fatalf("expected normalized metadata, got %#v", got)
+	}
+
+	emptyReq := httptest.NewRequest(http.MethodPut, "/api/s3/bucket/object.txt", nil)
+	if got := requestObjectContentType(emptyReq); got != defaultObjectContentType {
+		t.Fatalf("expected default content type, got %q", got)
+	}
+	if got := requestObjectUserMetadata(emptyReq); got != nil {
+		t.Fatalf("expected nil metadata, got %#v", got)
+	}
+}
+
 func TestParseListMaxKeys(t *testing.T) {
 	t.Parallel()
 
@@ -225,6 +250,17 @@ func TestFileListBucketEntryAndObjectETag(t *testing.T) {
 	changed.Chunks[1].Size = 6
 	if manager.ObjectETag(changed) == entry.ETag {
 		t.Fatal("expected ETag to change when chunk metadata changes")
+	}
+
+	file.ETag = `"persisted-etag"`
+	entry = fileListBucketEntry(file)
+	if entry.ETag != file.ETag {
+		t.Fatalf("expected list entry to use persisted ETag %s, got %s", file.ETag, entry.ETag)
+	}
+	changed = file
+	changed.Chunks[1].Size = 6
+	if manager.ObjectETag(changed) != file.ETag {
+		t.Fatal("expected persisted ETag to remain stable when lifecycle metadata changes")
 	}
 }
 

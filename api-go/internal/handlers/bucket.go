@@ -39,6 +39,17 @@ type bucketResponse struct {
 	Shared    bool      `json:"shared"`
 }
 
+func bucketDocResponse(bucket repository.Bucket, role repository.BucketRole, shared bool) bucketResponse {
+	return bucketResponse{
+		ID:        bucket.ID.Hex(),
+		Key:       bucket.Key,
+		AccessKey: bucket.AccessKey,
+		CreatedAt: bucket.CreatedAt,
+		Role:      string(role),
+		Shared:    shared,
+	}
+}
+
 type fileResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -223,14 +234,7 @@ func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.Bucket
 		}
 		resp := make([]bucketResponse, 0, len(buckets))
 		for _, b := range buckets {
-			resp = append(resp, bucketResponse{
-				ID:        b.ID.Hex(),
-				Key:       b.Key,
-				AccessKey: b.AccessKey,
-				CreatedAt: b.CreatedAt,
-				Role:      string(repository.RoleOwner),
-				Shared:    false,
-			})
+			resp = append(resp, bucketDocResponse(b, repository.RoleOwner, false))
 		}
 
 		// Shared-with-me buckets.
@@ -256,19 +260,60 @@ func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.Bucket
 				}
 				for _, b := range sharedBuckets {
 					g := grantByBucket[b.ID]
-					resp = append(resp, bucketResponse{
-						ID:        b.ID.Hex(),
-						Key:       b.Key,
-						AccessKey: b.AccessKey,
-						CreatedAt: b.CreatedAt,
-						Role:      string(g.Role),
-						Shared:    true,
-					})
+					resp = append(resp, bucketDocResponse(b, g.Role, true))
 				}
 			}
 		}
 
 		c.JSON(http.StatusOK, resp)
+	}
+}
+
+// GetBucket godoc
+// @Summary Get bucket
+// @Tags buckets
+// @Produce json
+// @Param id path string true "Bucket ID"
+// @Success 200 {object} bucketResponse
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets/{id} [get]
+func GetBucket(repo *repository.BucketRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
+	if repo == nil {
+		return func(c *gin.Context) {
+			slog.ErrorContext(c.Request.Context(), "get bucket: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+		}
+	}
+	var grantReader bucketAccessGrantReader
+	if grantRepo != nil {
+		grantReader = grantRepo
+	}
+	return getBucket(repo, grantReader)
+}
+
+func getBucket(bucketRepo bucketAccessBucketReader, grantRepo bucketAccessGrantReader) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if bucketRepo == nil {
+			slog.ErrorContext(ctx, "get bucket: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+
+		acc := requireBucketAccessFor(c, bucketRepo, grantRepo, repository.RoleViewer)
+		if acc == nil {
+			return
+		}
+		userID, ok := authenticatedUserID(c)
+		if !ok {
+			return
+		}
+
+		c.JSON(http.StatusOK, bucketDocResponse(*acc.Bucket, acc.Role, acc.Bucket.UserID != userID))
 	}
 }
 
@@ -284,6 +329,10 @@ func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.Bucket
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id} [delete]
 func DeleteBucket(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
+	return DeleteBucketWithFactory(repo, sourceRepo, fileRepo, mpRepo, grantRepo, nil)
+}
+
+func DeleteBucketWithFactory(repo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, grantRepo *repository.BucketGrantRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if repo == nil {
@@ -302,7 +351,7 @@ func DeleteBucket(repo *repository.BucketRepository, sourceRepo *repository.Sour
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		objectSvc := manager.NewObjectService(sourceRepo, fileRepo, mpRepo)
+		objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, factory)
 		if _, err := objectSvc.DeleteBucketContents(ctx, acc.Bucket.ID); err != nil {
 			slog.ErrorContext(ctx, "delete bucket: cleanup contents", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
@@ -403,7 +452,11 @@ type uploadFileResponse struct {
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/upload [post]
 func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, chunkSize int) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	return UploadFileWithFactory(bucketRepo, sourceRepo, fileRepo, grantRepo, chunkSize, nil)
+}
+
+func UploadFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, chunkSize int, factory manager.SourceClientFactory) gin.HandlerFunc {
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -431,9 +484,9 @@ func UploadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 		}
 		defer func() { _ = f.Close() }()
 
-		result, err := objectSvc.PutObject(ctx, bucketDoc, fh.Filename, f, chunkSize)
+		result, err := objectSvc.PutObject(ctx, bucketDoc, fh.Filename, f, chunkSize, objectContentType(fh.Header.Get("Content-Type")), nil)
 		if err != nil {
-			if errors.Is(err, manager.ErrNoSources) {
+			if isBucketSourceResolutionError(err) {
 				c.Status(http.StatusBadRequest)
 				return
 			}
@@ -516,6 +569,10 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id}/download [get]
 func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
+	return DownloadFileWithFactory(bucketRepo, sourceRepo, fileRepo, grantRepo, nil)
+}
+
+func DownloadFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -527,11 +584,13 @@ func DownloadFile(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 		if grantRepo != nil {
 			grantReader = grantRepo
 		}
-		downloadFile(bucketRepo, sourceRepo, fileRepo, grantReader)(c)
+		downloadFile(bucketRepo, sourceRepo, fileRepo, grantReader, factory)(c)
 	}
 }
 
-func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader, grantRepo bucketAccessGrantReader) gin.HandlerFunc {
+func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader, grantRepo bucketAccessGrantReader, factory manager.SourceClientFactory) gin.HandlerFunc {
+	streamFile := fileStreamFuncForFactory(factory)
+	streamRange := fileRangeStreamFuncForFactory(factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -565,14 +624,14 @@ func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.So
 			return
 		}
 		total := fileContentLength(fileDoc)
-		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamDownloadFileRange); err != nil {
+		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamRange); err != nil {
 			slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 		setAttachmentDownloadHeaders(c, fileDoc.Name, total)
 		c.Status(http.StatusOK)
-		if err := streamDownloadFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
+		if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
 			slog.ErrorContext(ctx, "download file: stream failed after response commit", slog.String("error", err.Error()))
 		}
 	}
@@ -591,7 +650,11 @@ func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.So
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id} [delete]
 func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
-	objectSvc := manager.NewObjectService(sourceRepo, fileRepo, nil)
+	return DeleteFileWithFactory(bucketRepo, sourceRepo, fileRepo, grantRepo, nil)
+}
+
+func DeleteFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {

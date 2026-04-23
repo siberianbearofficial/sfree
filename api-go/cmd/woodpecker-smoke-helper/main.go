@@ -97,8 +97,10 @@ func ready(rawURL string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	defer func() { _ = resp.Body.Close() }()
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		return err
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("GET %s returned %s", rawURL, resp.Status)
 	}
@@ -176,7 +178,7 @@ func postJSON(rawURL, username, password string, payload any, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("POST %s returned %s: %s", rawURL, resp.Status, string(responseBody))
@@ -199,7 +201,7 @@ func downloadURL(rawURL, output string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("GET %s returned %s: %s", rawURL, resp.Status, string(responseBody))
@@ -229,7 +231,7 @@ func s3Get(endpoint, accessKey, secretKey, bucket, key, output string) error {
 	if err != nil {
 		return err
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 	return writeFile(output, result.Body)
 }
 
@@ -239,7 +241,7 @@ func writeFile(output string, source io.Reader) error {
 		return err
 	}
 	if _, err := io.Copy(file, source); err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	return file.Close()
