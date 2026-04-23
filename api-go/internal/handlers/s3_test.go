@@ -67,16 +67,36 @@ func TestDecodeDeleteObjectsRequestRejectsMalformedRoot(t *testing.T) {
 func TestParseCopySource(t *testing.T) {
 	t.Parallel()
 
-	bucket, key, ok := parseCopySource("/bucket/a%20b/c.txt")
-	if !ok {
-		t.Fatal("expected copy source to parse")
-	}
-	if bucket != "bucket" || key != "a b/c.txt" {
-		t.Fatalf("unexpected copy source: bucket=%q key=%q", bucket, key)
+	tests := []struct {
+		name       string
+		raw        string
+		wantBucket string
+		wantKey    string
+		ok         bool
+	}{
+		{name: "encoded key", raw: "/bucket/a%20b/c.txt", wantBucket: "bucket", wantKey: "a b/c.txt", ok: true},
+		{name: "encoded bucket and query", raw: "/bucket%2Dencoded/path/to/object.txt?versionId=1", wantBucket: "bucket-encoded", wantKey: "path/to/object.txt", ok: true},
+		{name: "no leading slash", raw: "bucket/key.txt", wantBucket: "bucket", wantKey: "key.txt", ok: true},
+		{name: "missing key", raw: "/bucket"},
+		{name: "empty bucket", raw: "//key.txt"},
+		{name: "empty key", raw: "/bucket/"},
+		{name: "bad bucket escape", raw: "/bucket%ZZ/key.txt"},
+		{name: "bad key escape", raw: "/bucket/key%ZZ.txt"},
 	}
 
-	if _, _, ok := parseCopySource("/bucket"); ok {
-		t.Fatal("expected missing key to fail")
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			bucket, key, ok := parseCopySource(tt.raw)
+			if ok != tt.ok {
+				t.Fatalf("expected ok=%v, got %v", tt.ok, ok)
+			}
+			if bucket != tt.wantBucket || key != tt.wantKey {
+				t.Fatalf("unexpected copy source: bucket=%q key=%q", bucket, key)
+			}
+		})
 	}
 }
 
