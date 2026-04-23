@@ -175,6 +175,7 @@ test.describe("Bucket creation flow", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
 
     let fulfillGrants: (() => Promise<void>) | undefined;
@@ -201,6 +202,7 @@ test.describe("Bucket creation flow", () => {
   test("Share Bucket dialog shows grant-list failure state", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await mockGet(
       page,
@@ -224,6 +226,7 @@ test.describe("Bucket creation flow", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
 
     const grantRoutes: Route[] = [];
