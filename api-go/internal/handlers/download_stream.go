@@ -12,10 +12,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-const downloadPreflightBytes = int64(1)
-
 type fileStreamFunc func(context.Context, *repository.SourceRepository, *repository.File, io.Writer) error
-type fileRangeStreamFunc func(context.Context, *repository.SourceRepository, *repository.File, io.Writer, int64, int64) error
 
 type fileByIDReader interface {
 	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.File, error)
@@ -26,9 +23,39 @@ type shareLinkByTokenReader interface {
 }
 
 var (
-	streamDownloadFile      fileStreamFunc      = manager.StreamFile
-	streamDownloadFileRange fileRangeStreamFunc = manager.StreamFileRange
+	streamDownloadFile fileStreamFunc = manager.StreamFile
 )
+
+type deferredResponseWriter struct {
+	c         *gin.Context
+	commit    func()
+	committed bool
+}
+
+func newDeferredResponseWriter(c *gin.Context, commit func()) *deferredResponseWriter {
+	return &deferredResponseWriter{c: c, commit: commit}
+}
+
+func (w *deferredResponseWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	w.commitNow()
+	return w.c.Writer.Write(p)
+}
+
+func (w *deferredResponseWriter) commitNow() {
+	if w.committed {
+		return
+	}
+	w.commit()
+	w.c.Writer.WriteHeaderNow()
+	w.committed = true
+}
+
+func (w *deferredResponseWriter) isCommitted() bool {
+	return w.committed
+}
 
 func fileStreamFuncForFactory(factory manager.SourceClientFactory) fileStreamFunc {
 	if factory == nil {
@@ -39,36 +66,12 @@ func fileStreamFuncForFactory(factory manager.SourceClientFactory) fileStreamFun
 	}
 }
 
-func fileRangeStreamFuncForFactory(factory manager.SourceClientFactory) fileRangeStreamFunc {
-	if factory == nil {
-		return streamDownloadFileRange
-	}
-	return func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer, start, end int64) error {
-		return manager.StreamFileRangeWithFactory(ctx, sourceRepo, fileDoc, w, start, end, factory)
-	}
-}
-
 func fileContentLength(fileDoc *repository.File) int64 {
 	var total int64
 	for _, ch := range fileDoc.Chunks {
 		total += ch.Size
 	}
 	return total
-}
-
-func preflightFileRange(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, start, end int64, streamRange fileRangeStreamFunc) error {
-	if end < start {
-		return nil
-	}
-	preflightEnd := start + downloadPreflightBytes - 1
-	if preflightEnd > end {
-		preflightEnd = end
-	}
-	return streamRange(ctx, sourceRepo, fileDoc, io.Discard, start, preflightEnd)
-}
-
-func preflightFile(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, total int64, streamRange fileRangeStreamFunc) error {
-	return preflightFileRange(ctx, sourceRepo, fileDoc, 0, total-1, streamRange)
 }
 
 func setAttachmentDownloadHeaders(c *gin.Context, filename string, total int64) {

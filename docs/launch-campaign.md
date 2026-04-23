@@ -48,7 +48,7 @@ This is an early-stage project aimed at self-hosters and homelab tinkerers who
 want to unify their scattered free storage behind one interface. It is not a
 replacement for production object storage.
 
-Tech stack: Go 1.24, MongoDB, React 19 + Vite, Woodpecker CI.
+Tech stack: Go 1.25, MongoDB, React 19 + Vite, Woodpecker CI.
 License: MIT.
 
 GitHub: https://github.com/siberianbearofficial/sfree
@@ -122,7 +122,7 @@ single object store with an S3-compatible interface.
 4. SFree chunks, distributes, and reassembles objects from the saved manifest
 5. Use any S3 SDK/tool via auto-generated per-bucket credentials
 
-**Tech stack:** Go 1.24, MongoDB, React 19, Docker Compose, Woodpecker CI.
+**Tech stack:** Go 1.25, MongoDB, React 19, Docker Compose, Woodpecker CI.
 
 This is early-stage software — no replication, no erasure coding, experimental.
 But the core loop works: chunk, distribute, reassemble, serve over S3, and apply

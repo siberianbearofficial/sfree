@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/example/sfree/api-go/internal/repository"
@@ -36,9 +35,7 @@ func TestAuthenticatedUserIDRejectsMissingAndInvalidUserID(t *testing.T) {
 			})
 			r.GET("/me", handlers...)
 
-			req, _ := http.NewRequest(http.MethodGet, "/me", nil)
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, req)
+			w := serveHandlerTestRequest(t, r, http.MethodGet, "/me", nil)
 
 			if w.Code != http.StatusUnauthorized {
 				t.Fatalf("expected 401, got %d", w.Code)
@@ -49,16 +46,13 @@ func TestAuthenticatedUserIDRejectsMissingAndInvalidUserID(t *testing.T) {
 
 func TestRouteObjectIDRejectsShareLinkFileID(t *testing.T) {
 	t.Parallel()
-	r := gin.New()
-	r.POST("/buckets/:id/files/:file_id/share", func(c *gin.Context) {
-		if _, ok := routeObjectID(c, "file_id"); ok {
-			t.Fatal("expected file id parse to fail")
-		}
-	})
-
-	req, _ := http.NewRequest(http.MethodPost, "/buckets/"+primitive.NewObjectID().Hex()+"/files/not-a-valid-oid/share", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	c, w := newHandlerTestContext(t, http.MethodPost, "/buckets/"+primitive.NewObjectID().Hex()+"/files/not-a-valid-oid/share", nil,
+		testRouteParam{Key: "file_id", Value: "not-a-valid-oid"},
+	)
+	if _, ok := routeObjectID(c, "file_id"); ok {
+		t.Fatal("expected file id parse to fail")
+	}
+	c.Writer.WriteHeaderNow()
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -74,13 +68,7 @@ func TestCreateShareLinkRejectsInvalidAuthenticatedUserID(t *testing.T) {
 		CreateShareLink(&repository.BucketRepository{}, &repository.FileRepository{}, &repository.ShareLinkRepository{}, nil),
 	)
 
-	req, _ := http.NewRequest(
-		http.MethodPost,
-		"/buckets/"+primitive.NewObjectID().Hex()+"/files/"+primitive.NewObjectID().Hex()+"/share",
-		nil,
-	)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	w := serveHandlerTestRequest(t, r, http.MethodPost, "/buckets/"+primitive.NewObjectID().Hex()+"/files/"+primitive.NewObjectID().Hex()+"/share", nil)
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)

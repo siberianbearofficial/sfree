@@ -26,7 +26,7 @@ steps:
     environment:
       DOCKER_HOST: tcp://docker:2375
       DOCKER_TLS_CERTDIR: ""
-      GO_IMAGE: public.ecr.aws/docker/library/golang:1.24
+      GO_IMAGE: public.ecr.aws/docker/library/golang:1.25
       NODE_IMAGE: public.ecr.aws/docker/library/node:20-alpine
       NGINX_IMAGE: public.ecr.aws/docker/library/nginx:alpine
       MONGO_IMAGE: public.ecr.aws/docker/library/mongo:7.0.32-rc2-jammy
