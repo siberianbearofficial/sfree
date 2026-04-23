@@ -252,6 +252,44 @@ async def test_s3_sdk_head_object_returns_metadata(client, e2e_context):
     assert response["LastModified"]
 
 
+async def test_s3_sdk_presigned_put_and_get_urls(client, e2e_context):
+    filename = f"e2e-sdk-presign-{uuid4().hex[:8]}.txt"
+    payload = b"sfree sdk presign payload"
+
+    presigned_put_url = await client.generate_presigned_url_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        client_method="put_object",
+        params={"Bucket": e2e_context.bucket_key, "Key": filename},
+        http_method="PUT",
+    )
+    async with client._http.put(presigned_put_url, data=payload) as put_response:
+        assert put_response.status == 200
+        await put_response.read()
+
+    assert await client.download_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+    ) == payload
+
+    presigned_get_url = await client.generate_presigned_url_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        client_method="get_object",
+        params={"Bucket": e2e_context.bucket_key, "Key": filename},
+        http_method="GET",
+    )
+    async with client._http.get(presigned_get_url) as get_response:
+        body = await get_response.read()
+        assert get_response.status == 200
+        assert body == payload
+        assert get_response.headers["Content-Length"] == str(len(payload))
+        assert get_response.headers["ETag"]
+        assert get_response.headers["Last-Modified"]
+
+
 async def test_s3_sdk_object_content_type_and_user_metadata(client, e2e_context):
     filename = f"e2e-sdk-metadata-{uuid4().hex[:8]}.json"
     payload = b'{"sdk":true}'

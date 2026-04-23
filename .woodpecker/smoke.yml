@@ -8,21 +8,9 @@ when:
         - docs/**
         - api-go/**
         - webui/**
-
-  - event: push
-    branch: main
-    path:
-      include:
-        - .woodpecker/smoke.yml
-        - docker-compose.yml
-        - scripts/woodpecker-smoke.sh
-        - docs/**
-        - api-go/**
-        - webui/**
-
 steps:
   - name: stack smoke
-    image: public.ecr.aws/docker/library/golang:1.25-alpine
+    image: public.ecr.aws/docker/library/docker:27-cli
     environment:
       DOCKER_HOST: tcp://docker:2375
       DOCKER_TLS_CERTDIR: ""
@@ -35,7 +23,6 @@ steps:
       MINIO_IMAGE_FALLBACK: minio/minio:RELEASE.2025-01-20T14-49-07Z
       MINIO_MC_IMAGE_FALLBACK: minio/mc:latest
     commands:
-      - apk add --no-cache aws-cli curl docker-cli docker-cli-compose jq
       - chmod +x scripts/woodpecker-smoke.sh
       - scripts/woodpecker-smoke.sh
 

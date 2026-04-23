@@ -7,9 +7,9 @@ Actions workflows to this repository.
 
 | Pipeline | Paths | `pull_request` | `push` to `main` | Behavior |
 | --- | --- | --- | --- | --- |
-| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Yes | Runs `golangci-lint run`, Go unit tests, blocking `govulncheck` dependency auditing, generated API docs freshness, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` also publish the backend image. |
-| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Yes | Runs frontend dependency install, `npm audit --audit-level=high`, lint, and production build in `validate`, then runs Chromium Playwright E2E validation in `e2e tests`. Pushes to `main` also publish the frontend image. |
-| `.woodpecker/smoke.yml` | `.woodpecker/smoke.yml`, `docker-compose.yml`, `scripts/woodpecker-smoke.sh`, `api-go/**`, `webui/**` | Yes | Yes | Starts the root Compose stack in Woodpecker, creates a user and MinIO-backed source, creates a bucket, uploads and downloads a file with the CLI, and verifies S3-compatible credential download bytes. |
+| `.woodpecker/api-go.yml` | `.woodpecker/api-go.yml`, `api-go/**` | Yes | Publish only | PRs run `golangci-lint run`, Go unit tests, blocking `govulncheck` dependency auditing, generated API docs freshness, and Python and Go E2E suites against the local S3-compatible MinIO source. Pushes to `main` publish the backend image without rerunning validation. |
+| `.woodpecker/webui.yml` | `.woodpecker/webui.yml`, `webui/**` | Yes | Publish only | PRs run frontend dependency install, `npm audit --audit-level=high`, lint, and production build in `validate`, then run Chromium Playwright E2E validation in `e2e tests`. Pushes to `main` publish the frontend image without rerunning validation. |
+| `.woodpecker/smoke.yml` | `.woodpecker/smoke.yml`, `docker-compose.yml`, `scripts/woodpecker-smoke.sh`, `docs/**`, `api-go/**`, `webui/**` | Yes | No | PRs start the root Compose stack in Woodpecker, create a user and MinIO-backed source, create a bucket, upload and download a file with the CLI, and verify S3-compatible credential download bytes. |
 
 ## Required Secrets
 
@@ -45,8 +45,8 @@ manual or non-blocking validation. Those modes require:
 Do not put live source checks in the required PR path unless the external
 service dependency is deliberately accepted as a merge blocker.
 
-The stack smoke pipeline uses only local Woodpecker services and does not need
-repository secrets.
+The stack smoke pipeline runs only for pull requests. It uses local Woodpecker
+services and does not need repository secrets.
 
 ## Dependency Audits
 
@@ -62,7 +62,8 @@ reproduce the CI failure; otherwise leave dependency auditing to Woodpecker.
 
 ## Published Images
 
-Pushes to `main` publish these images to GitHub Container Registry:
+Pushes to `main` publish these images to GitHub Container Registry without
+rerunning the PR validation suites:
 
 - `ghcr.io/siberianbearofficial/sfree-api-go:main`
 - `ghcr.io/siberianbearofficial/sfree-webui:main`

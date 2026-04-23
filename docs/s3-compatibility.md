@@ -1,6 +1,6 @@
 # S3 Compatibility Matrix
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 Baseline: `origin/main` at `214fdd7dec102fea85c8af4b4ada3e282e9eb183`. SFree exposes its S3-compatible API under `/api/s3` and uses path-style addressing: `/api/s3/{bucket}/{key}`.
 
@@ -14,10 +14,11 @@ Validated v0.2 SDK compatibility scope:
 
 1. ListObjectsV2 plus prefix, delimiter, and pagination support.
 2. Range requests for GetObject.
-3. DeleteObjects multi-delete.
-4. CopyObject for same-user same-bucket and cross-bucket copies.
-5. Multipart upload lifecycle.
-6. PutObject/HeadObject/GetObject preservation for `Content-Type` and `x-amz-meta-*` user metadata.
+3. SDK-generated presigned `PUT` and `GET` URLs for simple object upload/download flows.
+4. DeleteObjects multi-delete.
+5. CopyObject for same-user same-bucket and cross-bucket copies.
+6. Multipart upload lifecycle.
+7. PutObject/HeadObject/GetObject preservation for `Content-Type` and `x-amz-meta-*` user metadata.
 
 Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, and policy APIs are not v0.2.0 targets.
 
@@ -54,8 +55,8 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | UploadPart | Implemented | `PUT /api/s3/{bucket}/{key}?uploadId=...&partNumber=...`. |
 | CompleteMultipartUpload | Implemented | Validates part existence, ETags, ascending part order, and persists metadata captured during CreateMultipartUpload. |
 | AbortMultipartUpload | Implemented | Deletes uploaded part chunks and the multipart record. |
-| ListMultipartUploads | Partial | Lists active uploads for a bucket but lacks prefix, delimiter, key-marker, upload-id-marker, and pagination support. |
-| ListParts | Partial | Lists uploaded parts but lacks pagination and part-number-marker support. |
+| ListMultipartUploads | Partial | Bounded listing now supports `max-uploads`, `prefix`, `key-marker`, and `upload-id-marker` with S3-style truncation markers. `delimiter` still returns XML `NotImplemented`. |
+| ListParts | Partial | Bounded listing now supports `max-parts` and `part-number-marker` with truncation markers. Other advanced multipart response fields remain minimal. |
 | UploadPartCopy | Missing | Server-side part copy is not implemented. |
 
 ### Bucket Operations
@@ -73,7 +74,7 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | Feature | Status | Notes |
 | --- | --- | --- |
 | AWS Signature V4 header auth | Implemented | Validates `AWS4-HMAC-SHA256` requests against bucket access credentials. Requests with bodies must send `X-Amz-Content-Sha256`; otherwise validation rejects the request without buffering the body. |
-| AWS Signature V4 presigned URLs | Implemented | Query-string presign validation supports default S3 unsigned payload behavior and a max TTL of seven days. |
+| AWS Signature V4 presigned URLs | Implemented | Query-string presign validation supports default S3 unsigned payload behavior and a max TTL of seven days. Woodpecker-runnable Python SDK coverage now verifies aiobotocore-generated presigned `PUT` and `GET` URLs for simple object upload/download flows. |
 | AWS Signature V2 | Missing | Legacy clients that require V2 are unsupported. |
 | Anonymous access | Missing | S3 API requests require signed bucket credentials. |
 | Virtual-hosted-style addressing | Missing | Only path-style routing under `/api/s3/{bucket}` is supported. |
@@ -128,18 +129,18 @@ These checks are based on the current S3 API surface and known request patterns 
 | `aws s3 cp s3://bucket/key local` | Yes for full-object downloads | GetObject works. |
 | `aws s3 rm s3://bucket/key` | Yes | DeleteObject works. |
 | `aws s3 sync` | Partial | ListObjectsV2, DeleteObjects, CopyObject COPY, and basic metadata behavior are covered; stronger ETag/checksum compatibility remains a gap. |
-| `aws s3 presign s3://bucket/key` | Yes for downloads | Presigned SigV4 requests are supported. |
+| `aws s3 presign s3://bucket/key` | Yes for downloads | Presigned SigV4 downloads are supported, and the same query-signing path now has Woodpecker-runnable aiobotocore GET coverage. |
 
 ### MinIO Client (`mc`)
 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
-| Configure alias with SFree endpoint | Partial | Requires path-style endpoint behavior through `/api/s3`; bucket discovery still fails. |
-| `mc ls alias/bucket` | Expected for direct bucket paths | Modern listing expects ListObjectsV2 semantics, now covered by SDK e2e; live MinIO client validation is not automated in this PR. |
-| `mc cp file alias/bucket/key` | Partial | PutObject should work for simple uploads; recursive copy still needs live MinIO client validation. |
-| `mc cat alias/bucket/key` | Yes for full-object reads | Basic GetObject works. |
-| `mc rm alias/bucket/key` | Yes for single keys | DeleteObject works. |
-| Recursive remove or mirror | Partial | ListObjectsV2, DeleteObjects, and basic CopyObject exist; mirror still needs live-client validation and may hit metadata fidelity gaps. |
+| Configure alias with SFree endpoint | No for the current `/api/s3` URL shape | `mc alias set` rejects URLs with a resource component and requires `scheme://host[:port]/`, so it cannot point directly at SFree's current S3 endpoint path. |
+| `mc ls alias/bucket` | Blocked until alias configuration is possible | Listing is not the blocker; alias creation fails before bucket operations begin. |
+| `mc cp file alias/bucket/key` | Blocked until alias configuration is possible | Upload is blocked by the same alias URL restriction. |
+| `mc cat alias/bucket/key` | Blocked until alias configuration is possible | Read flow is blocked by the same alias URL restriction. |
+| `mc rm alias/bucket/key` | Blocked until alias configuration is possible | Delete flow is blocked by the same alias URL restriction. |
+| Recursive remove or mirror | Partial at best | Even with an alias workaround, broader recursive workflows would still need live-client validation and may hit metadata fidelity gaps. |
 
 ## v0.2.0 Scope Alignment
 
@@ -164,10 +165,12 @@ Covered SDK paths:
 - `test_s3_sdk_list_objects_v2_prefix_delimiter_and_pagination`: `ListObjectsV2` with prefix, delimiter, `MaxKeys`, and continuation token.
 - `test_s3_sdk_get_object_range_returns_partial_content`: `GetObject` with byte `Range`, `ContentRange`, `ContentLength`, and `AcceptRanges`.
 - `test_s3_sdk_head_object_returns_metadata`: `HeadObject` for ETag, LastModified, ContentLength, and ContentType response fields.
+- `test_s3_sdk_presigned_put_and_get_urls`: aiobotocore-generated presigned `PUT` upload and presigned `GET` download with raw HTTP status/body/header verification.
 - `test_s3_sdk_copy_object_compatibility`: `CopyObject` for same-bucket copy, cross-bucket copy, missing-source `NoSuchKey`, and unsupported metadata replacement.
 - `test_s3_sdk_delete_objects_removes_multiple_keys`: `DeleteObjects` for multiple keys plus missing-key idempotency.
 - `test_s3_sdk_multipart_upload_flow`: `CreateMultipartUpload`, `UploadPart`, `ListMultipartUploads`, `ListParts`, and `CompleteMultipartUpload`.
 
 Not automated in this PR:
-- AWS CLI, rclone, s3cmd, and MinIO `mc` live binary smoke tests. They need extra runtime installation and should remain documented/manual unless Woodpecker image weight is explicitly accepted.
+- AWS CLI, rclone, and s3cmd live binary smoke tests. They still need extra runtime installation and remain documented/manual in this PR.
+- MinIO `mc` live validation remains manual/blocked for the current endpoint shape because `mc alias set` rejects `http://host/...` URLs with a resource component such as `/api/s3`.
 - AWS SDK for Go/JavaScript client fixtures. The Go e2e suite already validates signed S3 endpoint behavior directly; this PR keeps SDK automation to one pinned SDK path to avoid widening CI dependencies.

@@ -64,6 +64,26 @@ func TestLimiterSeparateKeys(t *testing.T) {
 	}
 }
 
+func TestLimiterReservationCancelRestoresToken(t *testing.T) {
+	l := NewLimiter(1)
+
+	reservation := l.reserve("reservation")
+	if !reservation.allowed {
+		t.Fatal("first reservation should be allowed")
+	}
+
+	ok, _ := l.Allow("reservation")
+	if ok {
+		t.Fatal("second request should be denied before reservation is cancelled")
+	}
+
+	reservation.cancel()
+	ok, _ = l.Allow("reservation")
+	if !ok {
+		t.Fatal("request should be allowed after reservation is cancelled")
+	}
+}
+
 func TestLimiterRefill(t *testing.T) {
 	clock := newFakeClock()
 	l := newLimiterWithClock(600, clock.Now) // 600 req/min = 10 req/sec

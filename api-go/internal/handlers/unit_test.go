@@ -1,16 +1,45 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
+}
+
+type fakeBucketCreator struct {
+	createCalls int
+}
+
+func (f *fakeBucketCreator) Create(_ context.Context, bucket repository.Bucket) (*repository.Bucket, error) {
+	f.createCalls++
+	if bucket.ID.IsZero() {
+		bucket.ID = primitive.NewObjectID()
+	}
+	return &bucket, nil
+}
+
+type fakeBucketSourceGetter struct {
+	sources map[primitive.ObjectID]repository.Source
+}
+
+func (f fakeBucketSourceGetter) GetByID(_ context.Context, id primitive.ObjectID) (*repository.Source, error) {
+	source, ok := f.sources[id]
+	if !ok {
+		return nil, mongo.ErrNoDocuments
+	}
+	return &source, nil
 }
 
 // --- Source handler unit tests ---
@@ -332,6 +361,24 @@ func TestCreateBucketNilRepos(t *testing.T) {
 	}
 }
 
+func TestCreateBucketTypedNilRepos(t *testing.T) {
+	t.Parallel()
+	var bucketRepo *repository.BucketRepository
+	var sourceRepo *repository.SourceRepository
+	r := gin.New()
+	r.POST("/buckets", setUserID(validUserID()), CreateBucket(bucketRepo, sourceRepo, "secret"))
+
+	body, _ := json.Marshal(map[string]any{"key": "k", "source_ids": []string{primitive.NewObjectID().Hex()}})
+	req, _ := http.NewRequest(http.MethodPost, "/buckets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+}
+
 func TestCreateBucketNoUserID(t *testing.T) {
 	t.Parallel()
 	r := gin.New()
@@ -341,6 +388,79 @@ func TestCreateBucketNoUserID(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestCreateBucketRejectsDuplicateSourceIDs(t *testing.T) {
+	t.Parallel()
+	userID := primitive.NewObjectID()
+	sourceID := primitive.NewObjectID()
+	bucketRepo := &fakeBucketCreator{}
+	sourceRepo := fakeBucketSourceGetter{sources: map[primitive.ObjectID]repository.Source{
+		sourceID: {
+			ID:     sourceID,
+			UserID: userID,
+			Type:   repository.SourceTypeGDrive,
+			Name:   "owned-source",
+			Key:    "{}",
+		},
+	}}
+	r := gin.New()
+	r.POST("/buckets", setUserID(userID.Hex()), CreateBucket(bucketRepo, sourceRepo, "secret"))
+
+	body, _ := json.Marshal(map[string]any{"key": "k", "source_ids": []string{sourceID.Hex(), sourceID.Hex()}})
+	req, _ := http.NewRequest(http.MethodPost, "/buckets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("duplicate source id")) {
+		t.Fatalf("expected duplicate source id error, got %q", w.Body.String())
+	}
+	if bucketRepo.createCalls != 0 {
+		t.Fatalf("expected bucket not to be created, got %d create calls", bucketRepo.createCalls)
+	}
+}
+
+func TestCreateBucketAllowsMultipleDistinctSources(t *testing.T) {
+	t.Parallel()
+	userID := primitive.NewObjectID()
+	firstSourceID := primitive.NewObjectID()
+	secondSourceID := primitive.NewObjectID()
+	bucketRepo := &fakeBucketCreator{}
+	sourceRepo := fakeBucketSourceGetter{sources: map[primitive.ObjectID]repository.Source{
+		firstSourceID: {
+			ID:     firstSourceID,
+			UserID: userID,
+			Type:   repository.SourceTypeGDrive,
+			Name:   "first-source",
+			Key:    "{}",
+		},
+		secondSourceID: {
+			ID:     secondSourceID,
+			UserID: userID,
+			Type:   repository.SourceTypeS3,
+			Name:   "second-source",
+			Key:    "{}",
+		},
+	}}
+	r := gin.New()
+	r.POST("/buckets", setUserID(userID.Hex()), CreateBucket(bucketRepo, sourceRepo, "secret"))
+
+	body, _ := json.Marshal(map[string]any{"key": "k", "source_ids": []string{firstSourceID.Hex(), secondSourceID.Hex()}})
+	req, _ := http.NewRequest(http.MethodPost, "/buckets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if bucketRepo.createCalls != 1 {
+		t.Fatalf("expected one bucket create call, got %d", bucketRepo.createCalls)
 	}
 }
 

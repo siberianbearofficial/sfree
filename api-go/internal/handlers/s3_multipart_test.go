@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,49 @@ type fakeAbortMultipartStore struct {
 	getErr        error
 	deleteCalls   int
 	deletedUpload string
+}
+
+type fakeMultipartUploadPager struct {
+	uploads []repository.MultipartUpload
+}
+
+func (p fakeMultipartUploadPager) ListByBucketPage(_ context.Context, bucketID primitive.ObjectID, prefix, keyMarker, uploadIDMarker string, limit int) ([]repository.MultipartUpload, bool, error) {
+	filtered := make([]repository.MultipartUpload, 0, len(p.uploads))
+	for _, upload := range p.uploads {
+		if upload.BucketID != bucketID {
+			continue
+		}
+		if prefix != "" && !strings.HasPrefix(upload.ObjectKey, prefix) {
+			continue
+		}
+		if keyMarker != "" {
+			if upload.ObjectKey < keyMarker {
+				continue
+			}
+			if upload.ObjectKey == keyMarker {
+				if uploadIDMarker == "" || upload.UploadID <= uploadIDMarker {
+					continue
+				}
+			}
+		}
+		filtered = append(filtered, upload)
+	}
+	if limit >= 0 && len(filtered) > limit {
+		return filtered[:limit], true, nil
+	}
+	return filtered, false, nil
+}
+
+type fakeMultipartUploadGetter struct {
+	upload *repository.MultipartUpload
+	err    error
+}
+
+func (g fakeMultipartUploadGetter) GetByUploadID(_ context.Context, _ string) (*repository.MultipartUpload, error) {
+	if g.err != nil {
+		return nil, g.err
+	}
+	return g.upload, nil
 }
 
 func (s *fakeAbortMultipartStore) GetByUploadID(_ context.Context, _ string) (*repository.MultipartUpload, error) {
@@ -203,13 +247,18 @@ func TestListMultipartUploadsResultXML(t *testing.T) {
 	t.Parallel()
 
 	result := listMultipartUploadsResult{
-		Xmlns:  "http://s3.amazonaws.com/doc/2006-03-01/",
-		Bucket: "mybucket",
+		Xmlns:              "http://s3.amazonaws.com/doc/2006-03-01/",
+		Bucket:             "mybucket",
+		KeyMarker:          "file1.bin",
+		UploadIDMarker:     "id1",
+		NextKeyMarker:      "file2.bin",
+		NextUploadIDMarker: "id2",
+		MaxUploads:         1,
 		Upload: []multipartUploadXML{
 			{Key: "file1.bin", UploadId: "id1", Initiated: "2026-01-01T00:00:00Z"},
 			{Key: "file2.bin", UploadId: "id2", Initiated: "2026-01-02T00:00:00Z"},
 		},
-		IsTruncated: false,
+		IsTruncated: true,
 	}
 	data, err := xml.Marshal(result)
 	if err != nil {
@@ -222,21 +271,30 @@ func TestListMultipartUploadsResultXML(t *testing.T) {
 	if !bytes.Contains(data, []byte("<UploadId>id2</UploadId>")) {
 		t.Fatalf("missing upload id2: %s", s)
 	}
+	if !bytes.Contains(data, []byte("<NextKeyMarker>file2.bin</NextKeyMarker>")) {
+		t.Fatalf("missing NextKeyMarker: %s", s)
+	}
+	if !bytes.Contains(data, []byte("<NextUploadIdMarker>id2</NextUploadIdMarker>")) {
+		t.Fatalf("missing NextUploadIdMarker: %s", s)
+	}
 }
 
 func TestListPartsResultXML(t *testing.T) {
 	t.Parallel()
 
 	result := listPartsResult{
-		Xmlns:    "http://s3.amazonaws.com/doc/2006-03-01/",
-		Bucket:   "mybucket",
-		Key:      "file1.bin",
-		UploadId: "id1",
+		Xmlns:                "http://s3.amazonaws.com/doc/2006-03-01/",
+		Bucket:               "mybucket",
+		Key:                  "file1.bin",
+		UploadId:             "id1",
+		PartNumberMarker:     1,
+		NextPartNumberMarker: 2,
+		MaxParts:             1,
 		Part: []partXML{
 			{PartNumber: 1, ETag: `"aaa"`, Size: 5242880, LastModified: "2026-01-01T00:00:00Z"},
 			{PartNumber: 2, ETag: `"bbb"`, Size: 1234, LastModified: "2026-01-01T00:00:00Z"},
 		},
-		IsTruncated: false,
+		IsTruncated: true,
 	}
 	data, err := xml.Marshal(result)
 	if err != nil {
@@ -248,6 +306,198 @@ func TestListPartsResultXML(t *testing.T) {
 	}
 	if !bytes.Contains(data, []byte("<PartNumber>2</PartNumber>")) {
 		t.Fatalf("missing part 2: %s", s)
+	}
+	if !bytes.Contains(data, []byte("<NextPartNumberMarker>2</NextPartNumberMarker>")) {
+		t.Fatalf("missing NextPartNumberMarker: %s", s)
+	}
+}
+
+func TestListMultipartUploadsPagination(t *testing.T) {
+	t.Parallel()
+
+	bucketID := primitive.NewObjectID()
+	pager := fakeMultipartUploadPager{
+		uploads: []repository.MultipartUpload{
+			{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u1", CreatedAt: time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)},
+			{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u2", CreatedAt: time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)},
+			{BucketID: bucketID, ObjectKey: "beta.txt", UploadID: "u3", CreatedAt: time.Date(2026, time.January, 3, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+
+	page, err := buildMultipartUploadListPage(context.Background(), pager, bucketID, "", "", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.isTruncated {
+		t.Fatal("expected first page to be truncated")
+	}
+	if page.nextKeyMarker != "alpha.txt" || page.nextUploadIDMarker != "u2" {
+		t.Fatalf("unexpected next markers: %+v", page)
+	}
+	if len(page.entries) != 2 || page.entries[0].UploadId != "u1" || page.entries[1].UploadId != "u2" {
+		t.Fatalf("unexpected page entries: %+v", page.entries)
+	}
+
+	page, err = buildMultipartUploadListPage(context.Background(), pager, bucketID, "", "alpha.txt", "u2", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.isTruncated {
+		t.Fatal("expected second page to finish the listing")
+	}
+	if len(page.entries) != 1 || page.entries[0].Key != "beta.txt" {
+		t.Fatalf("unexpected second page entries: %+v", page.entries)
+	}
+}
+
+func TestListMultipartUploadsPaginationMaxZeroKeepsUnseenDataReachable(t *testing.T) {
+	t.Parallel()
+
+	bucketID := primitive.NewObjectID()
+	pager := fakeMultipartUploadPager{
+		uploads: []repository.MultipartUpload{
+			{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u1", CreatedAt: time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)},
+			{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u2", CreatedAt: time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+
+	page, err := buildMultipartUploadListPage(context.Background(), pager, bucketID, "", "", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.isTruncated {
+		t.Fatal("expected zero-sized page to remain truncated when uploads exist")
+	}
+	if page.nextKeyMarker != "" || page.nextUploadIDMarker != "" {
+		t.Fatalf("expected zero-sized page to leave next markers empty, got %+v", page)
+	}
+
+	followUp, err := buildMultipartUploadListPage(context.Background(), pager, bucketID, "", "", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(followUp.entries) != 2 || followUp.entries[0].UploadId != "u1" || followUp.entries[1].UploadId != "u2" {
+		t.Fatalf("expected follow-up page to retain all uploads, got %+v", followUp.entries)
+	}
+}
+
+func TestListMultipartUploadsRejectsUploadIDMarkerWithoutKeyMarker(t *testing.T) {
+	t.Parallel()
+
+	c, w := testS3GinContext("/api/s3/route-bucket?uploads&upload-id-marker=u2")
+	c.Request.Method = http.MethodGet
+	c.Params = gin.Params{{Key: "bucket", Value: "route-bucket"}}
+	c.Set("accessKey", "route-access")
+
+	listMultipartUploads(c, fakeObjectBucketReader{
+		bucket: &repository.Bucket{ID: primitive.NewObjectID(), Key: "route-bucket", AccessKey: "route-access"},
+	}, fakeMultipartUploadPager{})
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>InvalidArgument</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestListMultipartUploadsRejectsDelimiter(t *testing.T) {
+	t.Parallel()
+
+	c, w := testS3GinContext("/api/s3/route-bucket?uploads&delimiter=/")
+	c.Request.Method = http.MethodGet
+	c.Params = gin.Params{{Key: "bucket", Value: "route-bucket"}}
+	c.Set("accessKey", "route-access")
+
+	listMultipartUploads(c, fakeObjectBucketReader{
+		bucket: &repository.Bucket{ID: primitive.NewObjectID(), Key: "route-bucket", AccessKey: "route-access"},
+	}, fakeMultipartUploadPager{})
+
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>NotImplemented</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestBuildMultipartPartsPage(t *testing.T) {
+	t.Parallel()
+
+	page := buildMultipartPartsPage(&repository.MultipartUpload{
+		CreatedAt: time.Date(2026, time.January, 4, 0, 0, 0, 0, time.UTC),
+		Parts: []repository.UploadPart{
+			{PartNumber: 3, ETag: `"ccc"`, Size: 3},
+			{PartNumber: 1, ETag: `"aaa"`, Size: 1},
+			{PartNumber: 2, ETag: `"bbb"`, Size: 2},
+		},
+	}, 1, 1)
+
+	if !page.isTruncated {
+		t.Fatal("expected paged parts result to be truncated")
+	}
+	if page.nextPartNumberMarker != 2 {
+		t.Fatalf("unexpected next marker: %d", page.nextPartNumberMarker)
+	}
+	if len(page.parts) != 1 || page.parts[0].PartNumber != 2 {
+		t.Fatalf("unexpected page parts: %+v", page.parts)
+	}
+}
+
+func TestBuildMultipartPartsPageMaxZeroKeepsUnseenDataReachable(t *testing.T) {
+	t.Parallel()
+
+	page := buildMultipartPartsPage(&repository.MultipartUpload{
+		CreatedAt: time.Date(2026, time.January, 4, 0, 0, 0, 0, time.UTC),
+		Parts: []repository.UploadPart{
+			{PartNumber: 1, ETag: `"aaa"`, Size: 1},
+			{PartNumber: 2, ETag: `"bbb"`, Size: 2},
+		},
+	}, 0, 0)
+
+	if !page.isTruncated {
+		t.Fatal("expected zero-sized parts page to remain truncated when parts exist")
+	}
+	if page.nextPartNumberMarker != 0 {
+		t.Fatalf("expected zero-sized parts page to leave next marker empty, got %d", page.nextPartNumberMarker)
+	}
+
+	followUp := buildMultipartPartsPage(&repository.MultipartUpload{
+		CreatedAt: time.Date(2026, time.January, 4, 0, 0, 0, 0, time.UTC),
+		Parts: []repository.UploadPart{
+			{PartNumber: 1, ETag: `"aaa"`, Size: 1},
+			{PartNumber: 2, ETag: `"bbb"`, Size: 2},
+		},
+	}, 0, 2)
+	if len(followUp.parts) != 2 || followUp.parts[0].PartNumber != 1 || followUp.parts[1].PartNumber != 2 {
+		t.Fatalf("expected follow-up page to retain all parts, got %+v", followUp.parts)
+	}
+}
+
+func TestListPartsRejectsInvalidMarker(t *testing.T) {
+	t.Parallel()
+
+	bucketID := primitive.NewObjectID()
+	uploadID := primitive.NewObjectID().Hex()
+	c, w := testS3GinContext("/api/s3/route-bucket/object.txt?uploadId=" + uploadID + "&part-number-marker=-1")
+	c.Request.Method = http.MethodGet
+	c.Params = gin.Params{
+		{Key: "bucket", Value: "route-bucket"},
+		{Key: "object", Value: "/object.txt"},
+	}
+	c.Set("accessKey", "route-access")
+
+	listParts(c, fakeObjectBucketReader{
+		bucket: &repository.Bucket{ID: bucketID, Key: "route-bucket", AccessKey: "route-access"},
+	}, fakeMultipartUploadGetter{
+		upload: &repository.MultipartUpload{BucketID: bucketID, ObjectKey: "object.txt", UploadID: uploadID},
+	})
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>InvalidArgument</Code>") {
+		t.Fatalf("unexpected body: %s", body)
 	}
 }
 

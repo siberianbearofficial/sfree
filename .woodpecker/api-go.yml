@@ -15,18 +15,24 @@ when:
 steps:
   - name: lint
     image: golangci/golangci-lint:v2.11.4-alpine
+    when:
+      - event: pull_request
     commands:
       - cd api-go
       - golangci-lint run
 
   - name: unit tests
     image: public.ecr.aws/docker/library/golang:1.25
+    when:
+      - event: pull_request
     commands:
       - cd api-go
       - go test ./...
 
   - name: dependency audit
     image: public.ecr.aws/docker/library/golang:1.25
+    when:
+      - event: pull_request
     commands:
       - cd api-go
       - go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
@@ -34,12 +40,25 @@ steps:
 
   - name: api docs freshness
     image: public.ecr.aws/docker/library/golang:1.25
+    when:
+      - event: pull_request
     commands:
       - cd api-go
       - make docs-check
 
+  - name: docker
+    image: public.ecr.aws/docker/library/docker:27-dind
+    privileged: true
+    detach: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    when:
+      - event: pull_request
+
   - name: e2e tests
     image: public.ecr.aws/docker/library/docker:27-cli
+    when:
+      - event: pull_request
     environment:
       DOCKER_HOST: tcp://docker:2375
       DOCKER_TLS_CERTDIR: ""
@@ -58,6 +77,8 @@ steps:
 
   - name: go e2e tests (s3)
     image: public.ecr.aws/docker/library/docker:27-cli
+    when:
+      - event: pull_request
     environment:
       DOCKER_HOST: tcp://docker:2375
       DOCKER_TLS_CERTDIR: ""
@@ -86,10 +107,3 @@ steps:
       context: api-go
       dockerfile: api-go/Dockerfile
       tag: main
-
-services:
-  - name: docker
-    image: public.ecr.aws/docker/library/docker:27-dind
-    privileged: true
-    environment:
-      DOCKER_TLS_CERTDIR: ""

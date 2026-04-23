@@ -11,6 +11,7 @@ import (
 
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/ratelimit"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/example/sfree/api-go/internal/resilience"
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,8 @@ import (
 )
 
 func TestSetupRouter(t *testing.T) {
+	t.Parallel()
+
 	r, err := SetupRouter(nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +37,8 @@ func TestSetupRouter(t *testing.T) {
 }
 
 func TestSetupRouterNilMongoRouteSet(t *testing.T) {
+	t.Parallel()
+
 	r, err := SetupRouter(nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -75,6 +80,8 @@ func TestSetupRouterNilMongoRouteSet(t *testing.T) {
 }
 
 func TestOpenAPIJSONRoute(t *testing.T) {
+	t.Parallel()
+
 	r, err := SetupRouter(nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +121,7 @@ func TestRegisterSourceRoutesIncludesQueryDownloadRoute(t *testing.T) {
 			c.Next()
 		},
 		sourceRepo: &repository.SourceRepository{},
-	})
+	}, nil)
 
 	expectedRoutes := []struct {
 		method string
@@ -131,6 +138,8 @@ func TestRegisterSourceRoutesIncludesQueryDownloadRoute(t *testing.T) {
 }
 
 func TestOpenAPIDocsRouteRedirectsToIndex(t *testing.T) {
+	t.Parallel()
+
 	r, err := SetupRouter(nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -148,76 +157,142 @@ func TestOpenAPIDocsRouteRedirectsToIndex(t *testing.T) {
 	}
 }
 
+func TestProtectedHandlersUseIdentityLimitAfterAuth(t *testing.T) {
+	r := gin.New()
+	limits := ratelimit.NewLimiters(ratelimit.Config{PerIPReqsPerMin: 1, PerKeyReqsPerMin: 2})
+	auth := func(c *gin.Context) {
+		c.Set("userID", "router-user")
+		c.Next()
+	}
+	r.GET("/protected", protectedHandlers(limits, auth, func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})...)
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.RemoteAddr = "10.1.0.1:1234"
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("request %d: expected 200, got %d", i+1, w.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.RemoteAddr = "10.1.0.1:1234"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 from identity limiter, got %d", w.Code)
+	}
+}
+
+func TestProtectedHandlersLimitFailedAuthByIP(t *testing.T) {
+	r := gin.New()
+	limits := ratelimit.NewLimiters(ratelimit.Config{PerIPReqsPerMin: 1, PerKeyReqsPerMin: 100})
+	auth := func(c *gin.Context) {
+		c.AbortWithStatus(http.StatusUnauthorized)
+	}
+	r.GET("/protected", protectedHandlers(limits, auth, func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})...)
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.RemoteAddr = "10.1.0.2:1234"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected first failed auth to return 401, got %d", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.RemoteAddr = "10.1.0.2:1234"
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected repeated failed auth to return 429, got %d", w.Code)
+	}
+}
+
 func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 	tests := []struct {
 		name string
-		fail func(error)
+		fail func(routerDependencyConstructors, error) routerDependencyConstructors
 	}{
 		{
 			name: "user repository",
-			fail: func(failure error) {
-				newUserRepository = func(*mongo.Database) (*repository.UserRepository, error) {
+			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
+				constructors.user = func(*mongo.Database) (*repository.UserRepository, error) {
 					return nil, failure
 				}
+				return constructors
 			},
 		},
 		{
 			name: "bucket repository",
-			fail: func(failure error) {
-				newBucketRepository = func(*mongo.Database) (*repository.BucketRepository, error) {
+			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
+				constructors.bucket = func(*mongo.Database) (*repository.BucketRepository, error) {
 					return nil, failure
 				}
+				return constructors
 			},
 		},
 		{
 			name: "source repository",
-			fail: func(failure error) {
-				newSourceRepository = func(*mongo.Database, ...string) (*repository.SourceRepository, error) {
+			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
+				constructors.source = func(*mongo.Database, ...string) (*repository.SourceRepository, error) {
 					return nil, failure
 				}
+				return constructors
 			},
 		},
 		{
 			name: "file repository",
-			fail: func(failure error) {
-				newFileRepository = func(*mongo.Database) (*repository.FileRepository, error) {
+			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
+				constructors.file = func(*mongo.Database) (*repository.FileRepository, error) {
 					return nil, failure
 				}
+				return constructors
 			},
 		},
 		{
 			name: "multipart upload repository",
-			fail: func(failure error) {
-				newMultipartUploadRepository = func(*mongo.Database) (*repository.MultipartUploadRepository, error) {
+			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
+				constructors.multipartUpload = func(*mongo.Database) (*repository.MultipartUploadRepository, error) {
 					return nil, failure
 				}
+				return constructors
 			},
 		},
 		{
 			name: "share link repository",
-			fail: func(failure error) {
-				newShareLinkRepository = func(*mongo.Database) (*repository.ShareLinkRepository, error) {
+			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
+				constructors.shareLink = func(*mongo.Database) (*repository.ShareLinkRepository, error) {
 					return nil, failure
 				}
+				return constructors
 			},
 		},
 		{
 			name: "bucket grant repository",
-			fail: func(failure error) {
-				newBucketGrantRepository = func(*mongo.Database) (*repository.BucketGrantRepository, error) {
+			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
+				constructors.bucketGrant = func(*mongo.Database) (*repository.BucketGrantRepository, error) {
 					return nil, failure
 				}
+				return constructors
 			},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			stubRouterRepositoryConstructors(t)
-			failure := errors.New("create index")
-			tt.fail(failure)
+			t.Parallel()
 
-			deps, err := newRouterDependencies(&db.Mongo{}, nil)
+			failure := errors.New("create index")
+			constructors := tt.fail(stubRouterRepositoryConstructors(), failure)
+
+			deps, err := newRouterDependencies(&db.Mongo{}, nil, constructors)
 			if err == nil {
 				t.Fatal("expected repository initialization error")
 			}
@@ -283,44 +358,28 @@ func hasRoute(r *gin.Engine, method, path string) bool {
 	return false
 }
 
-func stubRouterRepositoryConstructors(t *testing.T) {
-	originalUser := newUserRepository
-	originalBucket := newBucketRepository
-	originalSource := newSourceRepository
-	originalFile := newFileRepository
-	originalShareLink := newShareLinkRepository
-	originalMultipartUpload := newMultipartUploadRepository
-	originalBucketGrant := newBucketGrantRepository
-
-	t.Cleanup(func() {
-		newUserRepository = originalUser
-		newBucketRepository = originalBucket
-		newSourceRepository = originalSource
-		newFileRepository = originalFile
-		newShareLinkRepository = originalShareLink
-		newMultipartUploadRepository = originalMultipartUpload
-		newBucketGrantRepository = originalBucketGrant
-	})
-
-	newUserRepository = func(*mongo.Database) (*repository.UserRepository, error) {
-		return &repository.UserRepository{}, nil
-	}
-	newBucketRepository = func(*mongo.Database) (*repository.BucketRepository, error) {
-		return &repository.BucketRepository{}, nil
-	}
-	newSourceRepository = func(*mongo.Database, ...string) (*repository.SourceRepository, error) {
-		return &repository.SourceRepository{}, nil
-	}
-	newFileRepository = func(*mongo.Database) (*repository.FileRepository, error) {
-		return &repository.FileRepository{}, nil
-	}
-	newMultipartUploadRepository = func(*mongo.Database) (*repository.MultipartUploadRepository, error) {
-		return &repository.MultipartUploadRepository{}, nil
-	}
-	newShareLinkRepository = func(*mongo.Database) (*repository.ShareLinkRepository, error) {
-		return &repository.ShareLinkRepository{}, nil
-	}
-	newBucketGrantRepository = func(*mongo.Database) (*repository.BucketGrantRepository, error) {
-		return &repository.BucketGrantRepository{}, nil
+func stubRouterRepositoryConstructors() routerDependencyConstructors {
+	return routerDependencyConstructors{
+		user: func(*mongo.Database) (*repository.UserRepository, error) {
+			return &repository.UserRepository{}, nil
+		},
+		bucket: func(*mongo.Database) (*repository.BucketRepository, error) {
+			return &repository.BucketRepository{}, nil
+		},
+		source: func(*mongo.Database, ...string) (*repository.SourceRepository, error) {
+			return &repository.SourceRepository{}, nil
+		},
+		file: func(*mongo.Database) (*repository.FileRepository, error) {
+			return &repository.FileRepository{}, nil
+		},
+		multipartUpload: func(*mongo.Database) (*repository.MultipartUploadRepository, error) {
+			return &repository.MultipartUploadRepository{}, nil
+		},
+		shareLink: func(*mongo.Database) (*repository.ShareLinkRepository, error) {
+			return &repository.ShareLinkRepository{}, nil
+		},
+		bucketGrant: func(*mongo.Database) (*repository.BucketGrantRepository, error) {
+			return &repository.BucketGrantRepository{}, nil
+		},
 	}
 }

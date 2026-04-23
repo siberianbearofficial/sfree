@@ -118,6 +118,72 @@ func TestMultipartUploadRepositoryCreatesPartChunkReferenceIndex(t *testing.T) {
 	})
 }
 
+func TestMultipartUploadRepositoryCreatesPagedListingIndex(t *testing.T) {
+	testDB, _ := newMultipartRepositoryTestDB(t)
+	assertMongoIndex(t, testDB.Collection("multipart_uploads"), multipartBucketObjectUploadIndex, bson.D{
+		{Key: "bucket_id", Value: 1},
+		{Key: "object_key", Value: 1},
+		{Key: "upload_id", Value: 1},
+	})
+}
+
+func TestMultipartUploadRepositoryListByBucketPage(t *testing.T) {
+	_, repo := newMultipartRepositoryTestDB(t)
+
+	ctx := context.Background()
+	bucketID := primitive.NewObjectID()
+	otherBucketID := primitive.NewObjectID()
+	createdAt := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	fixtures := []MultipartUpload{
+		{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u1", CreatedAt: createdAt},
+		{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u2", CreatedAt: createdAt.Add(time.Second)},
+		{BucketID: bucketID, ObjectKey: "beta.txt", UploadID: "u3", CreatedAt: createdAt.Add(2 * time.Second)},
+		{BucketID: bucketID, ObjectKey: "dir/gamma.txt", UploadID: "u4", CreatedAt: createdAt.Add(3 * time.Second)},
+		{BucketID: otherBucketID, ObjectKey: "alpha.txt", UploadID: "other", CreatedAt: createdAt},
+	}
+	for _, mu := range fixtures {
+		if _, err := repo.Create(ctx, mu); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, hasMore, err := repo.ListByBucketPage(ctx, bucketID, "", "", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasMore {
+		t.Fatal("expected first page to be truncated")
+	}
+	assertMultipartUploadPage(t, page, [][2]string{{"alpha.txt", "u1"}, {"alpha.txt", "u2"}})
+
+	page, hasMore, err = repo.ListByBucketPage(ctx, bucketID, "", "alpha.txt", "u2", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("expected second page to finish the result set")
+	}
+	assertMultipartUploadPage(t, page, [][2]string{{"beta.txt", "u3"}, {"dir/gamma.txt", "u4"}})
+
+	page, hasMore, err = repo.ListByBucketPage(ctx, bucketID, "dir/", "", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("expected prefix-filtered page to be complete")
+	}
+	assertMultipartUploadPage(t, page, [][2]string{{"dir/gamma.txt", "u4"}})
+
+	page, hasMore, err = repo.ListByBucketPage(ctx, bucketID, "", "alpha.txt", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("expected key-marker page to be complete")
+	}
+	assertMultipartUploadPage(t, page, [][2]string{{"beta.txt", "u3"}, {"dir/gamma.txt", "u4"}})
+}
+
 func assertMultipartPart(t *testing.T, parts []UploadPart, partNumber int, etag string, chunkName string) {
 	t.Helper()
 	for _, part := range parts {
@@ -133,6 +199,18 @@ func assertMultipartPart(t *testing.T, parts []UploadPart, partNumber int, etag 
 		return
 	}
 	t.Fatalf("missing part %d in %+v", partNumber, parts)
+}
+
+func assertMultipartUploadPage(t *testing.T, uploads []MultipartUpload, want [][2]string) {
+	t.Helper()
+	if len(uploads) != len(want) {
+		t.Fatalf("expected %d uploads, got %+v", len(want), uploads)
+	}
+	for i, pair := range want {
+		if uploads[i].ObjectKey != pair[0] || uploads[i].UploadID != pair[1] {
+			t.Fatalf("upload %d: got (%q, %q), want (%q, %q)", i, uploads[i].ObjectKey, uploads[i].UploadID, pair[0], pair[1])
+		}
+	}
 }
 
 func newMultipartRepositoryTestDB(t *testing.T) (*mongo.Database, *MultipartUploadRepository) {

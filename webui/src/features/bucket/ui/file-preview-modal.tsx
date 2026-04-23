@@ -17,6 +17,8 @@ import { formatSize } from "../../../shared/lib/format";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"]);
 const TEXT_EXTENSIONS = new Set(["txt", "json", "yaml", "yml", "md", "csv", "xml", "html", "css", "js", "ts", "tsx", "jsx", "go", "py", "sh", "toml", "ini", "cfg", "log", "env", "dockerfile"]);
+const MAX_TEXT_PREVIEW_FILE_SIZE = 1024 * 1024;
+const MAX_TEXT_PREVIEW_CONTENT_SIZE = 100_000;
 
 function getExtension(name: string): string {
   const parts = name.toLowerCase().split(".");
@@ -40,6 +42,7 @@ export function FilePreviewModal({ isOpen, onClose, file, bucketId }: Props) {
   const ext = file ? getExtension(file.name) : "";
   const isImage = IMAGE_EXTENSIONS.has(ext);
   const isText = TEXT_EXTENSIONS.has(ext);
+  const textPreviewTooLarge = Boolean(file && isText && file.size > MAX_TEXT_PREVIEW_FILE_SIZE);
 
   async function handleDownload() {
     if (!file) return;
@@ -68,7 +71,11 @@ export function FilePreviewModal({ isOpen, onClose, file, bucketId }: Props) {
         setBlobUrl(url);
       } else if (isText) {
         const text = await blob.text();
-        setTextContent(text.length > 100_000 ? text.slice(0, 100_000) + "\n\n--- truncated ---" : text);
+        setTextContent(
+          text.length > MAX_TEXT_PREVIEW_CONTENT_SIZE
+            ? text.slice(0, MAX_TEXT_PREVIEW_CONTENT_SIZE) + "\n\n--- truncated ---"
+            : text,
+        );
       }
     } catch {
       setError("Failed to load file preview");
@@ -78,8 +85,16 @@ export function FilePreviewModal({ isOpen, onClose, file, bucketId }: Props) {
   }, [file, bucketId, isImage, isText]);
 
   useEffect(() => {
-    if (isOpen && file && (isImage || isText)) {
-      loadPreview();
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+    setBlobUrl(null);
+    setTextContent(null);
+    setError(null);
+    setIsLoading(false);
+    if (isOpen && file && (isImage || (isText && !textPreviewTooLarge))) {
+      void loadPreview();
     }
     return () => {
       if (blobUrlRef.current) {
@@ -87,7 +102,7 @@ export function FilePreviewModal({ isOpen, onClose, file, bucketId }: Props) {
         blobUrlRef.current = null;
       }
     };
-  }, [isOpen, file, isImage, isText, loadPreview]);
+  }, [isOpen, file, isImage, isText, loadPreview, textPreviewTooLarge]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="3xl" scrollBehavior="inside">
@@ -132,7 +147,16 @@ export function FilePreviewModal({ isOpen, onClose, file, bucketId }: Props) {
             </pre>
           )}
 
-          {!isLoading && !error && !isImage && !isText && file && (
+          {!isLoading && !error && textPreviewTooLarge && file && (
+            <div className="text-center py-12 text-default-500">
+              <p className="text-lg mb-2">Preview unavailable for large text files</p>
+              <p>
+                Files larger than {formatSize(MAX_TEXT_PREVIEW_FILE_SIZE)} must be downloaded to inspect.
+              </p>
+            </div>
+          )}
+
+          {!isLoading && !error && !textPreviewTooLarge && !isImage && !isText && file && (
             <div className="text-center py-12 text-default-500">
               <p className="text-lg mb-2">Preview not available for this file type</p>
               <p>Click Download to save the file</p>
