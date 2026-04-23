@@ -8,9 +8,10 @@ import {
   ModalHeader,
   Select,
   SelectItem,
+  Spinner,
 } from "@heroui/react";
 import {addToast} from "@heroui/toast";
-import {useState, useEffect} from "react";
+import {useCallback, useState, useEffect, useRef} from "react";
 import {
   createGrant,
   deleteGrant,
@@ -19,6 +20,8 @@ import {
 } from "../../../shared/api/grants";
 import type {BucketGrant} from "../../../shared/api/grants";
 import {DeleteIcon} from "@heroui/shared-icons";
+import {showErrorToast} from "../../../shared/api/error";
+import {EmptyState} from "../../../shared/ui";
 
 const ROLES = [
   {key: "viewer", label: "Viewer"},
@@ -37,14 +40,41 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
   const [username, setUsername] = useState("");
   const [role, setRole] = useState<"owner" | "editor" | "viewer">("viewer");
   const [isAdding, setIsAdding] = useState(false);
+  const [isLoadingGrants, setIsLoadingGrants] = useState(false);
+  const [grantLoadError, setGrantLoadError] = useState<string | null>(null);
+  const grantLoadRequestRef = useRef(0);
+
+  const loadGrants = useCallback(async () => {
+    const requestId = grantLoadRequestRef.current + 1;
+    grantLoadRequestRef.current = requestId;
+    setIsLoadingGrants(true);
+    setGrantLoadError(null);
+    try {
+      const nextGrants = await listGrants(bucketId);
+      if (grantLoadRequestRef.current !== requestId) return;
+      setGrants(nextGrants);
+      setGrantLoadError(null);
+    } catch (err) {
+      if (grantLoadRequestRef.current !== requestId) return;
+      setGrants([]);
+      setGrantLoadError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load people with access.",
+      );
+      showErrorToast(err);
+    } finally {
+      if (grantLoadRequestRef.current === requestId) {
+        setIsLoadingGrants(false);
+      }
+    }
+  }, [bucketId]);
 
   useEffect(() => {
     if (isOpen) {
-      listGrants(bucketId)
-        .then(setGrants)
-        .catch(() => setGrants([]));
+      loadGrants();
     }
-  }, [isOpen, bucketId]);
+  }, [isOpen, loadGrants]);
 
   async function handleAdd() {
     if (!username.trim()) return;
@@ -60,12 +90,7 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
         timeout: 4000,
       });
     } catch (err) {
-      addToast({
-        title: "Failed to grant access",
-        description: err instanceof Error ? err.message : "Unknown error",
-        color: "danger",
-        timeout: 4000,
-      });
+      showErrorToast(err);
     } finally {
       setIsAdding(false);
     }
@@ -80,12 +105,7 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
         ),
       );
     } catch (err) {
-      addToast({
-        title: "Failed to update role",
-        description: err instanceof Error ? err.message : "Unknown error",
-        color: "danger",
-        timeout: 4000,
-      });
+      showErrorToast(err);
     }
   }
 
@@ -95,12 +115,7 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
       setGrants((prev) => prev.filter((g) => g.id !== grantId));
       addToast({title: "Access revoked", color: "success", timeout: 4000});
     } catch (err) {
-      addToast({
-        title: "Failed to revoke access",
-        description: err instanceof Error ? err.message : "Unknown error",
-        color: "danger",
-        timeout: 4000,
-      });
+      showErrorToast(err);
     }
   }
 
@@ -109,8 +124,11 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
       isOpen={isOpen}
       onOpenChange={(open) => {
         if (!open) {
+          grantLoadRequestRef.current += 1;
           setGrants([]);
           setUsername("");
+          setGrantLoadError(null);
+          setIsLoadingGrants(false);
         }
         onOpenChange();
       }}
@@ -146,13 +164,32 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
                   color="primary"
                   isLoading={isAdding}
                   onPress={handleAdd}
-                  isDisabled={!username.trim()}
+                  isDisabled={
+                    !username.trim() || isLoadingGrants || !!grantLoadError
+                  }
                 >
                   Add
                 </Button>
               </div>
 
-              {grants.length > 0 && (
+              {isLoadingGrants && (
+                <div className="flex items-center justify-center gap-2 py-8 text-default-500">
+                  <Spinner size="sm" />
+                  <span className="text-sm">Loading people with access</span>
+                </div>
+              )}
+
+              {!isLoadingGrants && grantLoadError && (
+                <EmptyState
+                  title="Access list failed to load"
+                  description={grantLoadError}
+                  ctaLabel="Retry"
+                  onCtaPress={loadGrants}
+                  variant="danger"
+                />
+              )}
+
+              {!isLoadingGrants && !grantLoadError && grants.length > 0 && (
                 <div className="flex flex-col gap-2 mt-4">
                   <p className="text-sm font-semibold text-default-500">
                     People with access

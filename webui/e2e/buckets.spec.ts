@@ -8,8 +8,8 @@
  * - Upload File button is present on the bucket detail page
  */
 
-import { test, expect } from "@playwright/test";
-import { injectAuth, mockGet, mockPost } from "./helpers";
+import { test, expect, type Route } from "@playwright/test";
+import { API_GLOB, injectAuth, mockGet, mockPost } from "./helpers";
 
 const MOCK_SOURCE = {
   id: "src-1",
@@ -39,6 +39,16 @@ const MOCK_BUCKET_CREDS = {
   access_key: "AK123",
   access_secret: "SK456",
   created_at: "2024-01-15T11:00:00Z",
+};
+
+const MOCK_GRANT = {
+  id: "grant-1",
+  bucket_id: "bkt-1",
+  user_id: "user-2",
+  username: "shared-user",
+  role: "viewer",
+  granted_by: "user-1",
+  created_at: "2024-01-15T12:00:00Z",
 };
 
 test.describe("Bucket creation flow", () => {
@@ -158,6 +168,96 @@ test.describe("Bucket creation flow", () => {
     await expect(page.getByRole("button", { name: "Upload File" })).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Share Bucket" })).toBeVisible();
     await expect(page.getByText("Drag and drop a file here")).toBeVisible();
+  });
+
+  test("Share Bucket dialog shows grant loading and successful grants", async ({
+    page,
+  }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+    await mockGet(page, "/buckets/bkt-1/files", []);
+
+    let fulfillGrants: (() => Promise<void>) | undefined;
+    await page.route(`${API_GLOB}/buckets/bkt-1/grants`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      fulfillGrants = () => route.fulfill({status: 200, json: [MOCK_GRANT]});
+    });
+
+    await page.goto("/buckets/bkt-1");
+    const dialog = page.getByRole("dialog");
+
+    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await expect(dialog.getByText("Loading people with access")).toBeVisible();
+
+    expect(fulfillGrants).toBeDefined();
+    await fulfillGrants!();
+    await expect(dialog.getByText("People with access")).toBeVisible();
+    await expect(dialog.getByText("shared-user")).toBeVisible();
+  });
+
+  test("Share Bucket dialog shows grant-list failure state", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockGet(
+      page,
+      "/buckets/bkt-1/grants",
+      {error: "Grant store unavailable"},
+      500,
+    );
+
+    await page.goto("/buckets/bkt-1");
+    const dialog = page.getByRole("dialog");
+
+    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await expect(dialog.getByText("Access list failed to load")).toBeVisible();
+    await expect(dialog.getByText("Grant store unavailable")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(dialog.getByText("People with access")).not.toBeVisible();
+  });
+
+  test("Share Bucket dialog ignores stale grant-list failures", async ({
+    page,
+  }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+    await mockGet(page, "/buckets/bkt-1/files", []);
+
+    const grantRoutes: Route[] = [];
+    await page.route(`${API_GLOB}/buckets/bkt-1/grants`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      grantRoutes.push(route);
+    });
+
+    await page.goto("/buckets/bkt-1");
+    const dialog = page.getByRole("dialog");
+
+    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await expect(dialog.getByText("Loading people with access")).toBeVisible();
+    await expect.poll(() => grantRoutes.length).toBe(1);
+    await dialog.getByRole("button", { name: "Close" }).last().click();
+    await expect(dialog).not.toBeVisible();
+
+    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await expect.poll(() => grantRoutes.length).toBe(2);
+    await grantRoutes[1].fulfill({status: 200, json: [MOCK_GRANT]});
+    await expect(dialog.getByText("shared-user")).toBeVisible();
+
+    await grantRoutes[0].fulfill({
+      status: 500,
+      json: {error: "Stale grant failure"},
+    });
+    await expect(dialog.getByText("shared-user")).toBeVisible();
+    await expect(dialog.getByText("Stale grant failure")).not.toBeVisible();
   });
 
   test("viewer bucket detail hides write actions", async ({ page }) => {
