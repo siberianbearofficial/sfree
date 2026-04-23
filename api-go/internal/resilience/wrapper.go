@@ -8,8 +8,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/example/sfree/api-go/internal/gdrive"
-	"github.com/example/sfree/api-go/internal/s3compat"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 var ErrUnsupportedOperation = errors.New("unsupported source client operation")
@@ -216,20 +215,67 @@ func (w *wrapper) Upload(ctx context.Context, name string, r io.Reader) (string,
 			}
 		}
 		var err error
-		result, err = w.inner.Upload(reqCtx, name, body)
-		return err
+		uploadedName, err := w.inner.Upload(reqCtx, name, body)
+		if err != nil {
+			return err
+		}
+		result = uploadedName
+		return nil
 	})
 	return result, err
 }
 
 func (w *wrapper) Download(ctx context.Context, name string) (io.ReadCloser, error) {
-	var rc io.ReadCloser
-	err := w.withRetry(ctx, "retrying download", []any{slog.String("name", name)}, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
-		var err error
-		rc, err = w.inner.Download(reqCtx, name)
-		return err
-	})
-	return rc, err
+	if err := w.cb.Allow(); err != nil {
+		return nil, err
+	}
+
+	var lastErr error
+	for attempt := 0; attempt <= w.retryCfg.MaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := Backoff(attempt-1, w.retryCfg)
+			slog.WarnContext(ctx, "retrying download",
+				slog.String("name", name),
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", delay),
+				slog.String("last_error", lastErr.Error()),
+			)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				w.cb.RecordFailure()
+				return nil, ctx.Err()
+			}
+			if err := w.cb.Allow(); err != nil {
+				return nil, err
+			}
+		}
+
+		reqCtx, cancel, timeoutErr := downloadAttemptContext(ctx, w.cfg.Timeout)
+		rc, err := w.inner.Download(reqCtx, name)
+
+		if err == nil {
+			if err := timeoutErr(); err != nil {
+				cancel()
+				_ = rc.Close()
+				lastErr = err
+				break
+			}
+			w.cb.RecordSuccess()
+			return &cancelOnCloseReadCloser{ReadCloser: rc, cancel: cancel}, nil
+		}
+		cancel()
+		if timeoutErr() != nil && errors.Is(err, context.Canceled) {
+			err = context.DeadlineExceeded
+		}
+		lastErr = err
+		if !isRetryable(err) {
+			break
+		}
+	}
+
+	w.cb.RecordFailure()
+	return nil, lastErr
 }
 
 func (w *wrapper) DownloadStream(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -261,80 +307,47 @@ func (r *cancelOnCloseReadCloser) Close() error {
 	return err
 }
 
-func (w *wrapper) ListFiles(ctx context.Context) ([]gdrive.File, error) {
-	inner, ok := w.inner.(interface {
-		ListFiles(context.Context) ([]gdrive.File, error)
+func downloadAttemptContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc, func() error) {
+	ctx, cancel := context.WithCancel(parent)
+	timer := time.AfterFunc(timeout, func() {
+		cancel()
 	})
+	timeoutErr := func() error {
+		if timer.Stop() {
+			return nil
+		}
+		cancel()
+		return context.DeadlineExceeded
+	}
+	return ctx, cancel, timeoutErr
+}
+
+func (w *wrapper) SourceInfo(ctx context.Context) (sourcecap.Info, error) {
+	inner, ok := w.inner.(sourcecap.InfoProvider)
 	if !ok {
-		return nil, ErrUnsupportedOperation
+		return sourcecap.Info{}, sourcecap.ErrUnsupportedCapability
 	}
 
-	var files []gdrive.File
-	err := w.withRetry(ctx, "retrying list files", nil, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
+	var info sourcecap.Info
+	err := w.withRetry(ctx, "retrying source info", nil, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
 		var err error
-		files, err = inner.ListFiles(reqCtx)
+		info, err = inner.SourceInfo(reqCtx)
 		return err
 	})
-	return files, err
+	return info, err
 }
 
-func (w *wrapper) StorageInfo(ctx context.Context) (int64, int64, int64, error) {
-	inner, ok := w.inner.(interface {
-		StorageInfo(context.Context) (int64, int64, int64, error)
-	})
+func (w *wrapper) ProbeSourceHealth(ctx context.Context) (sourcecap.Health, error) {
+	inner, ok := w.inner.(sourcecap.HealthProber)
 	if !ok {
-		return 0, 0, 0, ErrUnsupportedOperation
+		return sourcecap.Health{}, sourcecap.ErrUnsupportedCapability
 	}
 
-	var total, used, free int64
-	err := w.withRetry(ctx, "retrying storage info", nil, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
+	var health sourcecap.Health
+	err := w.withRetry(ctx, "retrying source health probe", nil, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
 		var err error
-		total, used, free, err = inner.StorageInfo(reqCtx)
+		health, err = inner.ProbeSourceHealth(reqCtx)
 		return err
 	})
-	return total, used, free, err
-}
-
-func (w *wrapper) ListObjects(ctx context.Context) ([]s3compat.ObjectInfo, int64, error) {
-	inner, ok := w.inner.(interface {
-		ListObjects(context.Context) ([]s3compat.ObjectInfo, int64, error)
-	})
-	if !ok {
-		return nil, 0, ErrUnsupportedOperation
-	}
-
-	var objects []s3compat.ObjectInfo
-	var used int64
-	err := w.withRetry(ctx, "retrying list objects", nil, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
-		var err error
-		objects, used, err = inner.ListObjects(reqCtx)
-		return err
-	})
-	return objects, used, err
-}
-
-func (w *wrapper) HeadBucket(ctx context.Context) error {
-	inner, ok := w.inner.(interface {
-		HeadBucket(context.Context) error
-	})
-	if !ok {
-		return ErrUnsupportedOperation
-	}
-
-	return w.withRetry(ctx, "retrying head bucket", nil, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
-		return inner.HeadBucket(reqCtx)
-	})
-}
-
-func (w *wrapper) CheckChat(ctx context.Context) error {
-	inner, ok := w.inner.(interface {
-		CheckChat(context.Context) error
-	})
-	if !ok {
-		return ErrUnsupportedOperation
-	}
-
-	return w.withRetry(ctx, "retrying telegram chat check", nil, timeoutRetryContext(w.cfg.Timeout), true, nil, func(reqCtx context.Context, cancel context.CancelFunc) error {
-		return inner.CheckChat(reqCtx)
-	})
+	return health, err
 }

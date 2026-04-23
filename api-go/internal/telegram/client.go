@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 type Config struct {
@@ -33,11 +35,9 @@ func NewClient(cfg Config) (*Client, error) {
 }
 
 func NewClientWithBaseURL(cfg Config, baseURL string) (*Client, error) {
-	if strings.TrimSpace(cfg.Token) == "" {
-		return nil, fmt.Errorf("telegram token is required")
-	}
-	if strings.TrimSpace(cfg.ChatID) == "" {
-		return nil, fmt.Errorf("telegram chat_id is required")
+	cfg, err := ValidateConfig(cfg)
+	if err != nil {
+		return nil, err
 	}
 	base := strings.TrimRight(baseURL, "/")
 	return &Client{
@@ -46,6 +46,18 @@ func NewClientWithBaseURL(cfg Config, baseURL string) (*Client, error) {
 		fileBase:   fmt.Sprintf("%s/file/bot%s", base, cfg.Token),
 		httpClient: http.DefaultClient,
 	}, nil
+}
+
+func ValidateConfig(cfg Config) (Config, error) {
+	cfg.Token = strings.TrimSpace(cfg.Token)
+	cfg.ChatID = strings.TrimSpace(cfg.ChatID)
+	if strings.TrimSpace(cfg.Token) == "" {
+		return Config{}, fmt.Errorf("telegram token is required")
+	}
+	if strings.TrimSpace(cfg.ChatID) == "" {
+		return Config{}, fmt.Errorf("telegram chat_id is required")
+	}
+	return cfg, nil
 }
 
 func ParseConfig(raw string) (Config, error) {
@@ -243,4 +255,19 @@ func (c *Client) CheckChat(ctx context.Context) error {
 		return fmt.Errorf("telegram getChat invalid response")
 	}
 	return nil
+}
+
+func (c *Client) ProbeSourceHealth(ctx context.Context) (sourcecap.Health, error) {
+	if err := c.CheckChat(ctx); err != nil {
+		return sourcecap.Health{
+			Status:     sourcecap.HealthUnhealthy,
+			ReasonCode: "probe_failed",
+			Message:    "Telegram bot or chat is not reachable.",
+		}, err
+	}
+	return sourcecap.Health{
+		Status:     sourcecap.HealthHealthy,
+		ReasonCode: "ok",
+		Message:    "Telegram bot and chat are reachable.",
+	}, nil
 }

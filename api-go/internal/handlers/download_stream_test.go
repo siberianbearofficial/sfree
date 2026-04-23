@@ -65,21 +65,12 @@ func testDownloadFile() (*repository.Bucket, *repository.File, primitive.ObjectI
 
 func TestDownloadFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T) {
 	origStream := streamDownloadFile
-	origStreamRange := streamDownloadFileRange
 	t.Cleanup(func() {
 		streamDownloadFile = origStream
-		streamDownloadFileRange = origStreamRange
 	})
 
-	var gotStart, gotEnd int64
-	streamDownloadFileRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
-		gotStart, gotEnd = start, end
-		_, _ = io.WriteString(w, "partial")
+	streamDownloadFile = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer) error {
 		return manager.ErrChecksumMismatch
-	}
-	streamDownloadFile = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
-		_, err := io.WriteString(w, "complete")
-		return err
 	}
 
 	bucket, file, userID := testDownloadFile()
@@ -87,7 +78,7 @@ func TestDownloadFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T)
 	r.GET(
 		"/buckets/:id/files/:file_id/download",
 		setUserID(userID.Hex()),
-		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil),
+		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil, nil),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files/"+file.ID.Hex()+"/download", nil)
@@ -97,10 +88,7 @@ func TestDownloadFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T)
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
-	if gotStart != 0 || gotEnd != 0 {
-		t.Fatalf("expected bounded preflight range 0-0, got %d-%d", gotStart, gotEnd)
-	}
-	if body := w.Body.String(); strings.Contains(body, "partial") || strings.Contains(body, "complete") {
+	if body := w.Body.String(); strings.Contains(body, "complete") {
 		t.Fatalf("unexpected body: %s", body)
 	}
 	if got := w.Header().Get("Content-Disposition"); got != "" {
@@ -113,22 +101,12 @@ func TestDownloadFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T)
 
 func TestGetSharedFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T) {
 	origStream := streamDownloadFile
-	origStreamRange := streamDownloadFileRange
 	t.Cleanup(func() {
 		streamDownloadFile = origStream
-		streamDownloadFileRange = origStreamRange
 	})
 
-	streamDownloadFileRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
-		if start != 0 || end != 0 {
-			t.Fatalf("expected bounded preflight range 0-0, got %d-%d", start, end)
-		}
-		_, _ = io.WriteString(w, "partial")
+	streamDownloadFile = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer) error {
 		return manager.ErrChecksumMismatch
-	}
-	streamDownloadFile = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
-		_, err := io.WriteString(w, "complete")
-		return err
 	}
 
 	bucket, file, userID := testDownloadFile()
@@ -141,7 +119,7 @@ func TestGetSharedFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T
 		CreatedAt: time.Now().UTC(),
 	}
 	r := gin.New()
-	r.GET("/share/:token", getSharedFile(fakeShareLinkByTokenReader{link: link}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}))
+	r.GET("/share/:token", getSharedFile(fakeShareLinkByTokenReader{link: link}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/share/token", nil)
 	w := httptest.NewRecorder()
@@ -150,7 +128,7 @@ func TestGetSharedFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
-	if body := w.Body.String(); strings.Contains(body, "partial") || strings.Contains(body, "complete") {
+	if body := w.Body.String(); strings.Contains(body, "complete") {
 		t.Fatalf("unexpected body: %s", body)
 	}
 	if got := w.Header().Get("Content-Disposition"); got != "" {
@@ -161,20 +139,15 @@ func TestGetSharedFileStreamFailureReturnsErrorBeforeSuccessHeaders(t *testing.T
 	}
 }
 
-func TestDownloadFileStreamsBodyAfterBoundedPreflight(t *testing.T) {
+func TestDownloadFileStreamsBodyWithoutPreflight(t *testing.T) {
 	origStream := streamDownloadFile
-	origStreamRange := streamDownloadFileRange
 	t.Cleanup(func() {
 		streamDownloadFile = origStream
-		streamDownloadFileRange = origStreamRange
 	})
 
-	var gotStart, gotEnd int64
-	streamDownloadFileRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, start, end int64) error {
-		gotStart, gotEnd = start, end
-		return nil
-	}
+	streamCalls := 0
 	streamDownloadFile = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		streamCalls++
 		_, err := io.WriteString(w, "complete")
 		return err
 	}
@@ -184,7 +157,7 @@ func TestDownloadFileStreamsBodyAfterBoundedPreflight(t *testing.T) {
 	r.GET(
 		"/buckets/:id/files/:file_id/download",
 		setUserID(userID.Hex()),
-		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil),
+		downloadFile(fakeBucketByIDReader{bucket: bucket}, &repository.SourceRepository{}, fakeFileByIDReader{file: file}, nil, nil),
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files/"+file.ID.Hex()+"/download", nil)
@@ -194,8 +167,8 @@ func TestDownloadFileStreamsBodyAfterBoundedPreflight(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if gotStart != 0 || gotEnd != 0 {
-		t.Fatalf("expected bounded preflight range 0-0, got %d-%d", gotStart, gotEnd)
+	if streamCalls != 1 {
+		t.Fatalf("expected one real stream call, got %d", streamCalls)
 	}
 	if body := w.Body.String(); body != "complete" {
 		t.Fatalf("unexpected body: %s", body)

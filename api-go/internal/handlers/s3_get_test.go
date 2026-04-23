@@ -124,10 +124,13 @@ func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
 	}
 	fileRepo := fakeObjectFileReader{
 		file: &repository.File{
-			ID:        primitive.NewObjectID(),
-			BucketID:  bucketID,
-			Name:      "object.txt",
-			CreatedAt: time.Unix(1700000000, 0).UTC(),
+			ID:           primitive.NewObjectID(),
+			BucketID:     bucketID,
+			Name:         "object.txt",
+			CreatedAt:    time.Unix(1700000000, 0).UTC(),
+			ETag:         `"persisted-etag"`,
+			ContentType:  "text/plain",
+			UserMetadata: map[string]string{"owner": "alice", "trace-id": "abc-123"},
 			Chunks: []repository.FileChunk{
 				{SourceID: sourceID, Name: "chunk-1", Order: 0, Size: 7, Checksum: "bad"},
 			},
@@ -135,16 +138,22 @@ func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
 	}
 	sourceRepo := &repository.SourceRepository{}
 
-	return getObject(bucketRepo, sourceRepo, fileRepo)
+	return getObject(bucketRepo, sourceRepo, fileRepo, nil)
 }
 
 func TestGetObjectStreamFailureReturnsS3ErrorBeforeSuccess(t *testing.T) {
+	origStream := streamS3Object
 	origStreamRange := streamS3ObjectRange
-	t.Cleanup(func() { streamS3ObjectRange = origStreamRange })
-	var gotStart, gotEnd int64
-	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
-		gotStart, gotEnd = start, end
-		_, _ = io.WriteString(w, "partial")
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	rangeCalls := 0
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, _, _ int64) error {
+		rangeCalls++
+		return nil
+	}
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer) error {
 		return manager.ErrChecksumMismatch
 	}
 
@@ -162,10 +171,10 @@ func TestGetObjectStreamFailureReturnsS3ErrorBeforeSuccess(t *testing.T) {
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
-	if gotStart != 0 || gotEnd != 0 {
-		t.Fatalf("expected bounded preflight range 0-0, got %d-%d", gotStart, gotEnd)
+	if rangeCalls != 0 {
+		t.Fatalf("expected no preflight stream calls, got %d", rangeCalls)
 	}
-	if body := w.Body.String(); !strings.Contains(body, "<Code>InternalError</Code>") || strings.Contains(body, "partial") {
+	if body := w.Body.String(); !strings.Contains(body, "<Code>InternalError</Code>") {
 		t.Fatalf("unexpected body: %s", body)
 	}
 	if got := w.Header().Get("ETag"); got != "" {
@@ -180,9 +189,8 @@ func TestGetObjectRangeStreamFailureReturnsS3ErrorBeforePartialContent(t *testin
 	origStreamRange := streamS3ObjectRange
 	t.Cleanup(func() { streamS3ObjectRange = origStreamRange })
 	var gotStart, gotEnd int64
-	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, start, end int64) error {
 		gotStart, gotEnd = start, end
-		_, _ = io.WriteString(w, "par")
 		return manager.ErrChecksumMismatch
 	}
 
@@ -201,10 +209,10 @@ func TestGetObjectRangeStreamFailureReturnsS3ErrorBeforePartialContent(t *testin
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
-	if gotStart != 2 || gotEnd != 2 {
-		t.Fatalf("expected bounded preflight range 2-2, got %d-%d", gotStart, gotEnd)
+	if gotStart != 2 || gotEnd != 4 {
+		t.Fatalf("expected one real range stream 2-4, got %d-%d", gotStart, gotEnd)
 	}
-	if body := w.Body.String(); !strings.Contains(body, "<Code>InternalError</Code>") || strings.Contains(body, "par") {
+	if body := w.Body.String(); !strings.Contains(body, "<Code>InternalError</Code>") {
 		t.Fatalf("unexpected body: %s", body)
 	}
 	if got := w.Header().Get("Content-Range"); got != "" {
@@ -215,19 +223,21 @@ func TestGetObjectRangeStreamFailureReturnsS3ErrorBeforePartialContent(t *testin
 	}
 }
 
-func TestGetObjectStreamsBodyAfterBoundedPreflight(t *testing.T) {
+func TestGetObjectStreamsBodyWithoutPreflight(t *testing.T) {
 	origStream := streamS3Object
 	origStreamRange := streamS3ObjectRange
 	t.Cleanup(func() {
 		streamS3Object = origStream
 		streamS3ObjectRange = origStreamRange
 	})
-	var gotStart, gotEnd int64
-	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, start, end int64) error {
-		gotStart, gotEnd = start, end
+	rangeCalls := 0
+	streamCalls := 0
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, _, _ int64) error {
+		rangeCalls++
 		return nil
 	}
 	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		streamCalls++
 		_, err := io.WriteString(w, "complete")
 		return err
 	}
@@ -246,10 +256,119 @@ func TestGetObjectStreamsBodyAfterBoundedPreflight(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if gotStart != 0 || gotEnd != 0 {
-		t.Fatalf("expected bounded preflight range 0-0, got %d-%d", gotStart, gotEnd)
+	if rangeCalls != 0 {
+		t.Fatalf("expected no preflight stream calls, got %d", rangeCalls)
+	}
+	if streamCalls != 1 {
+		t.Fatalf("expected one real stream call, got %d", streamCalls)
 	}
 	if body := w.Body.String(); body != "complete" {
 		t.Fatalf("unexpected body: %s", body)
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected stored Content-Type, got %q", got)
+	}
+	if got := w.Header().Get("ETag"); got != `"persisted-etag"` {
+		t.Fatalf("expected persisted ETag header, got %q", got)
+	}
+	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
+		t.Fatalf("expected stored owner metadata, got %q", got)
+	}
+	if got := w.Header().Get("x-amz-meta-trace-id"); got != "abc-123" {
+		t.Fatalf("expected stored trace metadata, got %q", got)
+	}
+}
+
+func TestGetObjectRangeReturnsStoredMetadataHeaders(t *testing.T) {
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() { streamS3ObjectRange = origStreamRange })
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
+		if end >= start {
+			_, _ = io.WriteString(w, "cde")
+		}
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("Range", "bytes=2-4")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("expected 206, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Length"); got != "3" {
+		t.Fatalf("expected ranged Content-Length, got %q", got)
+	}
+	if got := w.Header().Get("Content-Range"); got != "bytes 2-4/7" {
+		t.Fatalf("expected Content-Range, got %q", got)
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected stored Content-Type, got %q", got)
+	}
+	if got := w.Header().Get("ETag"); got != `"persisted-etag"` {
+		t.Fatalf("expected persisted ETag header, got %q", got)
+	}
+	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
+		t.Fatalf("expected stored metadata, got %q", got)
+	}
+}
+
+func TestGetObjectRangeStreamsBodyOnce(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer) error {
+		t.Fatal("expected range stream path")
+		return nil
+	}
+	var calls int
+	var gotStart, gotEnd int64
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
+		calls++
+		gotStart, gotEnd = start, end
+		_, err := io.WriteString(w, "bcd")
+		return err
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("Range", "bytes=1-3")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("expected 206, got %d", w.Code)
+	}
+	if calls != 1 {
+		t.Fatalf("expected one range stream call, got %d", calls)
+	}
+	if gotStart != 1 || gotEnd != 3 {
+		t.Fatalf("expected range 1-3, got %d-%d", gotStart, gotEnd)
+	}
+	if body := w.Body.String(); body != "bcd" {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if got := w.Header().Get("Content-Length"); got != "3" {
+		t.Fatalf("expected Content-Length 3, got %q", got)
+	}
+	if got := w.Header().Get("Content-Range"); got != "bytes 1-3/7" {
+		t.Fatalf("expected Content-Range bytes 1-3/7, got %q", got)
 	}
 }
