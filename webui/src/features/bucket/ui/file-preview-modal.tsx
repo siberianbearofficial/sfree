@@ -17,7 +17,7 @@ import { formatSize } from "../../../shared/lib/format";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"]);
 const TEXT_EXTENSIONS = new Set(["txt", "json", "yaml", "yml", "md", "csv", "xml", "html", "css", "js", "ts", "tsx", "jsx", "go", "py", "sh", "toml", "ini", "cfg", "log", "env", "dockerfile"]);
-const MAX_TEXT_PREVIEW_FILE_SIZE = 1_000_000;
+const MAX_TEXT_PREVIEW_FILE_SIZE = 1024 * 1024;
 const MAX_TEXT_PREVIEW_CONTENT_SIZE = 100_000;
 
 function getExtension(name: string): string {

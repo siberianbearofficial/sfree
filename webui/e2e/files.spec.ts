@@ -10,6 +10,7 @@
 
 import { test, expect } from "@playwright/test";
 import { injectAuth, mockGet } from "./helpers";
+import { formatSize } from "../src/shared/lib/format";
 
 const MOCK_BUCKET = {
   id: "bkt-1",
@@ -237,7 +238,9 @@ test.describe("File listing and download", () => {
       page.getByText("Preview unavailable for large text files"),
     ).toBeVisible();
     await expect(
-      page.getByText("Files larger than 1 MB must be downloaded to inspect."),
+      page.getByText(
+        `Files larger than ${formatSize(1024 * 1024)} must be downloaded to inspect.`,
+      ),
     ).toBeVisible();
     await expect.poll(() => previewRequests).toBe(0);
   });
