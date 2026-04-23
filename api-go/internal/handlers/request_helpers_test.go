@@ -52,6 +52,7 @@ func TestRouteObjectIDRejectsShareLinkFileID(t *testing.T) {
 	if _, ok := routeObjectID(c, "file_id"); ok {
 		t.Fatal("expected file id parse to fail")
 	}
+	c.Writer.WriteHeaderNow()
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
