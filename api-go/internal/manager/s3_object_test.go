@@ -546,6 +546,8 @@ func TestObjectServicePutObjectPersistsChecksumETagIndependentOfLifecycleMetadat
 	files := newFakeObjectFiles()
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
+	svc.sources = &fakeObjectSources{sources: []repository.Source{{ID: sourceID}}}
+	bucket := &repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{sourceID}}
 	names := []string{"first-provider-name", "second-provider-name"}
 	uploadCalls := 0
 	svc.uploadChunks = func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {
@@ -567,11 +569,11 @@ func TestObjectServicePutObjectPersistsChecksumETagIndependentOfLifecycleMetadat
 		return tm
 	}
 
-	first, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
+	first, err := svc.PutObject(context.Background(), bucket, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
 	if err != nil {
 		t.Fatalf("first PutObject returned error: %v", err)
 	}
-	second, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
+	second, err := svc.PutObject(context.Background(), bucket, "object.txt", bytes.NewBufferString("data"), 5, "text/plain", nil)
 	if err != nil {
 		t.Fatalf("second PutObject returned error: %v", err)
 	}
