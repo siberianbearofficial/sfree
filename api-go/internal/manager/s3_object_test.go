@@ -689,7 +689,7 @@ func TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination(t
 	userID := primitive.NewObjectID()
 	sourceBucketID := primitive.NewObjectID()
 	destBucketID := primitive.NewObjectID()
-	sourceChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "source-chunk", Size: 12}
+	sourceChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "source-chunk", Order: 3, Size: 12, Checksum: "source-sum"}
 	oldDestChunk := repository.FileChunk{SourceID: primitive.NewObjectID(), Name: "old-dest-chunk", Size: 8}
 	sourceETag := `"source-etag"`
 	files := newFakeObjectFiles(
@@ -711,6 +711,9 @@ func TestObjectServiceCopyObjectPreservesChunksAndCleansOverwrittenDestination(t
 	}
 	if len(result.File.Chunks) != 1 || result.File.Chunks[0].Name != sourceChunk.Name {
 		t.Fatalf("expected copied file to reference source chunk, got %#v", result.File.Chunks)
+	}
+	if result.File.Chunks[0].Order != sourceChunk.Order || result.File.Chunks[0].Checksum != sourceChunk.Checksum {
+		t.Fatalf("expected copied file to preserve chunk metadata, got %#v", result.File.Chunks[0])
 	}
 	if result.File.ContentType != "image/png" || result.File.UserMetadata["owner"] != "alice" {
 		t.Fatalf("expected copied metadata, got content_type=%q metadata=%#v", result.File.ContentType, result.File.UserMetadata)

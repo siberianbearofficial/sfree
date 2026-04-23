@@ -1,0 +1,16 @@
+ARG GO_IMAGE=golang:1.24
+
+FROM ${GO_IMAGE} AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+ENV CGO_ENABLED=0
+RUN go build -o /out/sfree ./cmd/sfree-cli && \
+    go build -o /out/smoke-helper ./cmd/woodpecker-smoke-helper
+
+FROM scratch
+COPY --from=build /out /out
+CMD ["/out/sfree"]
