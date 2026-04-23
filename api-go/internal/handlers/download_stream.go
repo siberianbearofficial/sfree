@@ -13,7 +13,6 @@ import (
 )
 
 type fileStreamFunc func(context.Context, *repository.SourceRepository, *repository.File, io.Writer) error
-type fileRangeStreamFunc func(context.Context, *repository.SourceRepository, *repository.File, io.Writer, int64, int64) error
 
 type fileByIDReader interface {
 	GetByID(ctx context.Context, id primitive.ObjectID) (*repository.File, error)
@@ -24,8 +23,7 @@ type shareLinkByTokenReader interface {
 }
 
 var (
-	streamDownloadFile      fileStreamFunc      = manager.StreamFile
-	streamDownloadFileRange fileRangeStreamFunc = manager.StreamFileRange
+	streamDownloadFile fileStreamFunc = manager.StreamFile
 )
 
 type deferredResponseWriter struct {
@@ -65,15 +63,6 @@ func fileStreamFuncForFactory(factory manager.SourceClientFactory) fileStreamFun
 	}
 	return func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer) error {
 		return manager.StreamFileWithFactory(ctx, sourceRepo, fileDoc, w, factory)
-	}
-}
-
-func fileRangeStreamFuncForFactory(factory manager.SourceClientFactory) fileRangeStreamFunc {
-	if factory == nil {
-		return streamDownloadFileRange
-	}
-	return func(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, w io.Writer, start, end int64) error {
-		return manager.StreamFileRangeWithFactory(ctx, sourceRepo, fileDoc, w, start, end, factory)
 	}
 }
 
