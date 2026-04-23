@@ -633,7 +633,7 @@ func TestObjectServicePutObjectRejectsPartiallyResolvedSources(t *testing.T) {
 	missingID := primitive.NewObjectID()
 	files := newFakeObjectFiles()
 	uploadCalled := false
-	svc := &ObjectService{
+	svc := &objectService{
 		sources: &fakeObjectSources{sources: []repository.Source{{ID: presentID}}},
 		files:   files,
 		uploadChunks: func(context.Context, io.Reader, []repository.Source, int, SourceSelector) ([]repository.FileChunk, error) {
