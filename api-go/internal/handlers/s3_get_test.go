@@ -128,6 +128,7 @@ func getObjectFailureTestHandler(t *testing.T) gin.HandlerFunc {
 			BucketID:     bucketID,
 			Name:         "object.txt",
 			CreatedAt:    time.Unix(1700000000, 0).UTC(),
+			ETag:         `"persisted-etag"`,
 			ContentType:  "text/plain",
 			UserMetadata: map[string]string{"owner": "alice", "trace-id": "abc-123"},
 			Chunks: []repository.FileChunk{
@@ -257,6 +258,9 @@ func TestGetObjectStreamsBodyAfterBoundedPreflight(t *testing.T) {
 	if got := w.Header().Get("Content-Type"); got != "text/plain" {
 		t.Fatalf("expected stored Content-Type, got %q", got)
 	}
+	if got := w.Header().Get("ETag"); got != `"persisted-etag"` {
+		t.Fatalf("expected persisted ETag header, got %q", got)
+	}
 	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
 		t.Fatalf("expected stored owner metadata, got %q", got)
 	}
@@ -298,6 +302,9 @@ func TestGetObjectRangeReturnsStoredMetadataHeaders(t *testing.T) {
 	}
 	if got := w.Header().Get("Content-Type"); got != "text/plain" {
 		t.Fatalf("expected stored Content-Type, got %q", got)
+	}
+	if got := w.Header().Get("ETag"); got != `"persisted-etag"` {
+		t.Fatalf("expected persisted ETag header, got %q", got)
 	}
 	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
 		t.Fatalf("expected stored metadata, got %q", got)

@@ -128,6 +128,14 @@ func TestFileRepositoryMigratesLegacyBucketNameIndex(t *testing.T) {
 	}
 }
 
+func TestFileRepositoryCreatesChunkReferenceIndex(t *testing.T) {
+	testDB, _ := newFileRepositoryTestDB(t)
+	assertMongoIndex(t, testDB.Collection("files"), fileChunkReferenceIndex, bson.D{
+		{Key: "chunks.source_id", Value: 1},
+		{Key: "chunks.name", Value: 1},
+	})
+}
+
 func TestFileRepositoryListByBucketByNameQuery(t *testing.T) {
 	_, repo := newFileRepositoryTestDB(t)
 	ctx := context.Background()
@@ -190,6 +198,48 @@ func newFileRepositoryTestDB(t *testing.T) (*mongo.Database, *FileRepository) {
 		t.Fatal(err)
 	}
 	return testDB, repo
+}
+
+func assertMongoIndex(t *testing.T, coll *mongo.Collection, name string, want bson.D) {
+	t.Helper()
+	cursor, err := coll.Indexes().List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cursor.Close(context.Background()) }()
+
+	for cursor.Next(context.Background()) {
+		var idx indexInfo
+		if err := cursor.Decode(&idx); err != nil {
+			t.Fatal(err)
+		}
+		if idx.Name != name {
+			continue
+		}
+		if !indexKeysEqual(idx.Key, want) {
+			t.Fatalf("index %q keys: got %v, want %v", name, idx.Key, want)
+		}
+		return
+	}
+	if err := cursor.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("missing index %q", name)
+}
+
+func indexKeysEqual(got, want bson.D) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i].Key != want[i].Key {
+			return false
+		}
+		if !indexValueIsOne(got[i].Value) || !indexValueIsOne(want[i].Value) {
+			return false
+		}
+	}
+	return true
 }
 
 func assertFileNames(t *testing.T, files []File, want []string) {
