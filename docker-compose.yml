@@ -34,7 +34,7 @@ services:
       context: ./api-go
       dockerfile: Dockerfile
       args:
-        GO_IMAGE: ${GO_IMAGE:-golang:1.24}
+        GO_IMAGE: ${GO_IMAGE:-golang:1.25}
     environment:
       ENV: local
       DB_HOST: mongo

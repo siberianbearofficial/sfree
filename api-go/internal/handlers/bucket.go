@@ -486,7 +486,7 @@ func UploadFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *
 
 		result, err := objectSvc.PutObject(ctx, bucketDoc, fh.Filename, f, chunkSize, objectContentType(fh.Header.Get("Content-Type")), nil)
 		if err != nil {
-			if errors.Is(err, manager.ErrNoSources) {
+			if isBucketSourceResolutionError(err) {
 				c.Status(http.StatusBadRequest)
 				return
 			}
@@ -590,7 +590,6 @@ func DownloadFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo
 
 func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader, grantRepo bucketAccessGrantReader, factory manager.SourceClientFactory) gin.HandlerFunc {
 	streamFile := fileStreamFuncForFactory(factory)
-	streamRange := fileRangeStreamFuncForFactory(factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -624,16 +623,20 @@ func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.So
 			return
 		}
 		total := fileContentLength(fileDoc)
-		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamRange); err != nil {
-			slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
+		w := newDeferredResponseWriter(c, func() {
+			setAttachmentDownloadHeaders(c, fileDoc.Name, total)
+			c.Status(http.StatusOK)
+		})
+		if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, w); err != nil {
+			if !w.isCommitted() {
+				slog.ErrorContext(ctx, "download file: stream failed", slog.String("error", err.Error()))
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			slog.ErrorContext(ctx, "download file: stream failed after response commit", slog.String("error", err.Error()))
 			return
 		}
-		setAttachmentDownloadHeaders(c, fileDoc.Name, total)
-		c.Status(http.StatusOK)
-		if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-			slog.ErrorContext(ctx, "download file: stream failed after response commit", slog.String("error", err.Error()))
-		}
+		w.commitNow()
 	}
 }
 
