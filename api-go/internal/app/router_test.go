@@ -100,9 +100,32 @@ func TestOpenAPIJSONRoute(t *testing.T) {
 	if doc.Swagger != "2.0" {
 		t.Fatalf("expected Swagger 2.0, got %q", doc.Swagger)
 	}
-	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
+	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("expected OpenAPI path %s", path)
+		}
+	}
+}
+
+func TestRegisterSourceRoutesIncludesQueryDownloadRoute(t *testing.T) {
+	r := gin.New()
+	registerSourceRoutes(r, &routerDependencies{
+		auth: func(c *gin.Context) {
+			c.Next()
+		},
+		sourceRepo: &repository.SourceRepository{},
+	})
+
+	expectedRoutes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/api/v1/sources/:id/download"},
+		{http.MethodGet, "/api/v1/sources/:id/files/:file_id/download"},
+	}
+	for _, expected := range expectedRoutes {
+		if !hasRoute(r, expected.method, expected.path) {
+			t.Fatalf("expected %s %s to be registered", expected.method, expected.path)
 		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -30,7 +31,7 @@ func (f fakeSourceGetter) GetByID(context.Context, primitive.ObjectID) (*reposit
 }
 
 type sourceHealthHandlerClient struct {
-	headErr error
+	healthErr error
 }
 
 func (c sourceHealthHandlerClient) Upload(context.Context, string, io.Reader) (string, error) {
@@ -45,8 +46,19 @@ func (c sourceHealthHandlerClient) Delete(context.Context, string) error {
 	return nil
 }
 
-func (c sourceHealthHandlerClient) HeadBucket(context.Context) error {
-	return c.headErr
+func (c sourceHealthHandlerClient) ProbeSourceHealth(context.Context) (sourcecap.Health, error) {
+	if c.healthErr != nil {
+		return sourcecap.Health{
+			Status:     sourcecap.HealthUnhealthy,
+			ReasonCode: "probe_failed",
+			Message:    "S3 bucket metadata probe failed.",
+		}, c.healthErr
+	}
+	return sourcecap.Health{
+		Status:     sourcecap.HealthHealthy,
+		ReasonCode: "ok",
+		Message:    "S3 bucket metadata is reachable.",
+	}, nil
 }
 
 func TestGetSourceHealthBadID(t *testing.T) {
@@ -74,6 +86,35 @@ func TestGetSourceHealthMissingSource(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestGetSourceHealthTypedNilRepository(t *testing.T) {
+	t.Parallel()
+	var repo *repository.SourceRepository
+	r := gin.New()
+	r.GET("/sources/:id/health", setUserID(validUserID()), getSourceHealth(repo, nil))
+
+	req, _ := http.NewRequest(http.MethodGet, "/sources/"+primitive.NewObjectID().Hex()+"/health", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", w.Code)
+	}
+}
+
+func TestGetSourceHealthRepositoryError(t *testing.T) {
+	t.Parallel()
+	r := gin.New()
+	r.GET("/sources/:id/health", setUserID(validUserID()), getSourceHealth(fakeSourceGetter{err: errors.New("database unavailable")}, nil))
+
+	req, _ := http.NewRequest(http.MethodGet, "/sources/"+primitive.NewObjectID().Hex()+"/health", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
 	}
 }
 
@@ -138,7 +179,7 @@ func TestGetSourceHealthProviderFailureMapping(t *testing.T) {
 	}
 	r := gin.New()
 	r.GET("/sources/:id/health", setUserID(userID.Hex()), getSourceHealth(fakeSourceGetter{source: source}, func(context.Context, *repository.Source) (manager.SourceClient, error) {
-		return sourceHealthHandlerClient{headErr: errors.New("access denied")}, nil
+		return sourceHealthHandlerClient{healthErr: errors.New("access denied")}, nil
 	}))
 
 	req, _ := http.NewRequest(http.MethodGet, "/sources/"+source.ID.Hex()+"/health", nil)

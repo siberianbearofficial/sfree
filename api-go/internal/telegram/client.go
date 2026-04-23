@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 type Config struct {
@@ -253,4 +255,19 @@ func (c *Client) CheckChat(ctx context.Context) error {
 		return fmt.Errorf("telegram getChat invalid response")
 	}
 	return nil
+}
+
+func (c *Client) ProbeSourceHealth(ctx context.Context) (sourcecap.Health, error) {
+	if err := c.CheckChat(ctx); err != nil {
+		return sourcecap.Health{
+			Status:     sourcecap.HealthUnhealthy,
+			ReasonCode: "probe_failed",
+			Message:    "Telegram bot or chat is not reachable.",
+		}, err
+	}
+	return sourcecap.Health{
+		Status:     sourcecap.HealthHealthy,
+		ReasonCode: "ok",
+		Message:    "Telegram bot and chat are reachable.",
+	}, nil
 }

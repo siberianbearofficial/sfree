@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 // mockClient is a test double for the source client interface.
@@ -20,6 +22,8 @@ type mockClient struct {
 	uploadCalls   atomic.Int32
 	downloadCalls atomic.Int32
 	deleteCalls   atomic.Int32
+	infoCalls     atomic.Int32
+	healthCalls   atomic.Int32
 }
 
 func (m *mockClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
@@ -59,6 +63,16 @@ func (m *mockClient) Delete(ctx context.Context, name string) error {
 		}
 	}
 	return m.deleteErr
+}
+
+func (m *mockClient) SourceInfo(context.Context) (sourcecap.Info, error) {
+	m.infoCalls.Add(1)
+	return sourcecap.Info{Files: []sourcecap.File{{ID: "id", Name: "name", Size: 7}}, StorageUsed: 7}, nil
+}
+
+func (m *mockClient) ProbeSourceHealth(context.Context) (sourcecap.Health, error) {
+	m.healthCalls.Add(1)
+	return sourcecap.Health{Status: sourcecap.HealthHealthy, ReasonCode: "ok", Message: "healthy"}, nil
 }
 
 func TestWrapperPassesThrough(t *testing.T) {
@@ -222,6 +236,25 @@ func TestWrapperRetryUploadSucceeds(t *testing.T) {
 	}
 	if got := int(inner.callCount.Load()); got != 3 {
 		t.Fatalf("expected 3 calls (2 failures + 1 success), got %d", got)
+	}
+}
+
+func TestWrapperUploadErrorDropsReturnedName(t *testing.T) {
+	inner := &mockClient{uploadErr: errors.New("upload failed")}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	name, err := w.Upload(context.Background(), "file.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected upload error")
+	}
+	if name != "" {
+		t.Fatalf("expected empty name on upload error, got %q", name)
 	}
 }
 
@@ -598,5 +631,34 @@ func TestWrapperRetryZeroMeansNoRetry(t *testing.T) {
 	}
 	if got := int(inner.uploadCalls.Load()); got != 1 {
 		t.Fatalf("expected exactly 1 call with 0 retries, got %d", got)
+	}
+}
+
+func TestWrapperPassesThroughSourceCapabilities(t *testing.T) {
+	inner := &mockClient{}
+	w := Wrap(inner, DefaultWrapperConfig())
+
+	infoClient, ok := w.(sourcecap.InfoProvider)
+	if !ok {
+		t.Fatal("expected wrapped client to expose source info capability")
+	}
+	info, err := infoClient.SourceInfo(context.Background())
+	if err != nil {
+		t.Fatalf("source info: %v", err)
+	}
+	if len(info.Files) != 1 || info.StorageUsed != 7 {
+		t.Fatalf("unexpected source info: %+v", info)
+	}
+
+	healthClient, ok := w.(sourcecap.HealthProber)
+	if !ok {
+		t.Fatal("expected wrapped client to expose source health capability")
+	}
+	health, err := healthClient.ProbeSourceHealth(context.Background())
+	if err != nil {
+		t.Fatalf("source health: %v", err)
+	}
+	if health.Status != sourcecap.HealthHealthy || health.ReasonCode != "ok" {
+		t.Fatalf("unexpected source health: %+v", health)
 	}
 }
