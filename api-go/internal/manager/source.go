@@ -6,9 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
-	"github.com/example/sfree/api-go/internal/s3compat"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 type SourceInfoFile struct {
@@ -59,26 +58,19 @@ func InspectSource(ctx context.Context, src *repository.Source, factory SourceCl
 		if err != nil {
 			return SourceInfo{}, err
 		}
-		infoClient, ok := cli.(interface {
-			ListFiles(context.Context) ([]gdrive.File, error)
-			StorageInfo(context.Context) (int64, int64, int64, error)
-		})
+		infoClient, ok := cli.(sourcecap.InfoProvider)
 		if !ok {
 			return SourceInfo{}, ErrUnsupportedSourceType
 		}
-		files, err := infoClient.ListFiles(ctx)
+		info, err := infoClient.SourceInfo(ctx)
 		if err != nil {
 			return SourceInfo{}, err
 		}
-		total, used, free, err := infoClient.StorageInfo(ctx)
-		if err != nil {
-			return SourceInfo{}, err
-		}
-		respFiles := make([]SourceInfoFile, 0, len(files))
-		for _, f := range files {
+		respFiles := make([]SourceInfoFile, 0, len(info.Files))
+		for _, f := range info.Files {
 			respFiles = append(respFiles, SourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size})
 		}
-		return SourceInfo{Files: respFiles, StorageTotal: total, StorageUsed: used, StorageFree: free}, nil
+		return SourceInfo{Files: respFiles, StorageTotal: info.StorageTotal, StorageUsed: info.StorageUsed, StorageFree: info.StorageFree}, nil
 	case repository.SourceTypeTelegram:
 		return SourceInfo{Files: []SourceInfoFile{}}, nil
 	case repository.SourceTypeS3:
@@ -86,21 +78,19 @@ func InspectSource(ctx context.Context, src *repository.Source, factory SourceCl
 		if err != nil {
 			return SourceInfo{}, err
 		}
-		infoClient, ok := cli.(interface {
-			ListObjects(context.Context) ([]s3compat.ObjectInfo, int64, error)
-		})
+		infoClient, ok := cli.(sourcecap.InfoProvider)
 		if !ok {
 			return SourceInfo{}, ErrUnsupportedSourceType
 		}
-		files, used, err := infoClient.ListObjects(ctx)
+		info, err := infoClient.SourceInfo(ctx)
 		if err != nil {
 			return SourceInfo{}, err
 		}
-		respFiles := make([]SourceInfoFile, 0, len(files))
-		for _, f := range files {
-			respFiles = append(respFiles, SourceInfoFile{ID: f.Key, Name: f.Key, Size: f.Size})
+		respFiles := make([]SourceInfoFile, 0, len(info.Files))
+		for _, f := range info.Files {
+			respFiles = append(respFiles, SourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size})
 		}
-		return SourceInfo{Files: respFiles, StorageUsed: used}, nil
+		return SourceInfo{Files: respFiles, StorageTotal: info.StorageTotal, StorageUsed: info.StorageUsed, StorageFree: info.StorageFree}, nil
 	default:
 		return SourceInfo{}, ErrUnsupportedSourceType
 	}
@@ -136,51 +126,45 @@ func CheckSourceHealth(ctx context.Context, src *repository.Source, factory Sour
 	}
 
 	switch src.Type {
-	case repository.SourceTypeGDrive:
-		infoClient, ok := cli.(interface {
-			StorageInfo(context.Context) (int64, int64, int64, error)
-		})
+	case repository.SourceTypeGDrive, repository.SourceTypeTelegram, repository.SourceTypeS3:
+		healthClient, ok := cli.(sourcecap.HealthProber)
 		if !ok {
 			return SourceHealth{}, ErrUnsupportedSourceType
 		}
-		total, used, free, err := infoClient.StorageInfo(ctx)
-		if err != nil {
-			return finish(SourceHealthUnhealthy, "probe_failed", "Google Drive metadata probe failed."), nil
+		result, err := healthClient.ProbeSourceHealth(ctx)
+		if errors.Is(err, sourcecap.ErrUnsupportedCapability) {
+			return SourceHealth{}, ErrUnsupportedSourceType
 		}
-		if total > 0 {
-			health.Quota = SourceQuota{TotalBytes: &total, UsedBytes: &used, FreeBytes: &free}
-			if free <= 0 {
-				return finish(SourceHealthUnhealthy, "quota_exhausted", "Google Drive quota is exhausted."), nil
-			}
-			if free*100/total < 5 {
-				return finish(SourceHealthDegraded, "quota_low", "Google Drive quota is nearly exhausted."), nil
+		if err != nil && result.ReasonCode == "" {
+			result = sourcecap.Health{
+				Status:     sourcecap.HealthUnhealthy,
+				ReasonCode: "probe_failed",
+				Message:    "Source health probe failed.",
 			}
 		}
-		return finish(SourceHealthHealthy, "ok", "Google Drive metadata is reachable."), nil
-	case repository.SourceTypeTelegram:
-		healthClient, ok := cli.(interface {
-			CheckChat(context.Context) error
-		})
-		if !ok {
-			return SourceHealth{}, ErrUnsupportedSourceType
-		}
-		if err := healthClient.CheckChat(ctx); err != nil {
-			return finish(SourceHealthUnhealthy, "probe_failed", "Telegram bot or chat is not reachable."), nil
-		}
-		return finish(SourceHealthHealthy, "ok", "Telegram bot and chat are reachable."), nil
-	case repository.SourceTypeS3:
-		healthClient, ok := cli.(interface {
-			HeadBucket(context.Context) error
-		})
-		if !ok {
-			return SourceHealth{}, ErrUnsupportedSourceType
-		}
-		if err := healthClient.HeadBucket(ctx); err != nil {
-			return finish(SourceHealthUnhealthy, "probe_failed", "S3 bucket metadata probe failed."), nil
-		}
-		return finish(SourceHealthHealthy, "ok", "S3 bucket metadata is reachable."), nil
+		health.Quota = sourceQuotaFromCapability(result.Quota)
+		return finish(sourceHealthStatusFromCapability(result.Status), result.ReasonCode, result.Message), nil
 	default:
 		return SourceHealth{}, ErrUnsupportedSourceType
+	}
+}
+
+func sourceHealthStatusFromCapability(status sourcecap.HealthStatus) SourceHealthStatus {
+	switch status {
+	case sourcecap.HealthDegraded:
+		return SourceHealthDegraded
+	case sourcecap.HealthUnhealthy:
+		return SourceHealthUnhealthy
+	default:
+		return SourceHealthHealthy
+	}
+}
+
+func sourceQuotaFromCapability(quota sourcecap.Quota) SourceQuota {
+	return SourceQuota{
+		TotalBytes: quota.TotalBytes,
+		UsedBytes:  quota.UsedBytes,
+		FreeBytes:  quota.FreeBytes,
 	}
 }
 
