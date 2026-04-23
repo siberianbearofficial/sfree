@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -16,14 +17,18 @@ import (
 )
 
 type sourceDownloadHandlerClient struct {
-	body io.ReadCloser
+	body         io.ReadCloser
+	downloadName *string
 }
 
 func (c sourceDownloadHandlerClient) Upload(context.Context, string, io.Reader) (string, error) {
 	return "", nil
 }
 
-func (c sourceDownloadHandlerClient) Download(context.Context, string) (io.ReadCloser, error) {
+func (c sourceDownloadHandlerClient) Download(_ context.Context, name string) (io.ReadCloser, error) {
+	if c.downloadName != nil {
+		*c.downloadName = name
+	}
 	return c.body, nil
 }
 
@@ -39,6 +44,38 @@ func (f failingReadCloser) Read([]byte) (int, error) {
 
 func (f failingReadCloser) Close() error {
 	return nil
+}
+
+func TestDownloadSourceFileAcceptsEscapedQueryFileID(t *testing.T) {
+	t.Parallel()
+	userID := primitive.NewObjectID()
+	source := &repository.Source{
+		ID:     primitive.NewObjectID(),
+		UserID: userID,
+		Type:   repository.SourceTypeS3,
+	}
+	fileID := "folder/a+b #?.txt"
+	var downloadedName string
+	r := gin.New()
+	r.GET("/sources/:id/download", setUserID(userID.Hex()), downloadSourceFile(fakeSourceGetter{source: source}, func(context.Context, *repository.Source) (manager.SourceClient, error) {
+		return sourceDownloadHandlerClient{
+			body:         io.NopCloser(strings.NewReader("payload")),
+			downloadName: &downloadedName,
+		}, nil
+	}))
+
+	params := url.Values{}
+	params.Set("file_id", fileID)
+	req, _ := http.NewRequest(http.MethodGet, "/sources/"+source.ID.Hex()+"/download?"+params.Encode(), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if downloadedName != fileID {
+		t.Fatalf("expected source download key %q, got %q", fileID, downloadedName)
+	}
 }
 
 func TestDownloadSourceFilePreflightFailureBeforeHeaders(t *testing.T) {
