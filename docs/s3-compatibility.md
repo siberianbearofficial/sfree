@@ -134,12 +134,12 @@ These checks are based on the current S3 API surface and known request patterns 
 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
-| Configure alias with SFree endpoint | Partial | Requires path-style endpoint behavior through `/api/s3`; bucket discovery still fails. |
-| `mc ls alias/bucket` | Expected for direct bucket paths | Modern listing expects ListObjectsV2 semantics, now covered by SDK e2e; live MinIO client validation is not automated in this PR. |
-| `mc cp file alias/bucket/key` | Partial | PutObject should work for simple uploads; recursive copy still needs live MinIO client validation. |
-| `mc cat alias/bucket/key` | Yes for full-object reads | Basic GetObject works. |
-| `mc rm alias/bucket/key` | Yes for single keys | DeleteObject works. |
-| Recursive remove or mirror | Partial | ListObjectsV2, DeleteObjects, and basic CopyObject exist; mirror still needs live-client validation and may hit metadata fidelity gaps. |
+| Configure alias with SFree endpoint | Yes for path-style alias setup | Woodpecker E2E now validates `mc alias set --path on` against `/api/s3`; bucket discovery still fails. |
+| `mc ls alias/bucket` | Yes for direct bucket paths | Woodpecker E2E covers live object listing for an existing bucket. |
+| `mc cp file alias/bucket/key` | Yes for simple uploads | Woodpecker E2E covers a single-file upload; recursive copy still needs separate validation. |
+| `mc cat alias/bucket/key` | Yes for full-object reads | Woodpecker E2E covers full-object reads for the uploaded smoke object. |
+| `mc rm alias/bucket/key` | Yes for single keys | Woodpecker E2E covers single-object delete and verifies removal through S3 listing. |
+| Recursive remove or mirror | Partial | Mirror and broader recursive workflows still need live-client validation and may hit metadata fidelity gaps. |
 
 ## v0.2.0 Scope Alignment
 
@@ -169,5 +169,6 @@ Covered SDK paths:
 - `test_s3_sdk_multipart_upload_flow`: `CreateMultipartUpload`, `UploadPart`, `ListMultipartUploads`, `ListParts`, and `CompleteMultipartUpload`.
 
 Not automated in this PR:
-- AWS CLI, rclone, s3cmd, and MinIO `mc` live binary smoke tests. They need extra runtime installation and should remain documented/manual unless Woodpecker image weight is explicitly accepted.
+- AWS CLI, rclone, and s3cmd live binary smoke tests. They still need extra runtime installation and remain documented/manual in this PR.
+- MinIO `mc` live smoke now runs in Woodpecker for path-style alias setup, single-file upload, list, full-object read, and single-object delete.
 - AWS SDK for Go/JavaScript client fixtures. The Go e2e suite already validates signed S3 endpoint behavior directly; this PR keeps SDK automation to one pinned SDK path to avoid widening CI dependencies.

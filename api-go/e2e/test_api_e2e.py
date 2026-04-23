@@ -1,3 +1,5 @@
+import os
+import subprocess
 from uuid import uuid4
 
 import pytest
@@ -250,6 +252,56 @@ async def test_s3_sdk_head_object_returns_metadata(client, e2e_context):
     assert response["ContentLength"] == len(payload)
     assert response["ETag"]
     assert response["LastModified"]
+
+
+async def test_minio_mc_smoke(client, e2e_context, tmp_path):
+    alias = f"sfree-{uuid4().hex[:8]}"
+    object_key = f"e2e-mc-smoke-{uuid4().hex[:8]}.txt"
+    payload = "sfree mc smoke payload\n"
+    upload_path = tmp_path / object_key
+    upload_path.write_text(payload, encoding="utf-8")
+
+    mc_env = os.environ.copy()
+    mc_env["MC_CONFIG_DIR"] = str(tmp_path / "mc-config")
+    def run_mc(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["mc", *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=mc_env,
+        )
+
+    run_mc(
+        "alias",
+        "set",
+        "--api",
+        "S3v4",
+        "--path",
+        "on",
+        alias,
+        client.config.s3_url,
+        e2e_context.access_key,
+        e2e_context.access_secret,
+    )
+
+    run_mc("cp", str(upload_path), f"{alias}/{e2e_context.bucket_key}/{object_key}")
+
+    ls_result = run_mc("ls", f"{alias}/{e2e_context.bucket_key}")
+    assert object_key in ls_result.stdout
+
+    cat_result = run_mc("cat", f"{alias}/{e2e_context.bucket_key}/{object_key}")
+    assert cat_result.stdout == payload
+
+    run_mc("rm", "--force", f"{alias}/{e2e_context.bucket_key}/{object_key}")
+
+    remaining_objects = await client.list_objects_v2_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        prefix=object_key,
+    )
+    assert remaining_objects.get("Contents", []) == []
 
 
 async def test_s3_sdk_object_content_type_and_user_metadata(client, e2e_context):
