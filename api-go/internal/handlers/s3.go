@@ -191,6 +191,10 @@ func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
 }
 
+func isBucketSourceResolutionError(err error) bool {
+	return errors.Is(err, manager.ErrNoSources) || errors.Is(err, repository.ErrSourcesNotFound)
+}
+
 func lookupBucket(c *gin.Context, bucketRepo objectBucketReader) (*repository.Bucket, bool) {
 	ctx := c.Request.Context()
 	bucketDoc, err := bucketRepo.GetByKey(ctx, c.Param("bucket"))
@@ -487,7 +491,7 @@ func PutObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *r
 		}
 		result, err := objectSvc.PutObject(ctx, bucketDoc, name, c.Request.Body, chunkSize, requestObjectContentType(c.Request), requestObjectUserMetadata(c.Request))
 		if err != nil {
-			if errors.Is(err, manager.ErrNoSources) {
+			if isBucketSourceResolutionError(err) {
 				writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 				return
 			}

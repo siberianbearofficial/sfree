@@ -157,8 +157,11 @@ func (s *ObjectService) PutObject(ctx context.Context, bucket *repository.Bucket
 	if err != nil {
 		return PutObjectResult{}, err
 	}
-	if len(sources) == 0 {
+	if len(bucket.SourceIDs) == 0 {
 		return PutObjectResult{}, ErrNoSources
+	}
+	if err := requireResolvedSources(bucket.SourceIDs, sources); err != nil {
+		return PutObjectResult{}, err
 	}
 
 	chunks, err := s.uploadChunks(ctx, body, sources, chunkSize, SelectorForBucket(bucket, sources))
@@ -196,8 +199,11 @@ func (s *ObjectService) UploadMultipartPartRecord(ctx context.Context, bucket *r
 	if err != nil {
 		return UploadMultipartPartResult{}, err
 	}
-	if len(sources) == 0 {
+	if len(bucket.SourceIDs) == 0 {
 		return UploadMultipartPartResult{}, ErrNoSources
+	}
+	if err := requireResolvedSources(bucket.SourceIDs, sources); err != nil {
+		return UploadMultipartPartResult{}, err
 	}
 
 	chunks, err := s.uploadChunks(ctx, body, sources, chunkSize, SelectorForBucket(bucket, sources))
@@ -230,6 +236,23 @@ func (s *ObjectService) UploadMultipartPartRecord(ctx context.Context, bucket *r
 		cleanupErr = s.deleteChunks(ctx, previous.Chunks)
 	}
 	return UploadMultipartPartResult{Part: part, ETag: part.ETag, CleanupErr: cleanupErr}, nil
+}
+
+func requireResolvedSources(ids []primitive.ObjectID, sources []repository.Source) error {
+	resolved := make(map[primitive.ObjectID]struct{}, len(sources))
+	for _, source := range sources {
+		resolved[source.ID] = struct{}{}
+	}
+	missing := make([]primitive.ObjectID, 0)
+	for _, id := range ids {
+		if _, ok := resolved[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		return repository.SourcesNotFoundError{IDs: missing}
+	}
+	return nil
 }
 
 func (s *ObjectService) CopyObject(ctx context.Context, sourceBucket, destBucket *repository.Bucket, sourceKey, destKey string) (CopyObjectResult, error) {
