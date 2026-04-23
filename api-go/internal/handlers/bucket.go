@@ -2,12 +2,10 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/example/sfree/api-go/internal/cryptoutil"
