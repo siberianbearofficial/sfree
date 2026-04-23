@@ -210,7 +210,7 @@ test.describe("Bucket creation flow", () => {
     await page.getByRole("button", { name: "Share Bucket" }).click();
     await expect(dialog.getByText("Loading people with access")).toBeVisible();
     await expect.poll(() => grantRoutes.length).toBe(1);
-    await dialog.getByRole("button", { name: "Close" }).click();
+    await dialog.getByRole("button", { name: "Close" }).last().click();
     await expect(dialog).not.toBeVisible();
 
     await page.getByRole("button", { name: "Share Bucket" }).click();
