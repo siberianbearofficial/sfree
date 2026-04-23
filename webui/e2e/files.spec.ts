@@ -232,7 +232,7 @@ test.describe("File listing and download", () => {
     });
 
     await page.goto("/buckets/bkt-1");
-    await page.getByRole("button", { name: "huge.log" }).click();
+    await page.getByRole("button", { name: "huge.log", exact: true }).click();
 
     await expect(
       page.getByText("Preview unavailable for large text files"),
