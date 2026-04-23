@@ -77,6 +77,7 @@ class SFreeClient:
                 connect_timeout=3,
                 read_timeout=30,
                 retries={"max_attempts": 3, "mode": "standard"},
+                signature_version="s3v4",
             ),
         }
 
