@@ -350,6 +350,37 @@ func TestListMultipartUploadsPagination(t *testing.T) {
 	}
 }
 
+func TestListMultipartUploadsPaginationMaxZeroKeepsUnseenDataReachable(t *testing.T) {
+	t.Parallel()
+
+	bucketID := primitive.NewObjectID()
+	pager := fakeMultipartUploadPager{
+		uploads: []repository.MultipartUpload{
+			{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u1", CreatedAt: time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)},
+			{BucketID: bucketID, ObjectKey: "alpha.txt", UploadID: "u2", CreatedAt: time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)},
+		},
+	}
+
+	page, err := buildMultipartUploadListPage(context.Background(), pager, bucketID, "", "", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.isTruncated {
+		t.Fatal("expected zero-sized page to remain truncated when uploads exist")
+	}
+	if page.nextKeyMarker != "" || page.nextUploadIDMarker != "" {
+		t.Fatalf("expected zero-sized page to leave next markers empty, got %+v", page)
+	}
+
+	followUp, err := buildMultipartUploadListPage(context.Background(), pager, bucketID, "", "", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(followUp.entries) != 2 || followUp.entries[0].UploadId != "u1" || followUp.entries[1].UploadId != "u2" {
+		t.Fatalf("expected follow-up page to retain all uploads, got %+v", followUp.entries)
+	}
+}
+
 func TestListMultipartUploadsRejectsUploadIDMarkerWithoutKeyMarker(t *testing.T) {
 	t.Parallel()
 
@@ -410,6 +441,36 @@ func TestBuildMultipartPartsPage(t *testing.T) {
 	}
 	if len(page.parts) != 1 || page.parts[0].PartNumber != 2 {
 		t.Fatalf("unexpected page parts: %+v", page.parts)
+	}
+}
+
+func TestBuildMultipartPartsPageMaxZeroKeepsUnseenDataReachable(t *testing.T) {
+	t.Parallel()
+
+	page := buildMultipartPartsPage(&repository.MultipartUpload{
+		CreatedAt: time.Date(2026, time.January, 4, 0, 0, 0, 0, time.UTC),
+		Parts: []repository.UploadPart{
+			{PartNumber: 1, ETag: `"aaa"`, Size: 1},
+			{PartNumber: 2, ETag: `"bbb"`, Size: 2},
+		},
+	}, 0, 0)
+
+	if !page.isTruncated {
+		t.Fatal("expected zero-sized parts page to remain truncated when parts exist")
+	}
+	if page.nextPartNumberMarker != 0 {
+		t.Fatalf("expected zero-sized parts page to leave next marker empty, got %d", page.nextPartNumberMarker)
+	}
+
+	followUp := buildMultipartPartsPage(&repository.MultipartUpload{
+		CreatedAt: time.Date(2026, time.January, 4, 0, 0, 0, 0, time.UTC),
+		Parts: []repository.UploadPart{
+			{PartNumber: 1, ETag: `"aaa"`, Size: 1},
+			{PartNumber: 2, ETag: `"bbb"`, Size: 2},
+		},
+	}, 0, 2)
+	if len(followUp.parts) != 2 || followUp.parts[0].PartNumber != 1 || followUp.parts[1].PartNumber != 2 {
+		t.Fatalf("expected follow-up page to retain all parts, got %+v", followUp.parts)
 	}
 }
 

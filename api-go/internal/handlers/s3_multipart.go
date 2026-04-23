@@ -330,10 +330,6 @@ func buildMultipartUploadListPage(ctx context.Context, pager multipartUploadPage
 	}
 	if maxUploads == 0 {
 		page.isTruncated = len(uploads) > 0 || hasMore
-		if len(uploads) > 0 {
-			page.nextKeyMarker = uploads[0].ObjectKey
-			page.nextUploadIDMarker = uploads[0].UploadID
-		}
 		return page, nil
 	}
 
@@ -369,7 +365,6 @@ func buildMultipartPartsPage(mu *repository.MultipartUpload, partNumberMarker, m
 		page := multipartPartsPage{parts: []partXML{}}
 		if start < len(sorted) {
 			page.isTruncated = true
-			page.nextPartNumberMarker = sorted[start].PartNumber
 		}
 		return page
 	}
