@@ -18,6 +18,7 @@ steps:
     commands:
       - cd webui
       - npm ci --include=dev
+      - npm audit --audit-level=high
       - npm run lint
       - npm run build
 

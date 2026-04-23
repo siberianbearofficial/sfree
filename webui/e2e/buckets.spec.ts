@@ -75,6 +75,36 @@ test.describe("Bucket creation flow", () => {
     await expect(dialog.getByText("My Drive", { exact: true })).toBeVisible();
   });
 
+  test("Add Bucket dialog surfaces source loading failures and retries", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", []);
+    let sourceRequests = 0;
+    await page.route("**/api/v1/sources", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      sourceRequests += 1;
+      if (sourceRequests === 1) {
+        await route.fulfill({ status: 500, json: { error: "Source service unavailable" } });
+        return;
+      }
+      await route.fulfill({ status: 200, json: [MOCK_SOURCE] });
+    });
+
+    await page.goto("/buckets");
+    const dialog = page.getByRole("dialog");
+
+    await page.getByRole("button", { name: "Add Bucket" }).first().click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Sources could not be loaded. Retry to try again.")).toBeVisible();
+    await expect(dialog.getByText("Source service unavailable")).toBeVisible();
+    await expect(dialog.getByText("Create at least one source before creating a bucket.")).not.toBeVisible();
+
+    await dialog.getByRole("button", { name: "Retry" }).click();
+    await expect(dialog.getByText("My Drive", { exact: true })).toBeVisible();
+  });
+
   test("creating a bucket shows S3 credentials", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
@@ -121,6 +151,7 @@ test.describe("Bucket creation flow", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 
@@ -132,6 +163,7 @@ test.describe("Bucket creation flow", () => {
   test("viewer bucket detail hides write actions", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 

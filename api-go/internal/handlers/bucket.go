@@ -39,6 +39,17 @@ type bucketResponse struct {
 	Shared    bool      `json:"shared"`
 }
 
+func bucketDocResponse(bucket repository.Bucket, role repository.BucketRole, shared bool) bucketResponse {
+	return bucketResponse{
+		ID:        bucket.ID.Hex(),
+		Key:       bucket.Key,
+		AccessKey: bucket.AccessKey,
+		CreatedAt: bucket.CreatedAt,
+		Role:      string(role),
+		Shared:    shared,
+	}
+}
+
 type fileResponse struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
@@ -223,14 +234,7 @@ func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.Bucket
 		}
 		resp := make([]bucketResponse, 0, len(buckets))
 		for _, b := range buckets {
-			resp = append(resp, bucketResponse{
-				ID:        b.ID.Hex(),
-				Key:       b.Key,
-				AccessKey: b.AccessKey,
-				CreatedAt: b.CreatedAt,
-				Role:      string(repository.RoleOwner),
-				Shared:    false,
-			})
+			resp = append(resp, bucketDocResponse(b, repository.RoleOwner, false))
 		}
 
 		// Shared-with-me buckets.
@@ -256,19 +260,60 @@ func ListBuckets(repo *repository.BucketRepository, grantRepo *repository.Bucket
 				}
 				for _, b := range sharedBuckets {
 					g := grantByBucket[b.ID]
-					resp = append(resp, bucketResponse{
-						ID:        b.ID.Hex(),
-						Key:       b.Key,
-						AccessKey: b.AccessKey,
-						CreatedAt: b.CreatedAt,
-						Role:      string(g.Role),
-						Shared:    true,
-					})
+					resp = append(resp, bucketDocResponse(b, g.Role, true))
 				}
 			}
 		}
 
 		c.JSON(http.StatusOK, resp)
+	}
+}
+
+// GetBucket godoc
+// @Summary Get bucket
+// @Tags buckets
+// @Produce json
+// @Param id path string true "Bucket ID"
+// @Success 200 {object} bucketResponse
+// @Failure 400 {string} string ""
+// @Failure 401 {string} string ""
+// @Failure 404 {string} string ""
+// @Failure 500 {string} string ""
+// @Security BasicAuth
+// @Router /api/v1/buckets/{id} [get]
+func GetBucket(repo *repository.BucketRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
+	if repo == nil {
+		return func(c *gin.Context) {
+			slog.ErrorContext(c.Request.Context(), "get bucket: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+		}
+	}
+	var grantReader bucketAccessGrantReader
+	if grantRepo != nil {
+		grantReader = grantRepo
+	}
+	return getBucket(repo, grantReader)
+}
+
+func getBucket(bucketRepo bucketAccessBucketReader, grantRepo bucketAccessGrantReader) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		if bucketRepo == nil {
+			slog.ErrorContext(ctx, "get bucket: repository is nil")
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+
+		acc := requireBucketAccessFor(c, bucketRepo, grantRepo, repository.RoleViewer)
+		if acc == nil {
+			return
+		}
+		userID, ok := authenticatedUserID(c)
+		if !ok {
+			return
+		}
+
+		c.JSON(http.StatusOK, bucketDocResponse(*acc.Bucket, acc.Role, acc.Bucket.UserID != userID))
 	}
 }
 

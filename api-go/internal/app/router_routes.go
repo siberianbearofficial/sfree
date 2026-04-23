@@ -54,6 +54,7 @@ func registerBucketRoutes(router *gin.Engine, cfg *config.Config, deps *routerDe
 	}
 	router.POST("/api/v1/buckets", protectedHandlers(limits, deps.auth, handlers.CreateBucket(deps.bucketRepo, deps.sourceRepo, routerAccessSecret(cfg)))...)
 	router.GET("/api/v1/buckets", protectedHandlers(limits, deps.auth, handlers.ListBuckets(deps.bucketRepo, deps.grantRepo))...)
+	router.GET("/api/v1/buckets/:id", protectedHandlers(limits, deps.auth, handlers.GetBucket(deps.bucketRepo, deps.grantRepo))...)
 	router.DELETE("/api/v1/buckets/:id", protectedHandlers(limits, deps.auth, handlers.DeleteBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.grantRepo, deps.sourceFactory))...)
 	router.PATCH("/api/v1/buckets/:id/distribution", protectedHandlers(limits, deps.auth, handlers.UpdateBucketDistribution(deps.bucketRepo, deps.grantRepo))...)
 
@@ -97,6 +98,7 @@ func registerSourceRoutes(router *gin.Engine, deps *routerDependencies, limits *
 	router.GET("/api/v1/sources", protectedHandlers(limits, deps.auth, handlers.ListSources(deps.sourceRepo))...)
 	router.GET("/api/v1/sources/:id/health", protectedHandlers(limits, deps.auth, handlers.GetSourceHealthWithFactory(deps.sourceRepo, deps.sourceFactory))...)
 	router.GET("/api/v1/sources/:id/info", protectedHandlers(limits, deps.auth, handlers.GetSourceInfoWithFactory(deps.sourceRepo, deps.sourceFactory))...)
+	router.GET("/api/v1/sources/:id/download", protectedHandlers(limits, deps.auth, handlers.DownloadSourceFileByQueryWithFactory(deps.sourceRepo, deps.sourceFactory))...)
 	router.GET("/api/v1/sources/:id/files/:file_id/download", protectedHandlers(limits, deps.auth, handlers.DownloadSourceFileWithFactory(deps.sourceRepo, deps.sourceFactory))...)
 	router.DELETE("/api/v1/sources/:id", protectedHandlers(limits, deps.auth, handlers.DeleteSource(deps.sourceRepo, deps.bucketRepo))...)
 }

@@ -26,6 +26,39 @@ fail() {
 	exit 1
 }
 
+pull_image() {
+	image="$1"
+	for i in $(seq 1 4); do
+		if docker pull "$image"; then
+			return 0
+		fi
+		sleep $((i * 10))
+	done
+	return 1
+}
+
+pull_image_or_fallback() {
+	target_var="$1"
+	primary="$2"
+	fallback="$3"
+
+	if pull_image "$primary"; then
+		return 0
+	fi
+
+	if [ -n "$fallback" ] && [ "$fallback" != "$primary" ] && pull_image "$fallback"; then
+		case "$target_var" in
+			MINIO_IMAGE | MINIO_MC_IMAGE) ;;
+			*) fail "Invalid fallback target $target_var" ;;
+		esac
+		eval "$target_var=\$fallback"
+		export "$target_var"
+		return 0
+	fi
+
+	fail "Unable to pull $primary"
+}
+
 cleanup() {
 	status=$?
 	if [ "$status" -ne 0 ]; then
@@ -56,17 +89,13 @@ step "Build CLI"
 pass "sfree CLI builds"
 
 step "Start Compose stack"
-for image in "$GO_IMAGE" "$NODE_IMAGE" "$NGINX_IMAGE" "$MONGO_IMAGE" "$MINIO_IMAGE" "$MINIO_MC_IMAGE"; do
-	for i in $(seq 1 4); do
-		if docker pull "$image"; then
-			break
-		fi
-		if [ "$i" -eq 4 ]; then
-			fail "Unable to pull $image"
-		fi
-		sleep $((i * 10))
-	done
+for image in "$GO_IMAGE" "$NODE_IMAGE" "$NGINX_IMAGE" "$MONGO_IMAGE"; do
+	if ! pull_image "$image"; then
+		fail "Unable to pull $image"
+	fi
 done
+pull_image_or_fallback MINIO_IMAGE "$MINIO_IMAGE" "${MINIO_IMAGE_FALLBACK:-minio/minio:RELEASE.2025-01-20T14-49-07Z}"
+pull_image_or_fallback MINIO_MC_IMAGE "$MINIO_MC_IMAGE" "${MINIO_MC_IMAGE_FALLBACK:-minio/mc:latest}"
 compose up -d --pull never --build
 pass "Woodpecker starts the root Compose stack"
 
