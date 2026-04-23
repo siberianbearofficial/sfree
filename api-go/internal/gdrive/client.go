@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/example/sfree/api-go/internal/sourcecap"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
@@ -79,4 +80,52 @@ func (c *Client) StorageInfo(ctx context.Context) (total, used, free int64, err 
 	used = about.StorageQuota.Usage
 	free = total - used
 	return
+}
+
+func (c *Client) SourceInfo(ctx context.Context) (sourcecap.Info, error) {
+	files, err := c.ListFiles(ctx)
+	if err != nil {
+		return sourcecap.Info{}, err
+	}
+	total, used, free, err := c.StorageInfo(ctx)
+	if err != nil {
+		return sourcecap.Info{}, err
+	}
+	respFiles := make([]sourcecap.File, 0, len(files))
+	for _, f := range files {
+		respFiles = append(respFiles, sourcecap.File{ID: f.ID, Name: f.Name, Size: f.Size})
+	}
+	return sourcecap.Info{Files: respFiles, StorageTotal: total, StorageUsed: used, StorageFree: free}, nil
+}
+
+func (c *Client) ProbeSourceHealth(ctx context.Context) (sourcecap.Health, error) {
+	total, used, free, err := c.StorageInfo(ctx)
+	if err != nil {
+		return sourcecap.Health{
+			Status:     sourcecap.HealthUnhealthy,
+			ReasonCode: "probe_failed",
+			Message:    "Google Drive metadata probe failed.",
+		}, err
+	}
+	health := sourcecap.Health{
+		Status:     sourcecap.HealthHealthy,
+		ReasonCode: "ok",
+		Message:    "Google Drive metadata is reachable.",
+	}
+	if total > 0 {
+		health.Quota = sourcecap.Quota{TotalBytes: &total, UsedBytes: &used, FreeBytes: &free}
+		if free <= 0 {
+			health.Status = sourcecap.HealthUnhealthy
+			health.ReasonCode = "quota_exhausted"
+			health.Message = "Google Drive quota is exhausted."
+			return health, nil
+		}
+		if free*100/total < 5 {
+			health.Status = sourcecap.HealthDegraded
+			health.ReasonCode = "quota_low"
+			health.Message = "Google Drive quota is nearly exhausted."
+			return health, nil
+		}
+	}
+	return health, nil
 }

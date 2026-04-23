@@ -27,7 +27,7 @@ test.describe("Source creation flow", () => {
     await mockGet(page, "/sources", []);
     await page.goto("/sources");
     await expect(
-      page.getByRole("heading", { name: "Sources" }),
+      page.getByRole("heading", { name: "Sources", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("No sources yet")).toBeVisible();
     await expect(

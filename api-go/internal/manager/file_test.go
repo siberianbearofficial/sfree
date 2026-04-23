@@ -9,27 +9,21 @@ import (
 	"io"
 	"testing"
 
-	"github.com/example/sfree/api-go/internal/gdrive"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/example/sfree/api-go/internal/resilience"
-	"github.com/example/sfree/api-go/internal/s3compat"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type stubSourceClient struct {
-	uploaded     [][]byte
-	uploadErr    error
-	uploadErrAt  int
-	uploadCalls  int
-	downloadErr  error
-	deleted      []string
-	deleteErr    error
-	gdriveFiles  []gdrive.File
-	storageTotal int64
-	storageUsed  int64
-	storageFree  int64
-	s3Objects    []s3compat.ObjectInfo
-	s3Used       int64
+	uploaded    [][]byte
+	uploadErr   error
+	uploadErrAt int
+	uploadCalls int
+	downloadErr error
+	deleted     []string
+	deleteErr   error
+	sourceInfo  sourcecap.Info
 }
 
 type readOnceThenError struct {
@@ -69,16 +63,8 @@ func (c *stubSourceClient) Delete(_ context.Context, name string) error {
 	return c.deleteErr
 }
 
-func (c *stubSourceClient) ListFiles(_ context.Context) ([]gdrive.File, error) {
-	return c.gdriveFiles, nil
-}
-
-func (c *stubSourceClient) StorageInfo(_ context.Context) (int64, int64, int64, error) {
-	return c.storageTotal, c.storageUsed, c.storageFree, nil
-}
-
-func (c *stubSourceClient) ListObjects(_ context.Context) ([]s3compat.ObjectInfo, int64, error) {
-	return c.s3Objects, c.s3Used, nil
+func (c *stubSourceClient) SourceInfo(_ context.Context) (sourcecap.Info, error) {
+	return c.sourceInfo, nil
 }
 
 func TestSourceClientCacheReusesClients(t *testing.T) {
@@ -415,6 +401,43 @@ func TestUploadFileChunksWithWeightedStrategy(t *testing.T) {
 	}
 }
 
+func TestUploadFileChunksWeightedFailoverTriesLowWeightSource(t *testing.T) {
+	t.Parallel()
+	s1 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	s2 := repository.Source{ID: primitive.NewObjectID(), Type: repository.SourceTypeTelegram}
+	sources := []repository.Source{s1, s2}
+
+	failingStub := &stubSourceClient{uploadErr: errors.New("source down")}
+	workingStub := &stubSourceClient{}
+	factory := func(_ context.Context, src *repository.Source) (sourceClient, error) {
+		if src.ID == s1.ID {
+			return failingStub, nil
+		}
+		return workingStub, nil
+	}
+
+	weights := map[string]int{s1.ID.Hex(): MaxWeightedSourceWeight, s2.ID.Hex(): 1}
+	sel := NewWeightedSelector(sources, weights)
+
+	payload := []byte("abcdef")
+	chunks, err := UploadFileChunksWithStrategy(context.Background(), bytes.NewReader(payload), sources, len(payload), factory, sel)
+	if err != nil {
+		t.Fatalf("expected failover to low-weight source, got %v", err)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 chunk, got %d", len(chunks))
+	}
+	if chunks[0].SourceID != s2.ID {
+		t.Fatalf("expected chunk on low-weight source after failover, got %s", chunks[0].SourceID.Hex())
+	}
+	if failingStub.uploadCalls != 1 {
+		t.Fatalf("expected failing source to be tried once, got %d", failingStub.uploadCalls)
+	}
+	if workingStub.uploadCalls != 1 {
+		t.Fatalf("expected low-weight source to be tried once, got %d", workingStub.uploadCalls)
+	}
+}
+
 func TestSelectorForBucketRoundRobin(t *testing.T) {
 	t.Parallel()
 	bucket := &repository.Bucket{DistributionStrategy: repository.StrategyRoundRobin}
@@ -540,10 +563,12 @@ func TestInspectSourceUsesFactoryForGDrive(t *testing.T) {
 			t.Fatal("expected source pointer to be passed to factory")
 		}
 		return &stubSourceClient{
-			gdriveFiles:  []gdrive.File{{ID: "file-id", Name: "file.txt", Size: 42}},
-			storageTotal: 100,
-			storageUsed:  42,
-			storageFree:  58,
+			sourceInfo: sourcecap.Info{
+				Files:        []sourcecap.File{{ID: "file-id", Name: "file.txt", Size: 42}},
+				StorageTotal: 100,
+				StorageUsed:  42,
+				StorageFree:  58,
+			},
 		}, nil
 	}
 
@@ -572,8 +597,10 @@ func TestInspectSourceUsesFactoryForS3(t *testing.T) {
 			t.Fatal("expected source pointer to be passed to factory")
 		}
 		return &stubSourceClient{
-			s3Objects: []s3compat.ObjectInfo{{Key: "object-key", Size: 12}},
-			s3Used:    12,
+			sourceInfo: sourcecap.Info{
+				Files:       []sourcecap.File{{ID: "object-key", Name: "object-key", Size: 12}},
+				StorageUsed: 12,
+			},
 		}, nil
 	}
 
@@ -962,5 +989,30 @@ func TestStreamFileRangeVerifiesChecksummedChunk(t *testing.T) {
 	}
 	if got, want := buf.String(), "cdefg"; got != want {
 		t.Fatalf("range output mismatch: got %q, want %q", got, want)
+	}
+}
+
+func TestStreamFileRangeRejectsCorruptedChecksummedChunk(t *testing.T) {
+	t.Parallel()
+	payload := []byte("abcdefghij")
+	sum := sha256.Sum256(payload)
+	chunk := repository.FileChunk{
+		SourceID: primitive.NewObjectID(),
+		Name:     "chunk0",
+		Order:    0,
+		Size:     int64(len(payload)),
+		Checksum: hex.EncodeToString(sum[:]),
+	}
+	f := &repository.File{Chunks: []repository.FileChunk{chunk}}
+
+	var buf bytes.Buffer
+	err := streamFileRangeWithFactory(context.Background(), f, &buf, 2, 6, func(_ context.Context, _ *repository.Source) (sourceClient, error) {
+		return &fixedDownloadClient{data: map[string][]byte{"chunk0": []byte("abcDEFghij")}}, nil
+	})
+	if !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("expected ErrChecksumMismatch, got %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("expected no range bytes written before checksum validation, got %d", buf.Len())
 	}
 }

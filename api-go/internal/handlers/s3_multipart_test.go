@@ -2,15 +2,38 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
+
+type fakeAbortMultipartStore struct {
+	upload        *repository.MultipartUpload
+	getErr        error
+	deleteCalls   int
+	deletedUpload string
+}
+
+func (s *fakeAbortMultipartStore) GetByUploadID(_ context.Context, _ string) (*repository.MultipartUpload, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	return s.upload, nil
+}
+
+func (s *fakeAbortMultipartStore) Delete(_ context.Context, uploadID string) error {
+	s.deleteCalls++
+	s.deletedUpload = uploadID
+	return nil
+}
 
 func TestPostObjectNilRepos(t *testing.T) {
 	t.Parallel()
@@ -176,68 +199,6 @@ func TestCompleteMultipartUploadResultXML(t *testing.T) {
 	}
 }
 
-func TestCompletedMultipartChunksPreservesChecksums(t *testing.T) {
-	t.Parallel()
-
-	sourceID := primitive.NewObjectID()
-	partMap := map[int]repository.UploadPart{
-		1: {
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-1-chunk-1", Order: 17, Size: 5, Checksum: "checksum-a"},
-				{SourceID: sourceID, Name: "part-1-chunk-2", Order: 18, Size: 6, Checksum: "checksum-b"},
-			},
-		},
-		2: {
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-2-chunk-1", Order: 3, Size: 7, Checksum: "checksum-c"},
-			},
-		},
-	}
-
-	chunks := completedMultipartChunks([]completionPart{{PartNumber: 1}, {PartNumber: 2}}, partMap)
-	if len(chunks) != 3 {
-		t.Fatalf("expected 3 chunks, got %d", len(chunks))
-	}
-
-	wantChecksums := []string{"checksum-a", "checksum-b", "checksum-c"}
-	for i, want := range wantChecksums {
-		if chunks[i].Checksum != want {
-			t.Fatalf("chunk %d checksum: got %q, want %q", i, chunks[i].Checksum, want)
-		}
-		if chunks[i].Order != i {
-			t.Fatalf("chunk %d order: got %d, want %d", i, chunks[i].Order, i)
-		}
-	}
-}
-
-func TestMultipartPartChunksReturnsReplacedPartChunks(t *testing.T) {
-	t.Parallel()
-
-	sourceID := primitive.NewObjectID()
-	parts := []repository.UploadPart{
-		{
-			PartNumber: 1,
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-1-old", Order: 0, Size: 5},
-			},
-		},
-		{
-			PartNumber: 2,
-			Chunks: []repository.FileChunk{
-				{SourceID: sourceID, Name: "part-2-kept", Order: 1, Size: 7},
-			},
-		},
-	}
-
-	got := multipartPartChunks(parts, 1)
-	if len(got) != 1 || got[0].Name != "part-1-old" {
-		t.Fatalf("expected previous chunks for replaced part, got %+v", got)
-	}
-	if got := multipartPartChunks(parts, 3); got != nil {
-		t.Fatalf("expected nil chunks for new part, got %+v", got)
-	}
-}
-
 func TestListMultipartUploadsResultXML(t *testing.T) {
 	t.Parallel()
 
@@ -287,5 +248,78 @@ func TestListPartsResultXML(t *testing.T) {
 	}
 	if !bytes.Contains(data, []byte("<PartNumber>2</PartNumber>")) {
 		t.Fatalf("missing part 2: %s", s)
+	}
+}
+
+func TestAbortMultipartUploadRejectsOtherBucketUpload(t *testing.T) {
+	t.Parallel()
+
+	routeBucketID := primitive.NewObjectID()
+	otherBucketID := primitive.NewObjectID()
+	uploadID := primitive.NewObjectID().Hex()
+	store := &fakeAbortMultipartStore{
+		upload: &repository.MultipartUpload{
+			BucketID:  otherBucketID,
+			ObjectKey: "object.txt",
+			UploadID:  uploadID,
+			Parts: []repository.UploadPart{
+				{
+					PartNumber: 1,
+					Chunks: []repository.FileChunk{
+						{SourceID: primitive.NewObjectID(), Name: "part-1", Size: 5},
+					},
+				},
+			},
+		},
+	}
+
+	c, w := testS3GinContext("/api/s3/route-bucket/object.txt?uploadId=" + uploadID)
+	c.Request.Method = http.MethodDelete
+	c.Params = gin.Params{
+		{Key: "bucket", Value: "route-bucket"},
+		{Key: "object", Value: "/object.txt"},
+	}
+	c.Set("accessKey", "route-access")
+
+	abortMultipartUpload(c, fakeObjectBucketReader{
+		bucket: &repository.Bucket{
+			ID:        routeBucketID,
+			Key:       "route-bucket",
+			AccessKey: "route-access",
+		},
+	}, &repository.SourceRepository{}, store, nil)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>NoSuchUpload</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if store.deleteCalls != 0 {
+		t.Fatalf("expected upload metadata to remain, delete called %d times for %q", store.deleteCalls, store.deletedUpload)
+	}
+}
+
+func TestAbortMultipartUploadUnknownUploadKeepsNoSuchUpload(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeAbortMultipartStore{getErr: mongo.ErrNoDocuments}
+	c, w := testS3GinContext("/api/s3/route-bucket/object.txt?uploadId=missing")
+	c.Request.Method = http.MethodDelete
+	c.Params = gin.Params{
+		{Key: "bucket", Value: "route-bucket"},
+		{Key: "object", Value: "/object.txt"},
+	}
+
+	abortMultipartUpload(c, fakeObjectBucketReader{}, &repository.SourceRepository{}, store, nil)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>NoSuchUpload</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if store.deleteCalls != 0 {
+		t.Fatalf("expected no delete calls, got %d", store.deleteCalls)
 	}
 }

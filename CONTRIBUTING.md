@@ -53,8 +53,8 @@ cd api-go
 ENV=local go run ./cmd/server
 ```
 
-API docs are served from `http://localhost:8080/api/docs`; the OpenAPI JSON is
-available at `http://localhost:8080/api/openapi.json`.
+API docs are served from `http://localhost:8080/api/docs`; the Swagger/OpenAPI
+JSON is available at `http://localhost:8080/api/openapi.json`.
 
 ### Frontend (React / Vite)
 
@@ -145,6 +145,8 @@ When you add, remove, or change API endpoints in `api-go/`:
 - regenerate docs with `cd api-go && make docs`
 - check docs freshness with `cd api-go && make docs-check`; Woodpecker runs the
   same check on API changes
+- note that `/api/openapi.json`, `/api/docs`, and legacy `/swagger` are served
+  from the generated `api-go/internal/docs/docs.go` document
 - avoid committing generated artifacts such as `swagger.json` or `swagger.yaml`
 
 ## Pull Requests

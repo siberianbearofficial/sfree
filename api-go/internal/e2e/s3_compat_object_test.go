@@ -219,6 +219,103 @@ func TestS3CompatCopyObject(t *testing.T) {
 	}
 }
 
+func TestS3CompatObjectMetadataHeaders(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	objectKey := "metadata-" + suffix + ".json"
+	copyKey := "metadata-copy-" + suffix + ".json"
+	objectContent := []byte(`{"ok":true}`)
+	s3URL := func(key string) string {
+		return fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, key)
+	}
+	putHeaders := map[string]string{
+		"Content-Type":        "application/json",
+		"x-amz-meta-owner":    "Alice",
+		"X-Amz-Meta-Trace-ID": "trace-123",
+	}
+
+	status, _, body := s3DoWithHeaders(t, http.MethodPut, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, objectContent, putHeaders)
+	if status != http.StatusOK {
+		t.Fatalf("PUT object: expected 200, got %d: %s", status, body)
+	}
+
+	status, headers, body := s3DoWithHeaders(t, http.MethodHead, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("HEAD object: expected 200, got %d: %s", status, body)
+	}
+	assertObjectMetadataHeaders(t, headers, "application/json", "Alice", "trace-123")
+
+	status, headers, body = s3DoWithHeaders(t, http.MethodGet, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET full object mismatch: status=%d body=%q", status, body)
+	}
+	assertObjectMetadataHeaders(t, headers, "application/json", "Alice", "trace-123")
+
+	status, headers, body = s3DoWithHeaders(t, http.MethodGet, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"Range": "bytes=0-1"})
+	if status != http.StatusPartialContent || string(body) != `{"` {
+		t.Fatalf("GET range mismatch: status=%d body=%q", status, body)
+	}
+	if got, want := headers.Get("Content-Length"), "2"; got != want {
+		t.Fatalf("GET range Content-Length mismatch: got %q want %q", got, want)
+	}
+	assertObjectMetadataHeaders(t, headers, "application/json", "Alice", "trace-123")
+
+	copyHeaders := map[string]string{"x-amz-copy-source": "/" + bucket.Key + "/" + objectKey}
+	status, _, body = s3DoWithHeaders(t, http.MethodPut, s3URL(copyKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil, copyHeaders)
+	if status != http.StatusOK {
+		t.Fatalf("CopyObject: expected 200, got %d: %s", status, body)
+	}
+	status, headers, body = s3DoWithHeaders(t, http.MethodHead, s3URL(copyKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("HEAD copied object: expected 200, got %d: %s", status, body)
+	}
+	assertObjectMetadataHeaders(t, headers, "application/json", "Alice", "trace-123")
+
+	status, _, body = s3DoWithHeaders(t, http.MethodPut, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, []byte("plain"), map[string]string{"Content-Type": "text/plain"})
+	if status != http.StatusOK {
+		t.Fatalf("PUT overwrite object: expected 200, got %d: %s", status, body)
+	}
+	status, headers, body = s3DoWithHeaders(t, http.MethodHead, s3URL(objectKey), bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("HEAD overwritten object: expected 200, got %d: %s", status, body)
+	}
+	if got := headers.Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected overwritten Content-Type, got %q", got)
+	}
+	if got := headers.Get("x-amz-meta-owner"); got != "" {
+		t.Fatalf("expected overwritten metadata to be empty, got %q", got)
+	}
+}
+
+func assertObjectMetadataHeaders(t *testing.T, headers http.Header, contentType, owner, traceID string) {
+	t.Helper()
+	if got := headers.Get("Content-Type"); got != contentType {
+		t.Fatalf("Content-Type mismatch: got %q want %q", got, contentType)
+	}
+	if got := headers.Get("x-amz-meta-owner"); got != owner {
+		t.Fatalf("x-amz-meta-owner mismatch: got %q want %q", got, owner)
+	}
+	if got := headers.Get("x-amz-meta-trace-id"); got != traceID {
+		t.Fatalf("x-amz-meta-trace-id mismatch: got %q want %q", got, traceID)
+	}
+}
+
 func TestS3CompatGetObjectRange(t *testing.T) {
 	env, ok := loadS3E2EEnv()
 	if !ok {
