@@ -23,28 +23,42 @@ type FileChunk struct {
 }
 
 type File struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty"`
-	BucketID  primitive.ObjectID `bson:"bucket_id"`
-	Name      string             `bson:"name"`
-	CreatedAt time.Time          `bson:"created_at"`
-	Chunks    []FileChunk        `bson:"chunks"`
+	ID           primitive.ObjectID `bson:"_id,omitempty"`
+	BucketID     primitive.ObjectID `bson:"bucket_id"`
+	Name         string             `bson:"name"`
+	CreatedAt    time.Time          `bson:"created_at"`
+	Chunks       []FileChunk        `bson:"chunks"`
+	ETag         string             `bson:"etag,omitempty"`
+	ContentType  string             `bson:"content_type,omitempty"`
+	UserMetadata map[string]string  `bson:"user_metadata,omitempty"`
 }
 
 type FileRepository struct {
 	coll *mongo.Collection
 }
 
-const fileBucketNameUniqueIndex = "bucket_id_name_unique"
+const (
+	fileBucketNameUniqueIndex = "bucket_id_name_unique"
+	fileChunkReferenceIndex   = "chunks_source_id_name"
+)
 
 func NewFileRepository(db *mongo.Database) (*FileRepository, error) {
 	coll := db.Collection("files")
-	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
-		Keys: bson.D{{Key: "bucket_id", Value: 1}},
+	ctx := context.Background()
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{
+			Keys: bson.D{{Key: "bucket_id", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "chunks.source_id", Value: 1}, {Key: "chunks.name", Value: 1}},
+			Options: options.Index().
+				SetName(fileChunkReferenceIndex),
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
-	if err := ensureUniqueFileBucketNameIndex(context.Background(), coll); err != nil {
+	if err := ensureUniqueFileBucketNameIndex(ctx, coll); err != nil {
 		return nil, err
 	}
 	return &FileRepository{coll: coll}, nil
@@ -272,10 +286,13 @@ func (r *FileRepository) DeleteByBucket(ctx context.Context, bucketID primitive.
 func (r *FileRepository) UpdateByID(ctx context.Context, f File) (*File, error) {
 	f.CreatedAt = f.CreatedAt.UTC()
 	res, err := r.coll.UpdateOne(ctx, bson.M{"_id": f.ID}, bson.M{"$set": bson.M{
-		"bucket_id":  f.BucketID,
-		"name":       f.Name,
-		"created_at": f.CreatedAt,
-		"chunks":     f.Chunks,
+		"bucket_id":     f.BucketID,
+		"name":          f.Name,
+		"created_at":    f.CreatedAt,
+		"chunks":        f.Chunks,
+		"etag":          f.ETag,
+		"content_type":  f.ContentType,
+		"user_metadata": f.UserMetadata,
 	}})
 	if err != nil {
 		return nil, err
@@ -316,10 +333,13 @@ func (r *FileRepository) ReplaceByName(ctx context.Context, f File) (*File, *Fil
 func (r *FileRepository) replaceByName(ctx context.Context, f File, upsert bool) (*File, error) {
 	update := bson.M{
 		"$set": bson.M{
-			"bucket_id":  f.BucketID,
-			"name":       f.Name,
-			"created_at": f.CreatedAt,
-			"chunks":     f.Chunks,
+			"bucket_id":     f.BucketID,
+			"name":          f.Name,
+			"created_at":    f.CreatedAt,
+			"chunks":        f.Chunks,
+			"etag":          f.ETag,
+			"content_type":  f.ContentType,
+			"user_metadata": f.UserMetadata,
 		},
 	}
 	if upsert {

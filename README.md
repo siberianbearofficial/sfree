@@ -1,7 +1,7 @@
 # SFree
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
-[![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8.svg)](https://go.dev/)
+[![Go 1.25](https://img.shields.io/badge/Go-1.25-00ADD8.svg)](https://go.dev/)
 
 **One object store across Google Drive, Telegram, and any S3-compatible
 service — with a REST API, S3-compatible endpoint, and browser UI.**
@@ -160,7 +160,7 @@ instance for local S3-compatible source testing.
 
 #### Prerequisites
 
-- Go 1.24+
+- Go 1.25+
 - Docker (for MongoDB)
 - Node.js 20+ with npm (for the browser UI)
 

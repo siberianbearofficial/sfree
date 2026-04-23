@@ -51,6 +51,7 @@ test.describe("File listing and download", () => {
   test("bucket detail shows bucket info", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 
@@ -61,6 +62,7 @@ test.describe("File listing and download", () => {
   test("bucket detail shows empty state when no files", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 
@@ -72,6 +74,7 @@ test.describe("File listing and download", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
     await page.goto("/buckets/bkt-1");
 
@@ -90,6 +93,7 @@ test.describe("File listing and download", () => {
   test("each file row has a download button", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
     await page.goto("/buckets/bkt-1");
 
@@ -118,6 +122,7 @@ test.describe("File listing and download", () => {
   test("viewer file rows only expose download actions", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
     await page.goto("/buckets/bkt-1");
 
@@ -135,6 +140,7 @@ test.describe("File listing and download", () => {
   test("editor file rows expose file actions without bucket sharing", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_EDITOR_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_EDITOR_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
     await page.goto("/buckets/bkt-1");
 
@@ -150,6 +156,7 @@ test.describe("File listing and download", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
 
     // Intercept download call and fulfill with a blob
@@ -174,6 +181,7 @@ test.describe("File listing and download", () => {
   test("failed bucket download shows an error toast", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
 
     await page.route("**/api/v1/buckets/bkt-1/files/file-1/download", async (route) => {
@@ -202,6 +210,7 @@ test.describe("File listing and download", () => {
   test("back button is present and navigates back", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets");
     // Navigate to bucket detail

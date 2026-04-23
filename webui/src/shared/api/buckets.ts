@@ -27,6 +27,10 @@ export async function listBuckets(): Promise<Bucket[]> {
   return apiJson<Bucket[]>("/buckets", "Failed to list buckets");
 }
 
+export async function getBucket(id: string): Promise<Bucket> {
+  return apiJson<Bucket>(`/buckets/${id}`, "Failed to load bucket");
+}
+
 export async function createBucket(
   key: string,
   sourceIds: string[],

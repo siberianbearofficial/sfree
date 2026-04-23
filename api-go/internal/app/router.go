@@ -1,6 +1,8 @@
 package app
 
 import (
+	"net/http"
+
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
 	"github.com/example/sfree/api-go/internal/observability"
@@ -21,22 +23,22 @@ type routerSetupOptions struct {
 func setupRouter(m *db.Mongo, cfg *config.Config, opts routerSetupOptions) (*gin.Engine, error) {
 	router := gin.New()
 
-	registerMiddleware(router, cfg)
-	registerProbeRoutes(router, m)
+	limiters := registerMiddleware(router, cfg)
+	registerProbeRoutes(router, m, limiters)
 
 	deps, err := newRouterDependencies(m, cfg, opts.constructors)
 	if err != nil {
 		return nil, err
 	}
-	registerRESTRoutes(router, cfg, deps)
-	registerPublicShareRoutes(router, deps)
-	registerDocsMetricsRoutes(router)
-	registerS3Routes(router, cfg, deps)
+	registerRESTRoutes(router, cfg, deps, limiters)
+	registerPublicShareRoutes(router, deps, limiters)
+	registerDocsMetricsRoutes(router, limiters)
+	registerS3Routes(router, cfg, deps, limiters)
 
 	return router, nil
 }
 
-func registerMiddleware(router *gin.Engine, cfg *config.Config) {
+func registerMiddleware(router *gin.Engine, cfg *config.Config) *ratelimit.Limiters {
 	corsConfig := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
@@ -62,5 +64,9 @@ func registerMiddleware(router *gin.Engine, cfg *config.Config) {
 			rlCfg.PerKeyReqsPerMin = cfg.RateLimit.PerKey
 		}
 	}
-	router.Use(ratelimit.Middleware(rlCfg))
+	limiters := ratelimit.NewLimiters(rlCfg)
+	router.NoRoute(publicHandlers(limiters, func(c *gin.Context) {
+		c.Status(http.StatusNotFound)
+	})...)
+	return limiters
 }

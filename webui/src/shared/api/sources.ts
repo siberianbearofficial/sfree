@@ -97,8 +97,9 @@ export async function downloadFile(
   sourceId: string,
   file: SourceFile,
 ): Promise<void> {
+  const params = new URLSearchParams({file_id: file.id});
   await apiDownload(
-    `/sources/${sourceId}/files/${file.id}/download`,
+    `/sources/${sourceId}/download?${params.toString()}`,
     file.name,
     "Failed to download file",
   );

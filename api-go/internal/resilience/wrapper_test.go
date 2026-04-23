@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/example/sfree/api-go/internal/sourcecap"
 )
 
 // mockClient is a test double for the source client interface.
@@ -20,6 +22,8 @@ type mockClient struct {
 	uploadCalls   atomic.Int32
 	downloadCalls atomic.Int32
 	deleteCalls   atomic.Int32
+	infoCalls     atomic.Int32
+	healthCalls   atomic.Int32
 }
 
 func (m *mockClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
@@ -59,6 +63,16 @@ func (m *mockClient) Delete(ctx context.Context, name string) error {
 		}
 	}
 	return m.deleteErr
+}
+
+func (m *mockClient) SourceInfo(context.Context) (sourcecap.Info, error) {
+	m.infoCalls.Add(1)
+	return sourcecap.Info{Files: []sourcecap.File{{ID: "id", Name: "name", Size: 7}}, StorageUsed: 7}, nil
+}
+
+func (m *mockClient) ProbeSourceHealth(context.Context) (sourcecap.Health, error) {
+	m.healthCalls.Add(1)
+	return sourcecap.Health{Status: sourcecap.HealthHealthy, ReasonCode: "ok", Message: "healthy"}, nil
 }
 
 func TestWrapperPassesThrough(t *testing.T) {
@@ -138,6 +152,8 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 		MaxRetries:       0,
 	}
 	w := Wrap(inner, cfg)
+	clock := newFakeClock()
+	w.(*wrapper).cb = newCircuitBreakerWithClock(cfg.FailureThreshold, cfg.RecoveryTimeout, clock.Now)
 
 	ctx := context.Background()
 	for i := 0; i < 2; i++ {
@@ -155,7 +171,7 @@ func TestWrapperCircuitBreakerRecovers(t *testing.T) {
 
 	// Fix the backend.
 	inner.uploadErr = nil
-	time.Sleep(60 * time.Millisecond)
+	clock.Advance(50 * time.Millisecond)
 
 	// Should succeed (half-open probe).
 	name, err := w.Upload(ctx, "ok.txt", strings.NewReader("data"))
@@ -220,6 +236,25 @@ func TestWrapperRetryUploadSucceeds(t *testing.T) {
 	}
 	if got := int(inner.callCount.Load()); got != 3 {
 		t.Fatalf("expected 3 calls (2 failures + 1 success), got %d", got)
+	}
+}
+
+func TestWrapperUploadErrorDropsReturnedName(t *testing.T) {
+	inner := &mockClient{uploadErr: errors.New("upload failed")}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	name, err := w.Upload(context.Background(), "file.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected upload error")
+	}
+	if name != "" {
+		t.Fatalf("expected empty name on upload error, got %q", name)
 	}
 }
 
@@ -347,6 +382,109 @@ func TestWrapperRetryDownloadSucceeds(t *testing.T) {
 	_ = rc.Close()
 	if got := int(inner.callCount.Load()); got != 2 {
 		t.Fatalf("expected 2 calls, got %d", got)
+	}
+}
+
+type contextBoundDownloadClient struct {
+	ctx context.Context
+}
+
+func (c *contextBoundDownloadClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (c *contextBoundDownloadClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	c.ctx = ctx
+	return &contextBoundBody{ctx: ctx, r: strings.NewReader("data")}, nil
+}
+
+func (c *contextBoundDownloadClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+type contextBoundBody struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (b *contextBoundBody) Read(p []byte) (int, error) {
+	select {
+	case <-b.ctx.Done():
+		return 0, b.ctx.Err()
+	default:
+		return b.r.Read(p)
+	}
+}
+
+func (b *contextBoundBody) Close() error {
+	return nil
+}
+
+func TestWrapperDownloadKeepsContextAliveUntilBodyClose(t *testing.T) {
+	inner := &contextBoundDownloadClient{}
+	cfg := WrapperConfig{
+		Timeout:          time.Second,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	rc, err := w.Download(context.Background(), "file.txt")
+	if err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	select {
+	case <-inner.ctx.Done():
+		t.Fatal("download context canceled before body close")
+	default:
+	}
+
+	got, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(got) != "data" {
+		t.Fatalf("expected data, got %q", string(got))
+	}
+	if err := rc.Close(); err != nil {
+		t.Fatalf("close body: %v", err)
+	}
+	select {
+	case <-inner.ctx.Done():
+	default:
+		t.Fatal("download context was not canceled on body close")
+	}
+}
+
+type blockingDownloadClient struct{}
+
+func (c *blockingDownloadClient) Upload(ctx context.Context, name string, r io.Reader) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (c *blockingDownloadClient) Download(ctx context.Context, name string) (io.ReadCloser, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (c *blockingDownloadClient) Delete(ctx context.Context, name string) error {
+	return errors.New("not implemented")
+}
+
+func TestWrapperDownloadTimeoutBeforeBodyReturned(t *testing.T) {
+	inner := &blockingDownloadClient{}
+	cfg := WrapperConfig{
+		Timeout:          10 * time.Millisecond,
+		FailureThreshold: 10,
+		RecoveryTimeout:  time.Second,
+		MaxRetries:       0,
+	}
+	w := Wrap(inner, cfg)
+
+	_, err := w.Download(context.Background(), "slow.txt")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected DeadlineExceeded, got %v", err)
 	}
 }
 
@@ -493,5 +631,34 @@ func TestWrapperRetryZeroMeansNoRetry(t *testing.T) {
 	}
 	if got := int(inner.uploadCalls.Load()); got != 1 {
 		t.Fatalf("expected exactly 1 call with 0 retries, got %d", got)
+	}
+}
+
+func TestWrapperPassesThroughSourceCapabilities(t *testing.T) {
+	inner := &mockClient{}
+	w := Wrap(inner, DefaultWrapperConfig())
+
+	infoClient, ok := w.(sourcecap.InfoProvider)
+	if !ok {
+		t.Fatal("expected wrapped client to expose source info capability")
+	}
+	info, err := infoClient.SourceInfo(context.Background())
+	if err != nil {
+		t.Fatalf("source info: %v", err)
+	}
+	if len(info.Files) != 1 || info.StorageUsed != 7 {
+		t.Fatalf("unexpected source info: %+v", info)
+	}
+
+	healthClient, ok := w.(sourcecap.HealthProber)
+	if !ok {
+		t.Fatal("expected wrapped client to expose source health capability")
+	}
+	health, err := healthClient.ProbeSourceHealth(context.Background())
+	if err != nil {
+		t.Fatalf("source health: %v", err)
+	}
+	if health.Status != sourcecap.HealthHealthy || health.ReasonCode != "ok" {
+		t.Fatalf("unexpected source health: %+v", health)
 	}
 }

@@ -252,6 +252,42 @@ async def test_s3_sdk_head_object_returns_metadata(client, e2e_context):
     assert response["LastModified"]
 
 
+async def test_s3_sdk_object_content_type_and_user_metadata(client, e2e_context):
+    filename = f"e2e-sdk-metadata-{uuid4().hex[:8]}.json"
+    payload = b'{"sdk":true}'
+
+    await client.upload_file_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+        content=payload,
+        content_type="application/json",
+        metadata={"owner": "alice", "trace-id": "trace-123"},
+    )
+
+    head = await client.head_object_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+    )
+    assert head["ResponseMetadata"]["HTTPStatusCode"] == 200
+    assert head["ContentType"] == "application/json"
+    assert head["Metadata"] == {"owner": "alice", "trace-id": "trace-123"}
+
+    get = await client.get_object_s3(
+        access_key=e2e_context.access_key,
+        access_secret=e2e_context.access_secret,
+        bucket_key=e2e_context.bucket_key,
+        object_key=filename,
+    )
+    assert get["ResponseMetadata"]["HTTPStatusCode"] == 200
+    assert get["Body"] == payload
+    assert get["ContentType"] == "application/json"
+    assert get["Metadata"] == {"owner": "alice", "trace-id": "trace-123"}
+
+
 async def test_s3_sdk_copy_object_compatibility(client, e2e_context):
     suffix = uuid4().hex[:8]
     source_key = f"e2e-sdk-copy-source-{suffix}.txt"
