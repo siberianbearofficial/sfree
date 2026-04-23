@@ -54,8 +54,8 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | UploadPart | Implemented | `PUT /api/s3/{bucket}/{key}?uploadId=...&partNumber=...`. |
 | CompleteMultipartUpload | Implemented | Validates part existence, ETags, ascending part order, and persists metadata captured during CreateMultipartUpload. |
 | AbortMultipartUpload | Implemented | Deletes uploaded part chunks and the multipart record. |
-| ListMultipartUploads | Partial | Lists active uploads for a bucket but lacks prefix, delimiter, key-marker, upload-id-marker, and pagination support. |
-| ListParts | Partial | Lists uploaded parts but lacks pagination and part-number-marker support. |
+| ListMultipartUploads | Partial | Bounded listing now supports `max-uploads`, `prefix`, `key-marker`, and `upload-id-marker` with S3-style truncation markers. `delimiter` still returns XML `NotImplemented`. |
+| ListParts | Partial | Bounded listing now supports `max-parts` and `part-number-marker` with truncation markers. Other advanced multipart response fields remain minimal. |
 | UploadPartCopy | Missing | Server-side part copy is not implemented. |
 
 ### Bucket Operations
