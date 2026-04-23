@@ -134,12 +134,12 @@ These checks are based on the current S3 API surface and known request patterns 
 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
-| Configure alias with SFree endpoint | Yes for path-style alias setup | Woodpecker E2E now validates `mc alias set --path on` against `/api/s3`; bucket discovery still fails. |
-| `mc ls alias/bucket` | Yes for direct bucket paths | Woodpecker E2E covers live object listing for an existing bucket. |
-| `mc cp file alias/bucket/key` | Yes for simple uploads | Woodpecker E2E covers a single-file upload; recursive copy still needs separate validation. |
-| `mc cat alias/bucket/key` | Yes for full-object reads | Woodpecker E2E covers full-object reads for the uploaded smoke object. |
-| `mc rm alias/bucket/key` | Yes for single keys | Woodpecker E2E covers single-object delete and verifies removal through S3 listing. |
-| Recursive remove or mirror | Partial | Mirror and broader recursive workflows still need live-client validation and may hit metadata fidelity gaps. |
+| Configure alias with SFree endpoint | No for the current `/api/s3` URL shape | `mc alias set` rejects URLs with a resource component and requires `scheme://host[:port]/`, so it cannot point directly at SFree's current S3 endpoint path. |
+| `mc ls alias/bucket` | Blocked until alias configuration is possible | Listing is not the blocker; alias creation fails before bucket operations begin. |
+| `mc cp file alias/bucket/key` | Blocked until alias configuration is possible | Upload is blocked by the same alias URL restriction. |
+| `mc cat alias/bucket/key` | Blocked until alias configuration is possible | Read flow is blocked by the same alias URL restriction. |
+| `mc rm alias/bucket/key` | Blocked until alias configuration is possible | Delete flow is blocked by the same alias URL restriction. |
+| Recursive remove or mirror | Partial at best | Even with an alias workaround, broader recursive workflows would still need live-client validation and may hit metadata fidelity gaps. |
 
 ## v0.2.0 Scope Alignment
 
@@ -170,5 +170,5 @@ Covered SDK paths:
 
 Not automated in this PR:
 - AWS CLI, rclone, and s3cmd live binary smoke tests. They still need extra runtime installation and remain documented/manual in this PR.
-- MinIO `mc` live smoke now runs in Woodpecker for path-style alias setup, single-file upload, list, full-object read, and single-object delete.
+- MinIO `mc` live validation remains manual/blocked for the current endpoint shape because `mc alias set` rejects `http://host/...` URLs with a resource component such as `/api/s3`.
 - AWS SDK for Go/JavaScript client fixtures. The Go e2e suite already validates signed S3 endpoint behavior directly; this PR keeps SDK automation to one pinned SDK path to avoid widening CI dependencies.
