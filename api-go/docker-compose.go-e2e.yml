@@ -27,7 +27,7 @@ services:
       context: .
       dockerfile: Dockerfile.go-e2e
       args:
-        GO_IMAGE: ${GO_IMAGE:-golang:1.24}
+        GO_IMAGE: ${GO_IMAGE:-golang:1.25}
     environment:
       - ENV=test
       - E2E_S3_ENDPOINT=${E2E_S3_ENDPOINT:-http://minio:9000}
