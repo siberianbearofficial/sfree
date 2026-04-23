@@ -481,7 +481,7 @@ func TestObjectServicePutObjectOverwriteReplacesMetadata(t *testing.T) {
 	var deleted []repository.FileChunk
 	svc := testObjectService(files, &deleted)
 
-	result, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID}, "object.txt", bytes.NewBufferString("data"), 5, "application/json", nil)
+	result, err := svc.PutObject(context.Background(), &repository.Bucket{ID: bucketID, SourceIDs: []primitive.ObjectID{objectServiceTestSourceID}}, "object.txt", bytes.NewBufferString("data"), 5, "application/json", nil)
 	if err != nil {
 		t.Fatalf("PutObject returned error: %v", err)
 	}
