@@ -191,6 +191,10 @@ func writeS3Error(c *gin.Context, status int, code, message string) {
 	c.XML(status, s3Error{Code: code, Message: message})
 }
 
+func isBucketSourceResolutionError(err error) bool {
+	return errors.Is(err, manager.ErrNoSources) || errors.Is(err, repository.ErrSourcesNotFound)
+}
+
 func lookupBucket(c *gin.Context, bucketRepo objectBucketReader) (*repository.Bucket, bool) {
 	ctx := c.Request.Context()
 	bucketDoc, err := bucketRepo.GetByKey(ctx, c.Param("bucket"))
@@ -336,14 +340,6 @@ func requestObjectUserMetadata(r *http.Request) map[string]string {
 	return metadata
 }
 
-// preflightObjectRange checks the first response byte before success headers are
-// committed. Later source failures are logged and surface to clients as an
-// incomplete body under the declared Content-Length, which preserves large
-// object streaming without staging the full response in memory or on disk.
-func preflightObjectRange(ctx context.Context, sourceRepo *repository.SourceRepository, fileDoc *repository.File, start, end int64, streamRange fileRangeStreamFunc) error {
-	return preflightFileRange(ctx, sourceRepo, fileDoc, start, end, streamRange)
-}
-
 // HeadObject godoc
 // @Summary Head object
 // @Tags s3
@@ -413,16 +409,20 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		}
 		rangeHeader := c.GetHeader("Range")
 		if rangeHeader == "" {
-			if err := preflightObjectRange(c.Request.Context(), sourceRepo, fileDoc, 0, total-1, streamRange); err != nil {
-				slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
-				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+			w := newDeferredResponseWriter(c, func() {
+				setObjectHeaders(c, fileDoc, total)
+				c.Status(http.StatusOK)
+			})
+			if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, w); err != nil {
+				if !w.isCommitted() {
+					slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
+					writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+					return
+				}
+				slog.ErrorContext(c.Request.Context(), "get object: stream failed after response commit", slog.String("error", err.Error()))
 				return
 			}
-			setObjectHeaders(c, fileDoc, total)
-			c.Status(http.StatusOK)
-			if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, c.Writer); err != nil {
-				slog.ErrorContext(c.Request.Context(), "get object: stream failed after response commit", slog.String("error", err.Error()))
-			}
+			w.commitNow()
 			return
 		}
 
@@ -433,18 +433,22 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 			writeS3Error(c, http.StatusRequestedRangeNotSatisfiable, "InvalidRange", "The requested range is not satisfiable")
 			return
 		}
-		if err := preflightObjectRange(c.Request.Context(), sourceRepo, fileDoc, objRange.start, objRange.end, streamRange); err != nil {
-			slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
-			writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+		w := newDeferredResponseWriter(c, func() {
+			setObjectHeaders(c, fileDoc, total)
+			c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
+			c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
+			c.Status(http.StatusPartialContent)
+		})
+		if err := streamRange(c.Request.Context(), sourceRepo, fileDoc, w, objRange.start, objRange.end); err != nil {
+			if !w.isCommitted() {
+				slog.ErrorContext(c.Request.Context(), "get object: stream failed", slog.String("error", err.Error()))
+				writeS3Error(c, http.StatusInternalServerError, "InternalError", "")
+				return
+			}
+			slog.ErrorContext(c.Request.Context(), "get object: stream failed after response commit", slog.String("error", err.Error()))
 			return
 		}
-		setObjectHeaders(c, fileDoc, total)
-		c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
-		c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
-		c.Status(http.StatusPartialContent)
-		if err := streamRange(c.Request.Context(), sourceRepo, fileDoc, c.Writer, objRange.start, objRange.end); err != nil {
-			slog.ErrorContext(c.Request.Context(), "get object: stream failed after response commit", slog.String("error", err.Error()))
-		}
+		w.commitNow()
 	}
 }
 
@@ -483,7 +487,7 @@ func PutObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *r
 		}
 		result, err := objectSvc.PutObject(ctx, bucketDoc, name, c.Request.Body, chunkSize, requestObjectContentType(c.Request), requestObjectUserMetadata(c.Request))
 		if err != nil {
-			if errors.Is(err, manager.ErrNoSources) {
+			if isBucketSourceResolutionError(err) {
 				writeS3Error(c, http.StatusBadRequest, "InvalidRequest", "")
 				return
 			}

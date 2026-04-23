@@ -159,7 +159,6 @@ func GetSharedFileWithFactory(shareLinkRepo *repository.ShareLinkRepository, buc
 
 func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.SourceRepository, fileRepo fileByIDReader, factory manager.SourceClientFactory) gin.HandlerFunc {
 	streamFile := fileStreamFuncForFactory(factory)
-	streamRange := fileRangeStreamFuncForFactory(factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if shareLinkRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -202,16 +201,20 @@ func getSharedFile(shareLinkRepo shareLinkByTokenReader, sourceRepo *repository.
 		}
 
 		total := manager.FileSize(*fileDoc)
-		if err := preflightFile(ctx, sourceRepo, fileDoc, total, streamRange); err != nil {
-			slog.ErrorContext(ctx, "get shared file: stream", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
+		w := newDeferredResponseWriter(c, func() {
+			setAttachmentDownloadHeaders(c, fileDoc.Name, total)
+			c.Status(http.StatusOK)
+		})
+		if err := streamFile(ctx, sourceRepo, fileDoc, w); err != nil {
+			if !w.isCommitted() {
+				slog.ErrorContext(ctx, "get shared file: stream", slog.String("error", err.Error()))
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			slog.ErrorContext(ctx, "get shared file: stream failed after response commit", slog.String("error", err.Error()))
 			return
 		}
-		setAttachmentDownloadHeaders(c, fileDoc.Name, total)
-		c.Status(http.StatusOK)
-		if err := streamFile(ctx, sourceRepo, fileDoc, c.Writer); err != nil {
-			slog.ErrorContext(ctx, "get shared file: stream failed after response commit", slog.String("error", err.Error()))
-		}
+		w.commitNow()
 	}
 }
 
