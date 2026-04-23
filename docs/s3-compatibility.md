@@ -135,12 +135,12 @@ These checks are based on the current S3 API surface and known request patterns 
 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
-| Configure alias with SFree endpoint | Partial | Requires path-style endpoint behavior through `/api/s3`; bucket discovery still fails. |
-| `mc ls alias/bucket` | Expected for direct bucket paths | Modern listing expects ListObjectsV2 semantics, now covered by SDK e2e; live MinIO client validation is not automated in this PR. |
-| `mc cp file alias/bucket/key` | Partial | PutObject should work for simple uploads; recursive copy still needs live MinIO client validation. |
-| `mc cat alias/bucket/key` | Yes for full-object reads | Basic GetObject works. |
-| `mc rm alias/bucket/key` | Yes for single keys | DeleteObject works. |
-| Recursive remove or mirror | Partial | ListObjectsV2, DeleteObjects, and basic CopyObject exist; mirror still needs live-client validation and may hit metadata fidelity gaps. |
+| Configure alias with SFree endpoint | No for the current `/api/s3` URL shape | `mc alias set` rejects URLs with a resource component and requires `scheme://host[:port]/`, so it cannot point directly at SFree's current S3 endpoint path. |
+| `mc ls alias/bucket` | Blocked until alias configuration is possible | Listing is not the blocker; alias creation fails before bucket operations begin. |
+| `mc cp file alias/bucket/key` | Blocked until alias configuration is possible | Upload is blocked by the same alias URL restriction. |
+| `mc cat alias/bucket/key` | Blocked until alias configuration is possible | Read flow is blocked by the same alias URL restriction. |
+| `mc rm alias/bucket/key` | Blocked until alias configuration is possible | Delete flow is blocked by the same alias URL restriction. |
+| Recursive remove or mirror | Partial at best | Even with an alias workaround, broader recursive workflows would still need live-client validation and may hit metadata fidelity gaps. |
 
 ## v0.2.0 Scope Alignment
 
@@ -171,5 +171,6 @@ Covered SDK paths:
 - `test_s3_sdk_multipart_upload_flow`: `CreateMultipartUpload`, `UploadPart`, `ListMultipartUploads`, `ListParts`, and `CompleteMultipartUpload`.
 
 Not automated in this PR:
-- AWS CLI, rclone, s3cmd, and MinIO `mc` live binary smoke tests. They need extra runtime installation and should remain documented/manual unless Woodpecker image weight is explicitly accepted.
+- AWS CLI, rclone, and s3cmd live binary smoke tests. They still need extra runtime installation and remain documented/manual in this PR.
+- MinIO `mc` live validation remains manual/blocked for the current endpoint shape because `mc alias set` rejects `http://host/...` URLs with a resource component such as `/api/s3`.
 - AWS SDK for Go/JavaScript client fixtures. The Go e2e suite already validates signed S3 endpoint behavior directly; this PR keeps SDK automation to one pinned SDK path to avoid widening CI dependencies.

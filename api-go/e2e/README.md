@@ -81,3 +81,19 @@ Pipeline `.woodpecker/api-go.yml` запускает `docker-compose.e2e.yml` ч
 
 Для обязательного `s3` CI-run отдельные секреты не требуются.
 При необходимости можно переопределить `E2E_S3_*` переменные окружения и использовать другой S3-compatible endpoint.
+
+## MinIO Client (`mc`) limitation
+
+Текущий S3 endpoint `api-go` живёт под `/api/s3`, а MinIO Client `mc alias set` отвергает URL с resource component. Из-за этого прямой `mc` smoke через существующий endpoint сейчас не автоматизируется без дополнительного reverse proxy/endpoint remap.
+
+Воспроизводимая проверка ограничения:
+
+```bash
+mc alias set --api S3v4 --path on sfree http://localhost:8080/api/s3 <access_key> <secret_key>
+```
+
+Ожидаемый результат сейчас:
+
+```text
+mc: <ERROR> Invalid URL. URL `http://localhost:8080/api/s3` for MinIO Client should be of the form scheme://host[:port]/ without resource component.
+```
