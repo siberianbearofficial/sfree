@@ -242,6 +242,34 @@ class SFreeClient:
                 payload["Metadata"] = metadata
             await s3_client.put_object(**payload)
 
+    async def generate_presigned_url_s3(
+        self,
+        access_key: str,
+        access_secret: str,
+        client_method: str,
+        params: dict[str, Any],
+        expires_in: int = 3600,
+        http_method: str | None = None,
+    ) -> str:
+        session = get_session()
+        async with session.create_client(
+            "s3",
+            **self._s3_client_kwargs(
+                region="us-east-1",
+                endpoint=self.config.s3_url,
+                access_key=access_key,
+                access_secret=access_secret,
+            ),
+        ) as s3_client:
+            payload: dict[str, Any] = {
+                "ClientMethod": client_method,
+                "Params": params,
+                "ExpiresIn": expires_in,
+            }
+            if http_method is not None:
+                payload["HttpMethod"] = http_method
+            return await s3_client.generate_presigned_url(**payload)
+
     async def delete_object_s3(self, access_key: str, access_secret: str, bucket_key: str, object_key: str) -> None:
         session = get_session()
         async with session.create_client(
