@@ -104,7 +104,7 @@ func newShareLinkRepositoryTestDB(t *testing.T) (*mongo.Database, *ShareLinkRepo
 		_ = testDB.Drop(context.Background())
 		_ = mongoConn.Close(context.Background())
 	})
-	repo, err := NewShareLinkRepository(testDB)
+	repo, err := NewShareLinkRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}

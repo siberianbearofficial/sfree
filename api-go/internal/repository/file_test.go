@@ -112,7 +112,7 @@ func TestFileRepositoryMigratesLegacyBucketNameIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo, err := NewFileRepository(testDB)
+	repo, err := NewFileRepository(ctx, testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func newFileRepositoryTestDB(t *testing.T) (*mongo.Database, *FileRepository) {
 		_ = testDB.Drop(context.Background())
 		_ = mongoConn.Close(context.Background())
 	})
-	repo, err := NewFileRepository(testDB)
+	repo, err := NewFileRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -54,9 +54,9 @@ type BucketGrantRepository struct {
 	coll *mongo.Collection
 }
 
-func NewBucketGrantRepository(db *mongo.Database) (*BucketGrantRepository, error) {
+func NewBucketGrantRepository(ctx context.Context, db *mongo.Database) (*BucketGrantRepository, error) {
 	coll := db.Collection("bucket_grants")
-	_, err := coll.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "bucket_id", Value: 1}, {Key: "user_id", Value: 1}},
 			Options: options.Index().SetUnique(true),

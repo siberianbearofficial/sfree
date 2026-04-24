@@ -23,7 +23,7 @@ func TestServerStartup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router, err := app.SetupRouter(mongoConn, cfg)
+	router, err := app.SetupRouter(context.Background(), mongoConn, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,7 +29,7 @@ func TestCreateGDriveSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	userRepo, err := repository.NewUserRepository(mongoConn.DB)
+	userRepo, err := repository.NewUserRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestCreateGDriveSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := repository.NewSourceRepository(mongoConn.DB)
+	repo, err := repository.NewSourceRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestCreateTelegramSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	userRepo, err := repository.NewUserRepository(mongoConn.DB)
+	userRepo, err := repository.NewUserRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestCreateTelegramSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := repository.NewSourceRepository(mongoConn.DB)
+	repo, err := repository.NewSourceRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestDeleteSourceBlockedWhenBucketUsesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	userRepo, err := repository.NewUserRepository(mongoConn.DB)
+	userRepo, err := repository.NewUserRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,11 +170,11 @@ func TestDeleteSourceBlockedWhenBucketUsesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceRepo, err := repository.NewSourceRepository(mongoConn.DB)
+	sourceRepo, err := repository.NewSourceRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bucketRepo, err := repository.NewBucketRepository(mongoConn.DB)
+	bucketRepo, err := repository.NewBucketRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}

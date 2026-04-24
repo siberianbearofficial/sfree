@@ -33,9 +33,9 @@ type BucketRepository struct {
 	coll *mongo.Collection
 }
 
-func NewBucketRepository(db *mongo.Database) (*BucketRepository, error) {
+func NewBucketRepository(ctx context.Context, db *mongo.Database) (*BucketRepository, error) {
 	coll := db.Collection("buckets")
-	_, err := coll.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "key", Value: 1}},
 			Options: options.Index().SetUnique(true),

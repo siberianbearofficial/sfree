@@ -28,7 +28,7 @@ func TestCreateUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := repository.NewUserRepository(mongoConn.DB)
+	repo, err := repository.NewUserRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}

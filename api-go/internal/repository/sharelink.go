@@ -24,9 +24,9 @@ type ShareLinkRepository struct {
 	coll *mongo.Collection
 }
 
-func NewShareLinkRepository(db *mongo.Database) (*ShareLinkRepository, error) {
+func NewShareLinkRepository(ctx context.Context, db *mongo.Database) (*ShareLinkRepository, error) {
 	coll := db.Collection("share_links")
-	_, err := coll.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "token", Value: 1}},
 			Options: options.Index().SetUnique(true),

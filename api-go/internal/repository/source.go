@@ -57,9 +57,9 @@ type SourceRepository struct {
 	secretKey string
 }
 
-func NewSourceRepository(db *mongo.Database, secretKey ...string) (*SourceRepository, error) {
+func NewSourceRepository(ctx context.Context, db *mongo.Database, secretKey ...string) (*SourceRepository, error) {
 	coll := db.Collection("sources")
-	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.D{{Key: "user_id", Value: 1}},
 	})
 	if err != nil {

@@ -130,11 +130,11 @@ func newBucketGrantHandlerTestRepos(t *testing.T) (*repository.BucketRepository,
 		_ = testDB.Drop(context.Background())
 		_ = mongoConn.Close(context.Background())
 	})
-	bucketRepo, err := repository.NewBucketRepository(testDB)
+	bucketRepo, err := repository.NewBucketRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	grantRepo, err := repository.NewBucketGrantRepository(testDB)
+	grantRepo, err := repository.NewBucketGrantRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}

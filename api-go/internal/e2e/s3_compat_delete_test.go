@@ -149,11 +149,11 @@ func TestS3CompatDeleteBucketCleansObjectMultipartAndChunks(t *testing.T) {
 	t.Cleanup(func() {
 		_ = mongoConn.Close(ctx)
 	})
-	fileRepo, err := repository.NewFileRepository(mongoConn.DB)
+	fileRepo, err := repository.NewFileRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatalf("create file repository: %v", err)
 	}
-	mpRepo, err := repository.NewMultipartUploadRepository(mongoConn.DB)
+	mpRepo, err := repository.NewMultipartUploadRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatalf("create multipart repository: %v", err)
 	}
