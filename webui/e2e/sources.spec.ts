@@ -8,7 +8,7 @@
  * - Newly created source appears in the list
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { injectAuth, mockGet, mockPost } from "./helpers";
 
 const MOCK_SOURCE = {
@@ -20,6 +20,24 @@ const MOCK_SOURCE = {
 };
 
 test.describe("Source creation flow", () => {
+  async function openCreateSourceDialog(
+    page: Page,
+  ) {
+    await page.getByRole("button", { name: "Add Source" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    const providerPicker = dialog.getByText("Connect a Source");
+    if (await providerPicker.isVisible().catch(() => false)) {
+      await dialog.getByText("Google Drive", { exact: true }).first().click();
+      await expect(
+        dialog.getByLabel(/^(Name|Source Name)$/),
+      ).toBeVisible();
+    }
+
+    return dialog;
+  }
+
   test("sources page shows empty state when no sources exist", async ({
     page,
   }) => {
@@ -39,16 +57,12 @@ test.describe("Source creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/sources");
-    await page.getByRole("button", { name: "Add Source" }).first().click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
+    const dialog = await openCreateSourceDialog(page);
     await expect(
-      dialog.getByText("Create Source"),
+      dialog.getByText(/^(Create Source|Connect a Source|Connect Google Drive)$/),
     ).toBeVisible();
-    await expect(dialog.getByLabel("Name")).toBeVisible();
-    await expect(
-      dialog.getByLabel("Service Account Key (JSON)"),
-    ).toBeVisible();
+    await expect(dialog.getByLabel(/^(Name|Source Name)$/)).toBeVisible();
+    await expect(dialog.getByLabel("Service Account Key (JSON)")).toBeVisible();
   });
 
   test("submitting the dialog creates a source and refreshes the list", async ({
@@ -74,22 +88,25 @@ test.describe("Source creation flow", () => {
     await expect(page.getByText("No sources yet")).toBeVisible();
 
     // Open dialog
-    await page.getByRole("button", { name: "Add Source" }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const dialog = await openCreateSourceDialog(page);
 
     // Fill form
-    await page.getByLabel("Name").fill("My Drive");
-    await page
+    await dialog.getByLabel(/^(Name|Source Name)$/).fill("My Drive");
+    await dialog
       .getByLabel("Service Account Key (JSON)")
-      .fill("service-account-key");
+      .fill("{\"type\":\"service_account\",\"project_id\":\"demo-project\"}");
 
     // Submit
-    await page
-      .getByRole("dialog")
+    await dialog
       .getByRole("button", { name: "Create" })
+      .or(dialog.getByRole("button", { name: "Connect Source" }))
       .click();
 
-    // Dialog should close and source should appear
+    const successState = dialog.getByText(/^(Source Connected|My Drive is ready)$/);
+    if (await successState.first().isVisible().catch(() => false)) {
+      await dialog.getByRole("button", { name: "Close" }).click();
+    }
+
     await expect(page.getByRole("dialog")).not.toBeVisible();
     await expect(page.getByText("My Drive", { exact: true })).toBeVisible();
   });

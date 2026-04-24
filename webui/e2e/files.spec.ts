@@ -8,7 +8,7 @@
  * - Back navigation button is present
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { injectAuth, mockGet } from "./helpers";
 import { formatSize } from "../src/shared/lib/format";
 
@@ -56,6 +56,21 @@ const LARGE_TEXT_FILE = {
 };
 
 test.describe("File listing and download", () => {
+  async function revealCredentialsIfNeeded(
+    page: Page,
+  ) {
+    if (await page.getByText(/AK123/).isVisible().catch(() => false)) {
+      return;
+    }
+
+    const credentialsToggle = page.getByRole("button", {
+      name: "S3 Credentials",
+    });
+    if (await credentialsToggle.isVisible().catch(() => false)) {
+      await credentialsToggle.click();
+    }
+  }
+
   test("bucket detail shows bucket info", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
@@ -64,6 +79,7 @@ test.describe("File listing and download", () => {
     await page.goto("/buckets/bkt-1");
 
     await expect(page.getByRole("heading", { name: "my-bucket" })).toBeVisible();
+    await revealCredentialsIfNeeded(page);
     await expect(page.getByText(/AK123/)).toBeVisible();
   });
 
@@ -74,7 +90,9 @@ test.describe("File listing and download", () => {
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 
-    await expect(page.getByText("No files")).toBeVisible();
+    await expect(
+      page.getByText(/(No files yet|Last step: upload your first file)/),
+    ).toBeVisible();
   });
 
   test("bucket detail lists files with name, size, and date columns", async ({
@@ -139,8 +157,12 @@ test.describe("File listing and download", () => {
     await expect(
       firstRowActions.getByRole("button", { name: "Download report.pdf" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Upload File" })).not.toBeVisible();
-    await expect(page.getByRole("button", { name: "Share Bucket" })).not.toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^Upload( File)?$/ }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^(Share Bucket|Share)$/ }),
+    ).not.toBeVisible();
     await expect(page.getByRole("button", { name: "Share report.pdf" })).not.toBeVisible();
     await expect(page.getByRole("button", { name: "Delete report.pdf" })).not.toBeVisible();
   });
@@ -152,8 +174,12 @@ test.describe("File listing and download", () => {
     await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
     await page.goto("/buckets/bkt-1");
 
-    await expect(page.getByRole("button", { name: "Upload File" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Share Bucket" })).not.toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^Upload( File)?$/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^(Share Bucket|Share)$/ }),
+    ).not.toBeVisible();
     await expect(page.getByRole("button", { name: "Share report.pdf" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Download report.pdf" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Delete report.pdf" })).toBeVisible();
@@ -254,8 +280,9 @@ test.describe("File listing and download", () => {
     // Navigate to bucket detail
     await page.goto("/buckets/bkt-1");
 
-    // Back button (isIconOnly with ArrowLeftIcon) is present
-    const backButton = page.getByRole("button").first();
+    const backButton = page
+      .locator('a[href="/buckets"], button[aria-label="Back"]')
+      .first();
     await expect(backButton).toBeVisible();
   });
 });

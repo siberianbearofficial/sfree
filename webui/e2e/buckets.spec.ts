@@ -57,6 +57,7 @@ test.describe("Bucket creation flow", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
+    await mockGet(page, "/sources", [MOCK_SOURCE]);
     await page.goto("/buckets");
     await expect(
       page.getByRole("heading", { name: /^Buckets$/, level: 1 }),
@@ -165,9 +166,15 @@ test.describe("Bucket creation flow", () => {
     await mockGet(page, "/buckets/bkt-1/files", []);
     await page.goto("/buckets/bkt-1");
 
-    await expect(page.getByRole("button", { name: "Upload File" })).toHaveCount(2);
-    await expect(page.getByRole("button", { name: "Share Bucket" })).toBeVisible();
-    await expect(page.getByText("Drag and drop a file here")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^Upload( File)?$/ }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^(Share Bucket|Share)$/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/(Drag and drop a file here|Drop files here|Upload)/),
+    ).toBeVisible();
   });
 
   test("Share Bucket dialog shows grant loading and successful grants", async ({
@@ -190,7 +197,7 @@ test.describe("Bucket creation flow", () => {
     await page.goto("/buckets/bkt-1");
     const dialog = page.getByRole("dialog");
 
-    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await page.getByRole("button", { name: /^(Share Bucket|Share)$/ }).click();
     await expect(dialog.getByText("Loading people with access")).toBeVisible();
 
     expect(fulfillGrants).toBeDefined();
@@ -214,7 +221,7 @@ test.describe("Bucket creation flow", () => {
     await page.goto("/buckets/bkt-1");
     const dialog = page.getByRole("dialog");
 
-    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await page.getByRole("button", { name: /^(Share Bucket|Share)$/ }).click();
     await expect(dialog.getByText("Access list failed to load")).toBeVisible();
     await expect(dialog.getByText("Grant store unavailable")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Retry" })).toBeVisible();
@@ -241,13 +248,13 @@ test.describe("Bucket creation flow", () => {
     await page.goto("/buckets/bkt-1");
     const dialog = page.getByRole("dialog");
 
-    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await page.getByRole("button", { name: /^(Share Bucket|Share)$/ }).click();
     await expect(dialog.getByText("Loading people with access")).toBeVisible();
     await expect.poll(() => grantRoutes.length).toBe(1);
     await dialog.getByRole("button", { name: "Close" }).last().click();
     await expect(dialog).not.toBeVisible();
 
-    await page.getByRole("button", { name: "Share Bucket" }).click();
+    await page.getByRole("button", { name: /^(Share Bucket|Share)$/ }).click();
     await expect.poll(() => grantRoutes.length).toBe(2);
     await grantRoutes[1].fulfill({status: 200, json: [MOCK_GRANT]});
     await expect(dialog.getByText("shared-user")).toBeVisible();

@@ -42,18 +42,18 @@ test.describe("Error states", () => {
     await expect(
       dialog
         .locator(":not(button)")
-        .filter({ hasText: /^Sign Up$/ })
+        .filter({ hasText: /^(Sign Up|Create a free SFree account)$/ })
         .first(),
     ).toBeVisible();
 
     await dialog.getByLabel("Username").fill("newuser");
-    await dialog.getByRole("button", { name: "Sign Up" }).click();
+    await dialog.getByRole("button", { name: "Create Account" }).click();
 
     // Generated password is shown via Snippet
     await expect(dialog.getByText("generated-secret-pw")).toBeVisible();
 
-    // Close button dismisses
-    await dialog.getByText("Close", { exact: true }).click();
+    // Confirmation button dismisses
+    await dialog.getByRole("button", { name: "I saved my password" }).click();
     await expect(dialog).not.toBeVisible();
   });
 
@@ -64,7 +64,7 @@ test.describe("Error states", () => {
     await page.route(`${API_GLOB}/**`, (route) => route.abort());
 
     await page.goto("/");
-    await page.getByRole("button", { name: "Log In" }).click();
+    await page.getByRole("button", { name: "Log In" }).first().click();
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
