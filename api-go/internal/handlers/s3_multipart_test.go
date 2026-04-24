@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -571,5 +573,63 @@ func TestAbortMultipartUploadUnknownUploadKeepsNoSuchUpload(t *testing.T) {
 	}
 	if store.deleteCalls != 0 {
 		t.Fatalf("expected no delete calls, got %d", store.deleteCalls)
+	}
+}
+
+func TestHandleMultipartUploadLookupErrorMapsNoSuchUpload(t *testing.T) {
+	t.Parallel()
+
+	c, w := testS3GinContext("/api/s3/route-bucket/object.txt?uploadId=missing")
+
+	handled := handleMultipartUploadLookupError(c, "upload part", mongo.ErrNoDocuments)
+	if !handled {
+		t.Fatal("expected error to be handled")
+	}
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>NoSuchUpload</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestHandleMultipartCompletionErrorMapsInvalidPartMismatch(t *testing.T) {
+	t.Parallel()
+
+	c, w := testS3GinContext("/api/s3/route-bucket/object.txt?uploadId=upload-1")
+
+	handled := handleMultipartCompletionError(c, manager.InvalidMultipartPartError{
+		PartNumber: 3,
+		Reason:     "etag mismatch",
+	})
+	if !handled {
+		t.Fatal("expected error to be handled")
+	}
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "<Code>InvalidPart</Code>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if !strings.Contains(body, "<Message>ETag mismatch for part 3</Message>") {
+		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestHandleMultipartAbortErrorMapsUnexpectedFailure(t *testing.T) {
+	t.Parallel()
+
+	c, w := testS3GinContext("/api/s3/route-bucket/object.txt?uploadId=upload-1")
+
+	handled := handleMultipartAbortError(c, errors.New("cleanup failed"))
+	if !handled {
+		t.Fatal("expected error to be handled")
+	}
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "<Code>InternalError</Code>") {
+		t.Fatalf("unexpected body: %s", body)
 	}
 }
