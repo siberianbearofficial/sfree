@@ -1,10 +1,11 @@
-import {Button, Checkbox, CheckboxGroup, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Snippet} from "@heroui/react";
+import {Button, Checkbox, CheckboxGroup, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Snippet, Spinner} from "@heroui/react";
 import {addToast} from "@heroui/toast";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {createBucket} from "../../../shared/api/buckets";
 import {listSources} from "../../../shared/api/sources";
 import type {Source} from "../../../shared/api/sources";
 import {showErrorToast} from "../../../shared/api/error";
+import {SourceTypeChip} from "../../../entities/source";
 
 type Props = {isOpen: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void};
 
@@ -56,6 +57,11 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
     return "Choose which sources this bucket is allowed to use for uploads.";
   }, [hasSources, isSourcesLoading, sourceLoadError]);
 
+  const selectedSourceNames = useMemo(
+    () => sources.filter((s) => selectedSourceIds.includes(s.id)).map((s) => s.name),
+    [sources, selectedSourceIds],
+  );
+
   return (
     <Modal
       isOpen={isOpen}
@@ -71,6 +77,7 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
         }
         onOpenChange(open);
       }}
+      size="lg"
     >
       <ModalContent>
         {(onClose) => (
@@ -78,16 +85,20 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
             <ModalHeader>Create Bucket</ModalHeader>
             <ModalBody>
               {creds ? (
-                <>
-                  <Snippet hideSymbol>{creds.accessKey}</Snippet>
-                  <Snippet hideSymbol>{creds.accessSecret}</Snippet>
-                  <p className="text-sm text-default-500">
-                    Make sure to copy these credentials now. You won't be able to see them again.
-                  </p>
-                </>
+                <CredentialsView accessKey={creds.accessKey} accessSecret={creds.accessSecret} />
               ) : (
-                <>
-                  <Input label="Key" value={key} onChange={(e) => setKey(e.target.value)} />
+                <div className="flex flex-col gap-5">
+                  <p className="text-sm text-default-500">
+                    A bucket gives you S3-compatible access to your files. Name it, pick the sources it can draw from, and you&apos;ll get credentials to connect any S3 client.
+                  </p>
+
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm font-medium">Bucket name</p>
+                    <Input label="Key" value={key} onChange={(e) => setKey(e.target.value)} />
+                  </div>
+
+                  <Divider />
+
                   <div className="flex flex-col gap-2">
                     <p className="text-sm font-medium">Allowed sources</p>
                     <p className={`text-sm ${sourceLoadError ? "text-danger" : "text-default-500"}`}>{helperText}</p>
@@ -99,20 +110,42 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
                         </Button>
                       </div>
                     ) : null}
+                    {isSourcesLoading && !sourceLoadError ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Spinner size="sm" />
+                      </div>
+                    ) : null}
                     {hasSources ? (
                       <CheckboxGroup
                         value={selectedSourceIds}
                         onValueChange={(values) => setSelectedSourceIds(values as string[])}
+                        classNames={{wrapper: "gap-3"}}
                       >
                         {sources.map((source) => (
-                          <Checkbox key={source.id} value={source.id}>
-                            {source.name}
+                          <Checkbox key={source.id} value={source.id} classNames={{base: "max-w-full"}}>
+                            <div className="flex items-center gap-2">
+                              <span>{source.name}</span>
+                              <SourceTypeChip type={source.type} />
+                            </div>
                           </Checkbox>
                         ))}
                       </CheckboxGroup>
                     ) : null}
                   </div>
-                </>
+
+                  {canCreate ? (
+                    <>
+                      <Divider />
+                      <div className="flex flex-col gap-2 rounded-lg bg-default-50 p-3">
+                        <p className="text-sm font-medium">Review</p>
+                        <div className="text-sm text-default-600 flex flex-col gap-1">
+                          <p>Bucket: <span className="font-mono font-medium">{key.trim()}</span></p>
+                          <p>Sources: {selectedSourceNames.join(", ")}</p>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
               )}
             </ModalBody>
             <ModalFooter>
@@ -147,5 +180,30 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
         )}
       </ModalContent>
     </Modal>
+  );
+}
+
+function CredentialsView({accessKey, accessSecret}: {accessKey: string; accessSecret: string}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+        <p className="text-sm font-medium text-warning-700">
+          Make sure to copy these credentials now. You won&apos;t be able to see them again.
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-default-500 font-medium">Access Key</p>
+          <Snippet hideSymbol variant="flat" size="sm">{accessKey}</Snippet>
+        </div>
+        <div className="flex flex-col gap-1">
+          <p className="text-xs text-default-500 font-medium">Secret Key</p>
+          <Snippet hideSymbol variant="flat" size="sm">{accessSecret}</Snippet>
+        </div>
+      </div>
+      <p className="text-sm text-default-500">
+        Use these credentials with any S3-compatible client to access your bucket.
+      </p>
+    </div>
   );
 }
