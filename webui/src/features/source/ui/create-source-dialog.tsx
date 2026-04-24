@@ -11,20 +11,20 @@ import {
   ModalHeader,
   Textarea,
 } from "@heroui/react";
+import {addToast} from "@heroui/toast";
 import {useState, useMemo, useRef} from "react";
 import {
   createGDriveSource,
   createS3Source,
   createTelegramSource,
 } from "../../../shared/api/sources";
-import type {Source} from "../../../shared/api/sources";
 import {showErrorToast} from "../../../shared/api/error";
 import {GoogleDriveIcon, TelegramIcon, S3Icon} from "../../../shared/icons";
 
 /* ---------- types ---------- */
 
 type SourceType = "gdrive" | "telegram" | "s3";
-type Step = "select" | "form" | "success";
+type Step = "select" | "form";
 
 type Props = {
   isOpen: boolean;
@@ -167,7 +167,6 @@ export function CreateSourceDialog({
   const [step, setStep] = useState<Step>("select");
   const [sourceType, setSourceType] = useState<SourceType>("gdrive");
   const [isLoading, setIsLoading] = useState(false);
-  const [createdSource, setCreatedSource] = useState<Source | null>(null);
 
   // Guards against late async responses after dialog close/back navigation
   const createGeneration = useRef(0);
@@ -246,7 +245,6 @@ export function CreateSourceDialog({
     setRegion("");
     setPathStyle(false);
     setIsLoading(false);
-    setCreatedSource(null);
     setTouched(new Set());
   }
 
@@ -282,9 +280,10 @@ export function CreateSourceDialog({
         });
       }
       if (gen !== createGeneration.current) return;
-      setCreatedSource(source);
-      setStep("success");
+      addToast({title: "Source connected", description: `${source.name} is ready`, color: "success", timeout: 4000});
       onCreated();
+      onNavigateToSource?.(source.id);
+      onOpenChange(false);
     } catch (err) {
       if (gen !== createGeneration.current) return;
       showErrorToast(err);
@@ -387,49 +386,6 @@ export function CreateSourceDialog({
             );
           }
 
-          /* ---- Step 3: Success ---- */
-          if (step === "success" && createdSource) {
-            return (
-              <>
-                <ModalHeader>Source Connected</ModalHeader>
-                <ModalBody>
-                  <div className="flex flex-col items-center text-center gap-4 py-4">
-                    <div className="w-12 h-12 flex items-center justify-center rounded-full bg-success-100">
-                      <CheckIcon className="w-6 h-6 text-success" />
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold">
-                        {createdSource.name} is ready
-                      </p>
-                      <p className="text-sm text-default-500 mt-1">
-                        Your {providerInfo.label} source has been connected
-                        successfully. You can now browse files or configure
-                        additional settings.
-                      </p>
-                    </div>
-                  </div>
-                </ModalBody>
-                <ModalFooter className="flex justify-between">
-                  <Button
-                    variant="flat"
-                    onPress={() => handleClose(onClose)}
-                  >
-                    Close
-                  </Button>
-                  <Button
-                    color="primary"
-                    onPress={() => {
-                      onNavigateToSource?.(createdSource.id);
-                      handleClose(onClose);
-                    }}
-                  >
-                    View Source
-                  </Button>
-                </ModalFooter>
-              </>
-            );
-          }
-
           /* ---- Step 2: Provider-specific form ---- */
           const fields = fieldsByProvider[sourceType] ?? [];
 
@@ -526,24 +482,5 @@ export function CreateSourceDialog({
         }}
       </ModalContent>
     </Modal>
-  );
-}
-
-/* ---------- inline check icon ---------- */
-
-function CheckIcon(props: {className?: string}) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      {...props}
-    >
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
   );
 }
