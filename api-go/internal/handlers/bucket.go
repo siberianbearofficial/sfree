@@ -403,6 +403,13 @@ func handleDeleteBucket(c *gin.Context, repo bucketDeleteStore, shareLinkRepo sh
 		c.Status(http.StatusInternalServerError)
 		return
 	}
+	if grantDeleter != nil {
+		if err := grantDeleter.DeleteByBucket(ctx, acc.Bucket.ID); err != nil {
+			slog.ErrorContext(ctx, "delete bucket: cleanup grants", slog.String("bucket_id", acc.Bucket.ID.Hex()), slog.String("owner_user_id", acc.Bucket.UserID.Hex()), slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+	}
 	if err := repo.Delete(ctx, acc.Bucket.ID, acc.Bucket.UserID); err != nil {
 		if err == mongo.ErrNoDocuments {
 			c.Status(http.StatusNotFound)
@@ -411,9 +418,6 @@ func handleDeleteBucket(c *gin.Context, repo bucketDeleteStore, shareLinkRepo sh
 		slog.ErrorContext(ctx, "delete bucket: failed to delete", slog.String("error", err.Error()))
 		c.Status(http.StatusInternalServerError)
 		return
-	}
-	if grantDeleter != nil {
-		_ = grantDeleter.DeleteByBucket(ctx, acc.Bucket.ID)
 	}
 	c.Status(http.StatusOK)
 }

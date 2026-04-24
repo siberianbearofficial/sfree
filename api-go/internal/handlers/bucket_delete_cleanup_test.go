@@ -85,7 +85,7 @@ func TestDeleteFileShareCleanupFailureReturns500AndSkipsObjectDelete(t *testing.
 	}
 }
 
-func TestDeleteBucketCleansShareLinksBeforeContentsDelete(t *testing.T) {
+func TestDeleteBucketCleansShareLinksAndGrantsBeforeBucketDelete(t *testing.T) {
 	t.Parallel()
 
 	userID := primitive.NewObjectID()
@@ -102,7 +102,7 @@ func TestDeleteBucketCleansShareLinksBeforeContentsDelete(t *testing.T) {
 				&fakeShareLinkCleanup{events: &events},
 				&fakeBucketContentsDelete{events: &events},
 				nil,
-				nil,
+				&fakeBucketGrantCleanup{events: &events},
 			)
 		},
 	)
@@ -114,7 +114,7 @@ func TestDeleteBucketCleansShareLinksBeforeContentsDelete(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if !reflect.DeepEqual(events, []string{"share_bucket", "bucket_contents", "bucket_delete"}) {
+	if !reflect.DeepEqual(events, []string{"share_bucket", "bucket_contents", "bucket_grants", "bucket_delete"}) {
 		t.Fatalf("unexpected event order: %v", events)
 	}
 }
@@ -149,6 +149,40 @@ func TestDeleteBucketShareCleanupFailureReturns500AndSkipsDeletes(t *testing.T) 
 		t.Fatalf("expected 500, got %d", w.Code)
 	}
 	if !reflect.DeepEqual(events, []string{"share_bucket"}) {
+		t.Fatalf("unexpected event order: %v", events)
+	}
+}
+
+func TestDeleteBucketGrantCleanupFailureReturns500AndSkipsBucketDelete(t *testing.T) {
+	t.Parallel()
+
+	userID := primitive.NewObjectID()
+	bucketID := primitive.NewObjectID()
+	events := []string{}
+
+	router := gin.New()
+	router.DELETE("/buckets/:id",
+		setUserID(userID.Hex()),
+		func(c *gin.Context) {
+			handleDeleteBucket(
+				c,
+				&fakeBucketDeleteStore{bucket: testDeleteBucket(bucketID, userID), events: &events},
+				&fakeShareLinkCleanup{events: &events},
+				&fakeBucketContentsDelete{events: &events},
+				nil,
+				&fakeBucketGrantCleanup{events: &events, err: errors.New("grant cleanup failed")},
+			)
+		},
+	)
+
+	req, _ := http.NewRequest(http.MethodDelete, "/buckets/"+bucketID.Hex(), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", w.Code)
+	}
+	if !reflect.DeepEqual(events, []string{"share_bucket", "bucket_contents", "bucket_grants"}) {
 		t.Fatalf("unexpected event order: %v", events)
 	}
 }
@@ -200,6 +234,18 @@ func (f *fakeShareLinkCleanup) DeleteByFile(_ context.Context, _ primitive.Objec
 func (f *fakeShareLinkCleanup) DeleteByBucket(_ context.Context, _ primitive.ObjectID) error {
 	if f.events != nil {
 		*f.events = append(*f.events, "share_bucket")
+	}
+	return f.err
+}
+
+type fakeBucketGrantCleanup struct {
+	events *[]string
+	err    error
+}
+
+func (f *fakeBucketGrantCleanup) DeleteByBucket(_ context.Context, _ primitive.ObjectID) error {
+	if f.events != nil {
+		*f.events = append(*f.events, "bucket_grants")
 	}
 	return f.err
 }
