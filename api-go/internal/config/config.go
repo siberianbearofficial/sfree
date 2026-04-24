@@ -34,12 +34,12 @@ type RateLimitConfig struct {
 }
 
 type SourceClientConfig struct {
-	TimeoutSeconds   int `yaml:"timeout_seconds"`    // per-request timeout (default 30)
+	TimeoutSeconds   int `yaml:"timeout_seconds"`     // per-request timeout (default 30)
 	FailureThreshold int `yaml:"failure_threshold"`   // consecutive failures before circuit opens (default 5)
 	RecoverySeconds  int `yaml:"recovery_seconds"`    // seconds before half-open probe (default 30)
-	MaxRetries       int `yaml:"max_retries"`          // retry attempts after first call (default 3)
-	RetryBaseDelayMs int `yaml:"retry_base_delay_ms"`  // initial backoff in ms (default 100)
-	RetryMaxDelayMs  int `yaml:"retry_max_delay_ms"`   // max backoff cap in ms (default 5000)
+	MaxRetries       int `yaml:"max_retries"`         // retry attempts after first call (default 3)
+	RetryBaseDelayMs int `yaml:"retry_base_delay_ms"` // initial backoff in ms (default 100)
+	RetryMaxDelayMs  int `yaml:"retry_max_delay_ms"`  // max backoff cap in ms (default 5000)
 }
 
 type Config struct {
@@ -69,18 +69,18 @@ func Load() (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
-	overrideEnv(&cfg)
+	if err := overrideEnv(&cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
-func overrideEnv(cfg *Config) {
+func overrideEnv(cfg *Config) error {
 	if v := os.Getenv("DB_HOST"); v != "" {
 		cfg.Mongo.Host = v
 	}
-	if v := os.Getenv("DB_PORT"); v != "" {
-		if p, err := strconv.Atoi(v); err == nil {
-			cfg.Mongo.Port = p
-		}
+	if err := applyIntEnv("DB_PORT", &cfg.Mongo.Port); err != nil {
+		return err
 	}
 	if v := os.Getenv("DB_USER"); v != "" {
 		cfg.Mongo.User = v
@@ -91,10 +91,8 @@ func overrideEnv(cfg *Config) {
 	if v := os.Getenv("DB_NAME"); v != "" {
 		cfg.Mongo.Database = v
 	}
-	if v := os.Getenv("UPLOAD_CHUNK_SIZE"); v != "" {
-		if s, err := strconv.Atoi(v); err == nil {
-			cfg.Upload.ChunkSize = s
-		}
+	if err := applyIntEnv("UPLOAD_CHUNK_SIZE", &cfg.Upload.ChunkSize); err != nil {
+		return err
 	}
 	if v := os.Getenv("ACCESS_SECRET_KEY"); v != "" {
 		cfg.AccessSecretKey = v
@@ -114,44 +112,42 @@ func overrideEnv(cfg *Config) {
 	if v := os.Getenv("FRONTEND_URL"); v != "" {
 		cfg.FrontendURL = v
 	}
-	if v := os.Getenv("RATE_LIMIT_PER_IP"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.RateLimit.PerIP = n
-		}
+	if err := applyIntEnv("RATE_LIMIT_PER_IP", &cfg.RateLimit.PerIP); err != nil {
+		return err
 	}
-	if v := os.Getenv("RATE_LIMIT_PER_KEY"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.RateLimit.PerKey = n
-		}
+	if err := applyIntEnv("RATE_LIMIT_PER_KEY", &cfg.RateLimit.PerKey); err != nil {
+		return err
 	}
-	if v := os.Getenv("SOURCE_TIMEOUT_SECONDS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.SourceClient.TimeoutSeconds = n
-		}
+	if err := applyIntEnv("SOURCE_TIMEOUT_SECONDS", &cfg.SourceClient.TimeoutSeconds); err != nil {
+		return err
 	}
-	if v := os.Getenv("SOURCE_FAILURE_THRESHOLD"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.SourceClient.FailureThreshold = n
-		}
+	if err := applyIntEnv("SOURCE_FAILURE_THRESHOLD", &cfg.SourceClient.FailureThreshold); err != nil {
+		return err
 	}
-	if v := os.Getenv("SOURCE_RECOVERY_SECONDS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.SourceClient.RecoverySeconds = n
-		}
+	if err := applyIntEnv("SOURCE_RECOVERY_SECONDS", &cfg.SourceClient.RecoverySeconds); err != nil {
+		return err
 	}
-	if v := os.Getenv("SOURCE_MAX_RETRIES"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.SourceClient.MaxRetries = n
-		}
+	if err := applyIntEnv("SOURCE_MAX_RETRIES", &cfg.SourceClient.MaxRetries); err != nil {
+		return err
 	}
-	if v := os.Getenv("SOURCE_RETRY_BASE_DELAY_MS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.SourceClient.RetryBaseDelayMs = n
-		}
+	if err := applyIntEnv("SOURCE_RETRY_BASE_DELAY_MS", &cfg.SourceClient.RetryBaseDelayMs); err != nil {
+		return err
 	}
-	if v := os.Getenv("SOURCE_RETRY_MAX_DELAY_MS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			cfg.SourceClient.RetryMaxDelayMs = n
-		}
+	if err := applyIntEnv("SOURCE_RETRY_MAX_DELAY_MS", &cfg.SourceClient.RetryMaxDelayMs); err != nil {
+		return err
 	}
+	return nil
+}
+
+func applyIntEnv(key string, dst *int) error {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fmt.Errorf("invalid %s value %q: %w", key, v, err)
+	}
+	*dst = n
+	return nil
 }
