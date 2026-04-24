@@ -95,7 +95,7 @@ test.describe("Dashboard", () => {
       page.getByRole("button", { name: /^(Sign Up|Get Started Free)$/ }).first(),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Log In" }),
+      page.getByRole("button", { name: "Log In" }).first(),
     ).toBeVisible();
   });
 });
