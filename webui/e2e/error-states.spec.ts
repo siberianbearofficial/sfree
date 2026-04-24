@@ -125,7 +125,7 @@ test.describe("Error states", () => {
       page.getByRole("heading", { name: /^Buckets$/, level: 1 }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Bucket" }).first(),
+      page.getByRole("button", { name: /^(Add|Create) Bucket$/ }).first(),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Failed to load buckets" }),
