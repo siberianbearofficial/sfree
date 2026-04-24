@@ -57,6 +57,7 @@ test.describe("Error states", () => {
     // Dismiss with either the legacy or refreshed confirmation action
     await dialog
       .getByRole("button", { name: /^(Close|I saved my password)$/ })
+      .last()
       .click();
     await expect(dialog).not.toBeVisible();
   });

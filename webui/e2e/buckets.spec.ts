@@ -173,7 +173,9 @@ test.describe("Bucket creation flow", () => {
       page.getByRole("button", { name: /^(Share Bucket|Share)$/ }),
     ).toBeVisible();
     await expect(
-      page.getByText(/(Drag and drop a file here|Drop files here|Upload)/),
+      page.locator("p").filter({
+        hasText: /(Drag and drop a file here|Drop files here)/,
+      }).first(),
     ).toBeVisible();
   });
 
