@@ -1,11 +1,13 @@
 import {
   Button,
+  Chip,
   Input,
+  Snippet,
   Spinner,
   useDisclosure,
 } from "@heroui/react";
 import {addToast} from "@heroui/toast";
-import {useCallback, useDeferredValue, useEffect, useRef, useState} from "react";
+import {useCallback, useDeferredValue, useEffect, useMemo, useRef, useState} from "react";
 import {Link, useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
@@ -23,6 +25,14 @@ import {ShareBucketDialog} from "../../../features/bucket/ui/share-bucket-dialog
 import {ShareFileDialog} from "../../../features/bucket/ui/share-file-dialog";
 import {formatSize} from "../../../shared/lib/format";
 import {ApiError, showErrorToast} from "../../../shared/api/error";
+
+const ROLE_COLOR: Record<string, "default" | "primary" | "secondary" | "success" | "warning" | "danger"> = {
+  owner: "primary",
+  editor: "secondary",
+  viewer: "default",
+};
+
+type SortField = "name" | "size" | "created_at";
 
 export function BucketPage() {
   const {id} = useParams<{id: string}>();
@@ -45,6 +55,39 @@ export function BucketPage() {
   const [shareFile, setShareFile] = useState<FileInfo | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const activeSearchQuery = deferredSearchQuery.trim();
+
+  const [sortBy, setSortBy] = useState<SortField>("name");
+  const [sortAsc, setSortAsc] = useState(true);
+
+  function toggleSort(field: SortField) {
+    if (sortBy === field) {
+      setSortAsc((prev) => !prev);
+    } else {
+      setSortBy(field);
+      setSortAsc(true);
+    }
+  }
+
+  const sortedFiles = useMemo(() => {
+    const sorted = [...files].sort((a, b) => {
+      let cmp: number;
+      switch (sortBy) {
+        case "name":
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case "size":
+          cmp = a.size - b.size;
+          break;
+        case "created_at":
+          cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+        default:
+          cmp = 0;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+    return sorted;
+  }, [files, sortBy, sortAsc]);
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (!id) return;
@@ -208,11 +251,14 @@ export function BucketPage() {
       <Link to="/buckets" className="text-sm text-default-500 hover:text-primary transition-colors">
         &larr; Buckets
       </Link>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold">{bucket.key}</h1>
-        <p>ID: {bucket.id}</p>
-        <p>Access Key: {bucket.access_key}</p>
-        <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold">{bucket.key}</h1>
+          <Chip size="sm" variant="flat" color={ROLE_COLOR[bucket.role] ?? "default"}>
+            {bucket.role}
+          </Chip>
+        </div>
+        <CredentialsPanel bucket={bucket} />
       </div>
       <div className="flex justify-end gap-2">
         {canManage && (
@@ -260,7 +306,7 @@ export function BucketPage() {
             </p>
           ) : null}
         </div>
-        {files.length === 0 ? (
+        {sortedFiles.length === 0 ? (
           <EmptyState
             title={emptyTitle}
             description={emptyDescription}
@@ -271,14 +317,20 @@ export function BucketPage() {
           <table className="w-full text-left">
             <thead>
               <tr>
-                <th className="pb-2">Name</th>
-                <th className="pb-2">Size</th>
-                <th className="pb-2">Created</th>
+                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("name")}>
+                  Name<SortArrow field="name" sortBy={sortBy} sortAsc={sortAsc} />
+                </th>
+                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("size")}>
+                  Size<SortArrow field="size" sortBy={sortBy} sortAsc={sortAsc} />
+                </th>
+                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("created_at")}>
+                  Created<SortArrow field="created_at" sortBy={sortBy} sortAsc={sortAsc} />
+                </th>
                 <th className="pb-2"></th>
               </tr>
             </thead>
             <tbody>
-              {files.map((f) => (
+              {sortedFiles.map((f) => (
                 <tr key={f.id} className="border-t">
                   <td className="py-2">
                     <button
@@ -364,6 +416,55 @@ export function BucketPage() {
         bucketId={id!}
       />
     </div>
+  );
+}
+
+function CredentialsPanel({bucket}: {bucket: Bucket}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-divider rounded-lg">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-default-100 transition-colors rounded-lg cursor-pointer"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span>S3 Credentials</span>
+        <svg
+          className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-3">
+          <div>
+            <p className="text-xs text-default-500 mb-1">Bucket ID</p>
+            <Snippet size="sm" variant="flat" symbol="">{bucket.id}</Snippet>
+          </div>
+          <div>
+            <p className="text-xs text-default-500 mb-1">Access Key</p>
+            <Snippet size="sm" variant="flat" symbol="">{bucket.access_key}</Snippet>
+          </div>
+          <p className="text-xs text-default-500">
+            Created {new Date(bucket.created_at).toLocaleString()}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortArrow({field, sortBy, sortAsc}: {field: SortField; sortBy: SortField; sortAsc: boolean}) {
+  if (sortBy !== field) return null;
+  return (
+    <span aria-hidden="true" className="ml-1 text-default-400">
+      {sortAsc ? "↑" : "↓"}
+    </span>
   );
 }
 
