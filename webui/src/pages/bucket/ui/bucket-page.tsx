@@ -4,15 +4,8 @@ import {
   Input,
   Snippet,
   Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableColumn,
-  TableHeader,
-  TableRow,
   useDisclosure,
 } from "@heroui/react";
-import type {SortDescriptor} from "@heroui/react";
 import {addToast} from "@heroui/toast";
 import {useCallback, useDeferredValue, useEffect, useMemo, useRef, useState} from "react";
 import {Link, useNavigate, useParams} from "react-router-dom";
@@ -217,10 +210,10 @@ export function BucketPage() {
   const activeSearchQuery = deferredSearchQuery.trim();
 
   const [uploadingCount, setUploadingCount] = useState(0);
-  const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>({
-    column: "name",
-    direction: "ascending",
-  });
+  type SortColumn = "name" | "size" | "created_at";
+  type SortDir = "ascending" | "descending";
+  const [sortColumn, setSortColumn] = useState<SortColumn>("name");
+  const [sortDirection, setSortDirection] = useState<SortDir>("ascending");
 
   /* ---- data loading ---- */
 
@@ -276,21 +269,29 @@ export function BucketPage() {
 
   const sortedFiles = useMemo(() => {
     const sorted = [...files];
-    const {column, direction} = sortDescriptor;
     sorted.sort((a, b) => {
       let cmp = 0;
-      if (column === "name") {
+      if (sortColumn === "name") {
         cmp = a.name.localeCompare(b.name);
-      } else if (column === "size") {
+      } else if (sortColumn === "size") {
         cmp = a.size - b.size;
-      } else if (column === "created_at") {
+      } else if (sortColumn === "created_at") {
         cmp =
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       }
-      return direction === "descending" ? -cmp : cmp;
+      return sortDirection === "descending" ? -cmp : cmp;
     });
     return sorted;
-  }, [files, sortDescriptor]);
+  }, [files, sortColumn, sortDirection]);
+
+  function toggleSort(col: SortColumn) {
+    if (sortColumn === col) {
+      setSortDirection((d) => (d === "ascending" ? "descending" : "ascending"));
+    } else {
+      setSortColumn(col);
+      setSortDirection("ascending");
+    }
+  }
 
   /* ---- uploads ---- */
 
@@ -503,102 +504,96 @@ export function BucketPage() {
             />
           </div>
         ) : (
-          <Table
-            aria-label="Files in bucket"
-            sortDescriptor={sortDescriptor}
-            onSortChange={setSortDescriptor}
-            classNames={{
-              wrapper: "shadow-none border border-divider",
-            }}
-          >
-            <TableHeader>
-              <TableColumn key="name" allowsSorting>
-                Name
-              </TableColumn>
-              <TableColumn
-                key="size"
-                allowsSorting
-                className="hidden sm:table-cell"
-              >
-                Size
-              </TableColumn>
-              <TableColumn
-                key="created_at"
-                allowsSorting
-                className="hidden md:table-cell"
-              >
-                Created
-              </TableColumn>
-              <TableColumn key="actions" className="text-right w-[1%]">
-                Actions
-              </TableColumn>
-            </TableHeader>
-            <TableBody items={sortedFiles}>
-              {(file) => (
-                <TableRow key={file.id}>
-                  <TableCell>
-                    <button
-                      type="button"
-                      className="text-left hover:text-primary transition-colors cursor-pointer truncate max-w-[200px] sm:max-w-[300px] md:max-w-none"
-                      onClick={() => setPreviewFile(file)}
-                      title={file.name}
-                    >
-                      {file.name}
+          <div className="border border-divider rounded-lg overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-divider bg-default-50">
+                  <th className="px-4 py-3 text-sm font-medium">
+                    <button type="button" className="cursor-pointer select-none" onClick={() => toggleSort("name")}>
+                      Name{sortColumn === "name" && <span aria-hidden="true"> {sortDirection === "ascending" ? "↑" : "↓"}</span>}
                     </button>
-                    {/* Mobile-only size beneath file name */}
-                    <span className="block sm:hidden text-xs text-default-400 mt-0.5">
-                      {formatSize(file.size)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell text-default-500 text-sm">
-                    {formatSize(file.size)}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-default-500 text-sm whitespace-nowrap">
-                    {new Date(file.created_at).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1 justify-end">
-                      {canWrite && (
-                        <Button
-                          isIconOnly
-                          size="sm"
-                          aria-label={`Share ${file.name}`}
-                          variant="light"
-                          onPress={() => setShareFile(file)}
-                        >
-                          <ShareIcon className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        aria-label={`Download ${file.name}`}
-                        variant="light"
-                        onPress={() => handleDownload(file)}
+                  </th>
+                  <th className="px-4 py-3 text-sm font-medium hidden sm:table-cell">
+                    <button type="button" className="cursor-pointer select-none" onClick={() => toggleSort("size")}>
+                      Size{sortColumn === "size" && <span aria-hidden="true"> {sortDirection === "ascending" ? "↑" : "↓"}</span>}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-sm font-medium hidden md:table-cell">
+                    <button type="button" className="cursor-pointer select-none" onClick={() => toggleSort("created_at")}>
+                      Created{sortColumn === "created_at" && <span aria-hidden="true"> {sortDirection === "ascending" ? "↑" : "↓"}</span>}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-sm font-medium text-right w-[1%]">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedFiles.map((file) => (
+                  <tr key={file.id} className="border-t border-divider hover:bg-default-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        className="text-left hover:text-primary transition-colors cursor-pointer truncate max-w-[200px] sm:max-w-[300px] md:max-w-none"
+                        onClick={() => setPreviewFile(file)}
+                        title={file.name}
                       >
-                        <DownloadIcon className="w-4 h-4" />
-                      </Button>
-                      {canWrite && (
+                        {file.name}
+                      </button>
+                      <span className="block sm:hidden text-xs text-default-400 mt-0.5">
+                        {formatSize(file.size)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell text-default-500 text-sm">
+                      {formatSize(file.size)}
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell text-default-500 text-sm whitespace-nowrap">
+                      {new Date(file.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1 justify-end">
+                        {canWrite && (
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            aria-label={`Share ${file.name}`}
+                            variant="light"
+                            onPress={() => setShareFile(file)}
+                          >
+                            <ShareIcon className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button
                           isIconOnly
                           size="sm"
-                          aria-label={`Delete ${file.name}`}
+                          aria-label={`Download ${file.name}`}
                           variant="light"
-                          color="danger"
-                          onPress={() => {
-                            setDeleteId(file.id);
-                            confirm.onOpen();
-                          }}
+                          onPress={() => handleDownload(file)}
                         >
-                          <DeleteIcon className="w-4 h-4" />
+                          <DownloadIcon className="w-4 h-4" />
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                        {canWrite && (
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            aria-label={`Delete ${file.name}`}
+                            variant="light"
+                            color="danger"
+                            onPress={() => {
+                              setDeleteId(file.id);
+                              confirm.onOpen();
+                            }}
+                          >
+                            <DeleteIcon className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </DropZone>
 
