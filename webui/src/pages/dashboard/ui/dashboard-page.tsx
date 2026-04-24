@@ -1,5 +1,5 @@
 import {Card, CardBody, CardHeader, CircularProgress, useDisclosure} from "@heroui/react";
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import {listSources, getSourceInfo} from "../../../shared/api/sources";
 import {listBuckets} from "../../../shared/api/buckets";
@@ -27,9 +27,10 @@ export function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const createSource = useDisclosure();
   const createBucket = useDisclosure();
+  const hasLoadedOnce = useRef(false);
 
   async function load() {
-    setIsLoading(true);
+    if (!hasLoadedOnce.current) setIsLoading(true);
     try {
       const [srcList, bucketList] = await Promise.all([
         listSources(),
@@ -52,6 +53,7 @@ export function DashboardPage() {
       // keep empty state
     } finally {
       setIsLoading(false);
+      hasLoadedOnce.current = true;
     }
   }
 

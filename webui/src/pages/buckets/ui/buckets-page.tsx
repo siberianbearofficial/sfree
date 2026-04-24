@@ -40,16 +40,20 @@ export function BucketsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [bucketList, sources] = await Promise.all([
-        listBuckets(),
-        listSources(),
-      ]);
-      setBuckets(bucketList);
-      setSourceCount(sources.length);
+      setBuckets(await listBuckets());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load buckets");
     } finally {
       setIsLoading(false);
+    }
+    // Load source count independently so a source API failure
+    // never prevents viewing existing buckets.
+    try {
+      const sources = await listSources();
+      setSourceCount(sources.length);
+    } catch {
+      // Source count stays null; empty-state falls back to the
+      // generic "no buckets" message which still works fine.
     }
   }
 
