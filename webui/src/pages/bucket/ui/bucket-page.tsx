@@ -1,13 +1,11 @@
 import {
   Button,
-  Chip,
   Input,
-  Snippet,
   Spinner,
   useDisclosure,
 } from "@heroui/react";
 import {addToast} from "@heroui/toast";
-import {useCallback, useDeferredValue, useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useDeferredValue, useEffect, useRef, useState} from "react";
 import {Link, useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
@@ -25,67 +23,6 @@ import {ShareBucketDialog} from "../../../features/bucket/ui/share-bucket-dialog
 import {ShareFileDialog} from "../../../features/bucket/ui/share-file-dialog";
 import {formatSize} from "../../../shared/lib/format";
 import {ApiError, showErrorToast} from "../../../shared/api/error";
-
-function CredentialsPanel({bucket}: {bucket: Bucket}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="border border-divider rounded-lg">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-default-100 transition-colors rounded-lg cursor-pointer"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-      >
-        <span>S3 Credentials</span>
-        <svg
-          className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 flex flex-col gap-3">
-          <div>
-            <label className="text-xs text-default-500 mb-1 block">
-              Bucket ID
-            </label>
-            <Snippet size="sm" symbol="" className="w-full">
-              {bucket.id}
-            </Snippet>
-          </div>
-          <div>
-            <label className="text-xs text-default-500 mb-1 block">
-              Access Key
-            </label>
-            <Snippet size="sm" symbol="" className="w-full">
-              {bucket.access_key}
-            </Snippet>
-          </div>
-          <div>
-            <label className="text-xs text-default-500 mb-1 block">
-              Created
-            </label>
-            <p className="text-sm text-default-700">
-              {new Date(bucket.created_at).toLocaleString()}
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const ROLE_COLOR: Record<string, "primary" | "secondary" | "default"> = {
-  owner: "primary",
-  editor: "secondary",
-  viewer: "default",
-};
 
 export function BucketPage() {
   const {id} = useParams<{id: string}>();
@@ -108,9 +45,6 @@ export function BucketPage() {
   const [shareFile, setShareFile] = useState<FileInfo | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const activeSearchQuery = deferredSearchQuery.trim();
-
-  const [sortColumn, setSortColumn] = useState<"name" | "size" | "created_at">("name");
-  const [sortDirection, setSortDirection] = useState<"ascending" | "descending">("ascending");
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (!id) return;
@@ -163,28 +97,6 @@ export function BucketPage() {
     if (!id) return;
     void load(hasLoadedRef.current ? "refresh" : "initial");
   }, [id, load]);
-
-  const sortedFiles = useMemo(() => {
-    const sorted = [...files];
-    sorted.sort((a, b) => {
-      let cmp = 0;
-      if (sortColumn === "name") cmp = a.name.localeCompare(b.name);
-      else if (sortColumn === "size") cmp = a.size - b.size;
-      else if (sortColumn === "created_at")
-        cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      return sortDirection === "descending" ? -cmp : cmp;
-    });
-    return sorted;
-  }, [files, sortColumn, sortDirection]);
-
-  function toggleSort(col: "name" | "size" | "created_at") {
-    if (sortColumn === col) {
-      setSortDirection((d) => (d === "ascending" ? "descending" : "ascending"));
-    } else {
-      setSortColumn(col);
-      setSortDirection("ascending");
-    }
-  }
 
   async function handleUpload(file: File) {
     if (!id || !bucket || !canWriteFiles(bucket)) return;
@@ -297,19 +209,11 @@ export function BucketPage() {
         &larr; Buckets
       </Link>
       <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold">{bucket.key}</h1>
-          <Chip size="sm" variant="flat" color={ROLE_COLOR[bucket.role]}>
-            {bucket.role}
-          </Chip>
-          {bucket.shared && (
-            <Chip size="sm" variant="flat" color="warning">
-              shared
-            </Chip>
-          )}
-        </div>
+        <h1 className="text-3xl font-bold">{bucket.key}</h1>
+        <p>ID: {bucket.id}</p>
+        <p>Access Key: {bucket.access_key}</p>
+        <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
       </div>
-      <CredentialsPanel bucket={bucket} />
       <div className="flex justify-end gap-2">
         {canManage && (
           <Button variant="flat" onPress={shareBucket.onOpen}>
@@ -367,20 +271,14 @@ export function BucketPage() {
           <table className="w-full text-left">
             <thead>
               <tr>
-                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("name")}>
-                  Name
-                </th>
-                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("size")}>
-                  Size
-                </th>
-                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("created_at")}>
-                  Created
-                </th>
+                <th className="pb-2">Name</th>
+                <th className="pb-2">Size</th>
+                <th className="pb-2">Created</th>
                 <th className="pb-2"></th>
               </tr>
             </thead>
             <tbody>
-              {sortedFiles.map((f) => (
+              {files.map((f) => (
                 <tr key={f.id} className="border-t">
                   <td className="py-2">
                     <button
@@ -437,12 +335,6 @@ export function BucketPage() {
           </table>
         )}
       </div>
-      {files.length > 0 && (
-        <p className="text-xs text-default-400">
-          {files.length} file{files.length !== 1 ? "s" : ""} &middot;{" "}
-          {formatSize(files.reduce((acc, f) => acc + f.size, 0))} total
-        </p>
-      )}
       <ConfirmDialog
         isOpen={confirm.isOpen}
         onOpenChange={(open) => {
