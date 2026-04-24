@@ -78,13 +78,12 @@ export function BucketPage() {
       }
       setError(err instanceof Error ? err.message : "Failed to load bucket");
     } finally {
-      if (requestID !== requestIDRef.current) {
-        return;
-      }
-      if (mode === "initial") {
-        setIsLoading(false);
-      } else {
-        setIsRefreshingFiles(false);
+      if (requestID === requestIDRef.current) {
+        if (mode === "initial") {
+          setIsLoading(false);
+        } else {
+          setIsRefreshingFiles(false);
+        }
       }
     }
   }, [activeSearchQuery, id]);

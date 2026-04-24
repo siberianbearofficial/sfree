@@ -1,7 +1,7 @@
 import {Button, Card, CardBody, CardHeader, Chip, Spinner, Tooltip, useDisclosure} from "@heroui/react";
 import {addToast} from "@heroui/toast";
 import {useNavigate} from "react-router-dom";
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useState} from "react";
 import {CreateSourceDialog} from "../../../features/source";
 import {deleteSource, getSourceHealth, listSources} from "../../../shared/api/sources";
 import type {Source, SourceHealth, SourceHealthStatus} from "../../../shared/api/sources";
@@ -88,7 +88,7 @@ export function SourcesPage() {
     });
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -100,11 +100,11 @@ export function SourcesPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
   function renderHealth(source: Source) {
     const health = healthBySource[source.id];
