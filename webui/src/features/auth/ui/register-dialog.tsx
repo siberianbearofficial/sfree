@@ -10,7 +10,7 @@ import {
   ModalHeader,
   Snippet,
 } from "@heroui/react";
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {createUser} from "../../../shared/api/users";
 import {saveAuth} from "../../../shared/lib/auth";
 import {showErrorToast} from "../../../shared/api/error";
@@ -35,16 +35,14 @@ export function RegisterDialog({isOpen, onOpenChange, onSwitchToLogin}: Props) {
     setError(null);
   }
 
+  useEffect(() => {
+    if (!isOpen) reset();
+  }, [isOpen]);
+
   const canSubmit = username.trim().length > 0;
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onOpenChange={(open) => {
-        if (!open) reset();
-        onOpenChange(open);
-      }}
-    >
+    <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
       <ModalContent>
         {(onClose) => (
           <>
