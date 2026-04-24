@@ -183,7 +183,7 @@ step "MinIO client root-endpoint download"
 docker run --rm \
 	--network "${COMPOSE_PROJECT_NAME}_default" \
 	--entrypoint sh \
-	"$MINIO_MC_IMAGE" sh -ceu '
+	"$MINIO_MC_IMAGE" -ceu '
 		mc alias set --api S3v4 --path on sfree http://api:8080 "$1" "$2" >/dev/null
 		mc cat "sfree/$3/$4"
 	' sh "$access_key" "$access_secret" "$bucket_key" "$(basename "$payload")" > "$mc_download"
