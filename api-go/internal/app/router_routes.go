@@ -133,10 +133,12 @@ func registerS3Routes(router *gin.Engine, cfg *config.Config, deps *routerDepend
 	}
 	for _, prefix := range []string{"", "/api/s3"} {
 		bucketPath, objectPath := s3RoutePaths(prefix)
+		bucketSlashPath := bucketPath + "/"
 		router.HEAD(bucketPath, protectedHandlers(limits, s3Auth, handlers.HeadBucket(deps.bucketRepo))...)
 		router.HEAD(objectPath, protectedHandlers(limits, s3Auth, handlers.HeadObject(deps.bucketRepo, deps.fileRepo))...)
 		router.GET(objectPath, protectedHandlers(limits, s3Auth, handlers.GetObjectOrPartsWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
 		router.GET(bucketPath, protectedHandlers(limits, s3Auth, handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo))...)
+		router.GET(bucketSlashPath, protectedHandlers(limits, s3Auth, handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo))...)
 		router.PUT(objectPath, protectedHandlers(limits, s3Auth, handlers.PutObjectOrPartWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory))...)
 		router.POST(bucketPath, protectedHandlers(limits, s3Auth, handlers.PostBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.sourceFactory))...)
 		router.POST(objectPath, protectedHandlers(limits, s3Auth, handlers.PostObjectWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory))...)
