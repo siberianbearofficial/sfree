@@ -174,7 +174,7 @@ test.describe("Bucket creation flow", () => {
     ).toBeVisible();
     await expect(
       page.locator("p").filter({
-        hasText: /(Drag and drop a file here|Drop files here)/,
+        hasText: /(Drag and drop a file here|Drop files here|Drop a file here)/,
       }).first(),
     ).toBeVisible();
   });
