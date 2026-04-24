@@ -127,13 +127,23 @@ func registerS3Routes(router *gin.Engine, cfg *config.Config, deps *routerDepend
 		return
 	}
 	s3Auth := handlers.AWS4Auth(deps.bucketRepo, routerAccessSecret(cfg))
-	router.HEAD("/api/s3/:bucket/*object", protectedHandlers(limits, s3Auth, handlers.HeadObject(deps.bucketRepo, deps.fileRepo))...)
-	router.GET("/api/s3/:bucket/*object", protectedHandlers(limits, s3Auth, handlers.GetObjectOrPartsWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
-	router.GET("/api/s3/:bucket", protectedHandlers(limits, s3Auth, handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo))...)
-	router.PUT("/api/s3/:bucket/*object", protectedHandlers(limits, s3Auth, handlers.PutObjectOrPartWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, routerUploadChunkSize(cfg), deps.sourceFactory))...)
-	router.POST("/api/s3/:bucket", protectedHandlers(limits, s3Auth, handlers.PostBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.sourceFactory))...)
-	router.POST("/api/s3/:bucket/*object", protectedHandlers(limits, s3Auth, handlers.PostObjectWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, routerUploadChunkSize(cfg), deps.sourceFactory))...)
-	router.DELETE("/api/s3/:bucket/*object", protectedHandlers(limits, s3Auth, handlers.DeleteObjectOrAbortWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
+	uploadChunkSize := routerUploadChunkSize(cfg)
+	for _, prefix := range []string{"", "/api/s3"} {
+		bucketPath, objectPath := s3RoutePaths(prefix)
+		router.HEAD(objectPath, protectedHandlers(limits, s3Auth, handlers.HeadObject(deps.bucketRepo, deps.fileRepo))...)
+		router.GET(objectPath, protectedHandlers(limits, s3Auth, handlers.GetObjectOrPartsWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
+		router.GET(bucketPath, protectedHandlers(limits, s3Auth, handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo))...)
+		router.PUT(objectPath, protectedHandlers(limits, s3Auth, handlers.PutObjectOrPartWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory))...)
+		router.POST(bucketPath, protectedHandlers(limits, s3Auth, handlers.PostBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.sourceFactory))...)
+		router.POST(objectPath, protectedHandlers(limits, s3Auth, handlers.PostObjectWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory))...)
+		router.DELETE(objectPath, protectedHandlers(limits, s3Auth, handlers.DeleteObjectOrAbortWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
+	}
+}
+
+func s3RoutePaths(prefix string) (bucketPath, objectPath string) {
+	bucketPath = prefix + "/:bucket"
+	objectPath = prefix + "/:bucket/*object"
+	return bucketPath, objectPath
 }
 
 func publicHandlers(limits *ratelimit.Limiters, handlers ...gin.HandlerFunc) []gin.HandlerFunc {
