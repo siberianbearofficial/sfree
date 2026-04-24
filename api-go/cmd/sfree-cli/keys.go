@@ -46,7 +46,7 @@ These credentials can be used with any S3-compatible client (aws-cli, mc, etc).`
 		fmt.Println("Example usage:")
 		fmt.Printf("  export AWS_ACCESS_KEY_ID=%s\n", resp.AccessKey)
 		fmt.Printf("  export AWS_SECRET_ACCESS_KEY=%s\n", resp.AccessSecret)
-		fmt.Printf("  aws s3 ls s3://%s/ --endpoint-url %s/api/s3\n", resp.Key, serverURL())
+		fmt.Printf("  aws s3 ls s3://%s/ --endpoint-url %s\n", resp.Key, serverURL())
 		return nil
 	},
 }

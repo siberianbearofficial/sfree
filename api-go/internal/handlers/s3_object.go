@@ -178,6 +178,7 @@ func requestObjectUserMetadata(r *http.Request) map[string]string {
 // @Success 200 {string} string ""
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
+// @Router /{bucket}/{object} [head]
 // @Router /api/s3/{bucket}/{object} [head]
 func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -203,6 +204,7 @@ func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.Fi
 // @Success 200 {file} file
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
+// @Router /{bucket}/{object} [get]
 // @Router /api/s3/{bucket}/{object} [get]
 func GetObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return GetObjectWithFactory(bucketRepo, sourceRepo, fileRepo, nil)
@@ -293,6 +295,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 // @Failure 400 {string} string ""
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
+// @Router /{bucket}/{object} [put]
 // @Router /api/s3/{bucket}/{object} [put]
 func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int) gin.HandlerFunc {
 	return PutObjectWithFactory(bucketRepo, sourceRepo, fileRepo, chunkSize, nil)
@@ -341,6 +344,7 @@ func PutObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *r
 // @Failure 400 {string} string ""
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
+// @Router /{bucket}/{object} [put]
 // @Router /api/s3/{bucket}/{object} [put]
 func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return CopyObjectWithFactory(bucketRepo, sourceRepo, fileRepo, nil)
@@ -418,6 +422,7 @@ func CopyObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *
 // @Success 204 {string} string ""
 // @Failure 404 {string} string ""
 // @Failure 500 {string} string ""
+// @Router /{bucket}/{object} [delete]
 // @Router /api/s3/{bucket}/{object} [delete]
 func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
 	return DeleteObjectWithFactory(bucketRepo, sourceRepo, fileRepo, nil)

@@ -217,12 +217,12 @@ aws configure set region us-east-1 --profile sfree
 
 # List objects
 aws s3 ls s3://my-bucket/ \
-  --endpoint-url http://localhost:8080/api/s3 \
+  --endpoint-url http://localhost:8080 \
   --profile sfree
 
 # Download an object
 aws s3 cp s3://my-bucket/README.md ./s3-download.md \
-  --endpoint-url http://localhost:8080/api/s3 \
+  --endpoint-url http://localhost:8080 \
   --profile sfree
 ```
 

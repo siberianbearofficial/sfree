@@ -47,7 +47,7 @@ class E2EConfig:
 
     @property
     def s3_url(self) -> str:
-        return f"{self.base_api_url}/api/s3"
+        return self.base_api_url
 
 
 class SFreeClient:

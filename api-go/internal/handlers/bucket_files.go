@@ -237,45 +237,78 @@ func downloadFile(bucketRepo bucketAccessBucketReader, sourceRepo *repository.So
 // @Failure 500 {string} string ""
 // @Security BasicAuth
 // @Router /api/v1/buckets/{id}/files/{file_id} [delete]
-func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
-	return DeleteFileWithFactory(bucketRepo, sourceRepo, fileRepo, grantRepo, nil)
+func DeleteFile(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository) gin.HandlerFunc {
+	return DeleteFileWithFactory(bucketRepo, sourceRepo, fileRepo, shareLinkRepo, grantRepo, nil)
 }
 
-func DeleteFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, grantRepo *repository.BucketGrantRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
+func DeleteFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, shareLinkRepo *repository.ShareLinkRepository, grantRepo *repository.BucketGrantRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	objectSvc := manager.NewObjectDeleteServiceWithSourceClientFactory(sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
+		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil || shareLinkRepo == nil {
 			slog.ErrorContext(ctx, "delete file: repository is nil")
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-
-		acc := requireBucketAccess(c, bucketRepo, grantRepo, repository.RoleEditor)
-		if acc == nil {
-			return
+		var grantReader bucketAccessGrantReader
+		if grantRepo != nil {
+			grantReader = grantRepo
 		}
-		bucketID := acc.Bucket.ID
-
-		fileID, ok := routeObjectID(c, "file_id")
-		if !ok {
-			return
-		}
-		result, err := objectSvc.DeleteFile(ctx, bucketID, fileID)
-		if err != nil {
-			if errors.Is(err, manager.ErrObjectNotFound) {
-				c.Status(http.StatusNotFound)
-				return
-			}
-			slog.ErrorContext(ctx, "delete file: mutate file", slog.String("error", err.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		if result.CleanupErr != nil {
-			slog.ErrorContext(ctx, "delete file: delete chunk", slog.String("error", result.CleanupErr.Error()))
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		c.Status(http.StatusOK)
+		handleDeleteFile(c, bucketRepo, fileRepo, shareLinkRepo, objectSvc, grantReader)
 	}
+}
+
+func handleDeleteFile(c *gin.Context, bucketRepo bucketAccessBucketReader, fileRepo fileByIDReader, shareLinkRepo shareLinkFileDeleter, objectSvc objectFileDeleter, grantRepo bucketAccessGrantReader) {
+	ctx := c.Request.Context()
+	if bucketRepo == nil || fileRepo == nil || shareLinkRepo == nil || objectSvc == nil {
+		slog.ErrorContext(ctx, "delete file: repository is nil")
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+
+	acc := requireBucketAccessFor(c, bucketRepo, grantRepo, repository.RoleEditor)
+	if acc == nil {
+		return
+	}
+	bucketID := acc.Bucket.ID
+
+	fileID, ok := routeObjectID(c, "file_id")
+	if !ok {
+		return
+	}
+	fileDoc, err := fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		slog.ErrorContext(ctx, "delete file: get file", slog.String("error", err.Error()))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if fileDoc.BucketID != bucketID {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if err := shareLinkRepo.DeleteByFile(ctx, fileID); err != nil {
+		slog.ErrorContext(ctx, "delete file: cleanup share links", slog.String("error", err.Error()))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	result, err := objectSvc.DeleteFile(ctx, bucketID, fileID)
+	if err != nil {
+		if errors.Is(err, manager.ErrObjectNotFound) {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		slog.ErrorContext(ctx, "delete file: mutate file", slog.String("error", err.Error()))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if result.CleanupErr != nil {
+		slog.ErrorContext(ctx, "delete file: delete chunk", slog.String("error", result.CleanupErr.Error()))
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	c.Status(http.StatusOK)
 }
