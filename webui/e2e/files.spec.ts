@@ -127,6 +127,70 @@ test.describe("File listing and download", () => {
     await expect(fileRows.first().getByRole("button", { name: "Delete report.pdf" })).toBeVisible();
   });
 
+  test("bucket detail filters files by filename search", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+
+    const requestedQueries: string[] = [];
+    await page.route("**/api/v1/buckets/bkt-1/files*", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      const query = new URL(route.request().url()).searchParams.get("q") ?? "";
+      requestedQueries.push(query);
+      const body = query
+        ? MOCK_FILES.filter((file) =>
+            file.name.toLowerCase().includes(query.toLowerCase()),
+          )
+        : MOCK_FILES;
+      await route.fulfill({status: 200, json: body});
+    });
+
+    await page.goto("/buckets/bkt-1");
+    await expect(page.getByText("report.pdf")).toBeVisible();
+    await expect(page.getByText("data.csv")).toBeVisible();
+
+    await page.getByLabel("Search files").fill("report");
+
+    await expect.poll(() => requestedQueries.includes("report")).toBe(true);
+    await expect(page.getByText("report.pdf")).toBeVisible();
+    await expect(page.getByText("data.csv")).not.toBeVisible();
+    await expect(page.getByText("1 matching file")).toBeVisible();
+    await expect(
+      page.getByRole("button", {name: "Download report.pdf"}),
+    ).toBeVisible();
+  });
+
+  test("bucket detail shows a search-specific empty state", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+
+    await page.route("**/api/v1/buckets/bkt-1/files*", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      const query = new URL(route.request().url()).searchParams.get("q") ?? "";
+      const body = query === "missing" ? [] : MOCK_FILES;
+      await route.fulfill({status: 200, json: body});
+    });
+
+    await page.goto("/buckets/bkt-1");
+    await expect(page.getByText("report.pdf")).toBeVisible();
+
+    await page.getByLabel("Search files").fill("missing");
+
+    await expect(page.getByText("No matching files")).toBeVisible();
+    await expect(
+      page.getByText('No files in this bucket match "missing".'),
+    ).toBeVisible();
+    await expect(page.getByText("report.pdf")).not.toBeVisible();
+    await expect(page.getByRole("button", {name: "Upload File"})).toHaveCount(1);
+  });
+
   test("viewer file rows only expose download actions", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
