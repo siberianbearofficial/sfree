@@ -4,8 +4,7 @@
  * Covers:
  * - Sources page renders with empty state
  * - "Add Source" button opens the create-source dialog
- * - Filling the form and submitting calls the API and refreshes the list
- * - Newly created source appears in the list
+ * - Filling the form and submitting calls the API and opens the new source
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -83,6 +82,25 @@ test.describe("Source creation flow", () => {
       }
     });
     await mockPost(page, "/sources/gdrive", MOCK_SOURCE);
+    await mockGet(page, "/sources/src-1/info", {
+      ...MOCK_SOURCE,
+      files: [],
+      storage_total: 0,
+      storage_used: 0,
+      storage_free: 0,
+    });
+    await mockGet(page, "/sources/src-1/health", {
+      id: "src-1",
+      type: "gdrive",
+      status: "healthy",
+      checked_at: "2024-01-15T10:00:00Z",
+      latency_ms: 12,
+      reason_code: "ok",
+      message: "Google Drive connection is healthy.",
+      quota_total_bytes: 1024,
+      quota_used_bytes: 256,
+      quota_free_bytes: 768,
+    });
 
     await page.goto("/sources");
     await expect(page.getByText("No sources yet")).toBeVisible();
@@ -103,7 +121,8 @@ test.describe("Source creation flow", () => {
       .click();
 
     await expect(page.getByRole("dialog")).not.toBeVisible();
-    await expect(page.getByText("My Drive", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/sources\/src-1$/);
+    await expect(page.getByRole("heading", {name: "My Drive"})).toBeVisible();
   });
 
   test("sources page shows existing sources", async ({ page }) => {
