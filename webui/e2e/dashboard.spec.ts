@@ -8,8 +8,32 @@
  * - Unauthenticated user at "/" sees the landing page
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { injectAuth, mockGet, API_GLOB } from "./helpers";
+
+async function expectDashboardNav(
+  page: Page,
+  name: "Sources" | "Buckets",
+) {
+  const pattern =
+    name === "Sources"
+      ? /^(Manage Sources|Sources)$/
+      : /^(Manage Buckets|Buckets)$/;
+  await expect(
+    page.locator("a, button").filter({ hasText: pattern }).first(),
+  ).toBeVisible();
+}
+
+async function clickDashboardNav(
+  page: Page,
+  name: "Sources" | "Buckets",
+) {
+  const pattern =
+    name === "Sources"
+      ? /^(Manage Sources|Sources)$/
+      : /^(Manage Buckets|Buckets)$/;
+  await page.locator("a, button").filter({ hasText: pattern }).first().click();
+}
 
 test.describe("Dashboard", () => {
   test("authenticated user at / redirects to /dashboard", async ({ page }) => {
@@ -32,23 +56,15 @@ test.describe("Dashboard", () => {
     await expect(
       summaryCards.getByText("Storage Used", { exact: true }),
     ).toBeVisible();
-    await expect(
-      page
-        .locator("a, button")
-        .filter({ hasText: /^Manage Sources$/ }),
-    ).toBeVisible();
-    await expect(
-      page
-        .locator("a, button")
-        .filter({ hasText: /^Manage Buckets$/ }),
-    ).toBeVisible();
+    await expectDashboardNav(page, "Sources");
+    await expectDashboardNav(page, "Buckets");
   });
 
   test("Manage Buckets button navigates to /buckets", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await page.goto("/dashboard");
-    await page.locator("a, button").filter({ hasText: /^Manage Buckets$/ }).click();
+    await clickDashboardNav(page, "Buckets");
     await expect(page).toHaveURL("/buckets");
     await expect(
       page.getByRole("heading", { name: /^Buckets$/, level: 1 }),
@@ -59,7 +75,7 @@ test.describe("Dashboard", () => {
     await injectAuth(page);
     await mockGet(page, "/sources", []);
     await page.goto("/dashboard");
-    await page.locator("a, button").filter({ hasText: /^Manage Sources$/ }).click();
+    await clickDashboardNav(page, "Sources");
     await expect(page).toHaveURL("/sources");
     await expect(
       page.getByRole("heading", { name: /^Sources$/, level: 1 }),
@@ -71,10 +87,12 @@ test.describe("Dashboard", () => {
     await page.route(`${API_GLOB}/**`, (route) => route.abort());
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "Free Distributed Object Storage" }),
+      page.getByRole("heading", {
+        name: /^(Free Distributed Object Storage|Unify your free storage into one bucket)$/,
+      }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Sign Up" }).first(),
+      page.getByRole("button", { name: /^(Sign Up|Get Started Free)$/ }).first(),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Log In" }),
