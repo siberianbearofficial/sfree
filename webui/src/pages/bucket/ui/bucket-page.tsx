@@ -210,10 +210,8 @@ export function BucketPage() {
   const activeSearchQuery = deferredSearchQuery.trim();
 
   const [uploadingCount, setUploadingCount] = useState(0);
-  type SortColumn = "name" | "size" | "created_at";
-  type SortDir = "ascending" | "descending";
-  const [sortColumn, setSortColumn] = useState<SortColumn>("name");
-  const [sortDirection, setSortDirection] = useState<SortDir>("ascending");
+  const [sortColumn, setSortColumn] = useState<"name" | "size" | "created_at">("name");
+  const [sortDirection, setSortDirection] = useState<"ascending" | "descending">("ascending");
 
   /* ---- data loading ---- */
 
@@ -271,20 +269,16 @@ export function BucketPage() {
     const sorted = [...files];
     sorted.sort((a, b) => {
       let cmp = 0;
-      if (sortColumn === "name") {
-        cmp = a.name.localeCompare(b.name);
-      } else if (sortColumn === "size") {
-        cmp = a.size - b.size;
-      } else if (sortColumn === "created_at") {
-        cmp =
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
+      if (sortColumn === "name") cmp = a.name.localeCompare(b.name);
+      else if (sortColumn === "size") cmp = a.size - b.size;
+      else if (sortColumn === "created_at")
+        cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return sortDirection === "descending" ? -cmp : cmp;
     });
     return sorted;
   }, [files, sortColumn, sortDirection]);
 
-  function toggleSort(col: SortColumn) {
+  function toggleSort(col: "name" | "size" | "created_at") {
     if (sortColumn === col) {
       setSortDirection((d) => (d === "ascending" ? "descending" : "ascending"));
     } else {
@@ -303,12 +297,7 @@ export function BucketPage() {
       filesToUpload.map(async (file) => {
         try {
           await uploadFile(id, file);
-          addToast({
-            title: "File uploaded",
-            description: `${file.name} added to bucket`,
-            color: "success",
-            timeout: 4000,
-          });
+          addToast({title: "File uploaded", description: `${file.name} added to bucket`, color: "success", timeout: 4000});
         } finally {
           setUploadingCount((c) => c - 1);
         }
@@ -435,13 +424,8 @@ export function BucketPage() {
         </div>
         <div className="flex gap-2 shrink-0">
           {canManage && (
-            <Button
-              variant="flat"
-              size="sm"
-              startContent={<ShareIcon className="w-4 h-4" />}
-              onPress={shareBucket.onOpen}
-            >
-              <span className="hidden sm:inline">Share</span>
+            <Button variant="flat" onPress={shareBucket.onOpen}>
+              Share Bucket
             </Button>
           )}
           {canWrite && (
@@ -453,12 +437,8 @@ export function BucketPage() {
                 onChange={onFileChange}
                 multiple
               />
-              <Button
-                color="primary"
-                size="sm"
-                onPress={() => fileInput.current?.click()}
-              >
-                Upload
+              <Button color="primary" onPress={() => fileInput.current?.click()}>
+                Upload File
               </Button>
             </>
           )}
@@ -499,104 +479,82 @@ export function BucketPage() {
             <EmptyState
               title={emptyTitle}
               description={emptyDescription}
-              ctaLabel={canWrite ? "Upload File" : undefined}
-              onCtaPress={canWrite ? () => fileInput.current?.click() : undefined}
+              ctaLabel={!activeSearchQuery && canWrite ? "Upload File" : undefined}
+              onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
             />
           </div>
         ) : (
-          <div className="border border-divider rounded-lg overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-divider bg-default-50">
-                  <th className="px-4 py-3 text-sm font-medium">
-                    <button type="button" className="cursor-pointer select-none" onClick={() => toggleSort("name")}>
-                      Name{sortColumn === "name" && <span aria-hidden="true"> {sortDirection === "ascending" ? "↑" : "↓"}</span>}
+          <table className="w-full text-left">
+            <thead>
+              <tr>
+                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("name")}>
+                  Name
+                </th>
+                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("size")}>
+                  Size
+                </th>
+                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("created_at")}>
+                  Created
+                </th>
+                <th className="pb-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedFiles.map((f) => (
+                <tr key={f.id} className="border-t">
+                  <td className="py-2">
+                    <button
+                      type="button"
+                      className="text-left hover:text-primary transition-colors cursor-pointer"
+                      onClick={() => setPreviewFile(f)}
+                    >
+                      {f.name}
                     </button>
-                  </th>
-                  <th className="px-4 py-3 text-sm font-medium hidden sm:table-cell">
-                    <button type="button" className="cursor-pointer select-none" onClick={() => toggleSort("size")}>
-                      Size{sortColumn === "size" && <span aria-hidden="true"> {sortDirection === "ascending" ? "↑" : "↓"}</span>}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-sm font-medium hidden md:table-cell">
-                    <button type="button" className="cursor-pointer select-none" onClick={() => toggleSort("created_at")}>
-                      Created{sortColumn === "created_at" && <span aria-hidden="true"> {sortDirection === "ascending" ? "↑" : "↓"}</span>}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-sm font-medium text-right w-[1%]">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedFiles.map((file) => (
-                  <tr key={file.id} className="border-t border-divider hover:bg-default-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        className="text-left hover:text-primary transition-colors cursor-pointer truncate max-w-[200px] sm:max-w-[300px] md:max-w-none"
-                        onClick={() => setPreviewFile(file)}
-                        title={file.name}
-                      >
-                        {file.name}
-                      </button>
-                      <span className="block sm:hidden text-xs text-default-400 mt-0.5">
-                        {formatSize(file.size)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell text-default-500 text-sm">
-                      {formatSize(file.size)}
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell text-default-500 text-sm whitespace-nowrap">
-                      {new Date(file.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1 justify-end">
-                        {canWrite && (
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            aria-label={`Share ${file.name}`}
-                            variant="light"
-                            onPress={() => setShareFile(file)}
-                          >
-                            <span className="sr-only">{`Share ${file.name}`}</span>
-                            <ShareIcon className="w-4 h-4" />
-                          </Button>
-                        )}
+                  </td>
+                  <td className="py-2">{formatSize(f.size)}</td>
+                  <td className="py-2">
+                    {new Date(f.created_at).toLocaleString()}
+                  </td>
+                  <td className="py-2">
+                    <div className="flex gap-2">
+                      {canWrite && (
                         <Button
                           isIconOnly
-                          size="sm"
-                          aria-label={`Download ${file.name}`}
+                          aria-label={`Share ${f.name}`}
                           variant="light"
-                          onPress={() => handleDownload(file)}
+                          onPress={() => setShareFile(f)}
                         >
-                          <span className="sr-only">{`Download ${file.name}`}</span>
-                          <DownloadIcon className="w-4 h-4" />
+                          <ShareIcon className="w-5 h-5" />
                         </Button>
-                        {canWrite && (
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            aria-label={`Delete ${file.name}`}
-                            variant="light"
-                            color="danger"
-                            onPress={() => {
-                              setDeleteId(file.id);
-                              confirm.onOpen();
-                            }}
-                          >
-                            <span className="sr-only">{`Delete ${file.name}`}</span>
-                            <DeleteIcon className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      )}
+                      <Button
+                        isIconOnly
+                        aria-label={`Download ${f.name}`}
+                        variant="light"
+                        onPress={() => handleDownload(f)}
+                      >
+                        <DownloadIcon className="w-5 h-5" />
+                      </Button>
+                      {canWrite && (
+                        <Button
+                          isIconOnly
+                          aria-label={`Delete ${f.name}`}
+                          variant="light"
+                          color="danger"
+                          onPress={() => {
+                            setDeleteId(f.id);
+                            confirm.onOpen();
+                          }}
+                        >
+                          <DeleteIcon className="w-5 h-5" />
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </DropZone>
 
