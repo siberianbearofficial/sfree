@@ -56,9 +56,9 @@ At a high level:
 
 | Source type | Backend support | Browser UI creation | Notes |
 | --- | --- | --- | --- |
-| Google Drive | Yes | Yes | Richest source info and quota reporting. |
-| Telegram | Yes | Yes | Uses bot API for chunk storage. |
-| S3-compatible | Yes | Yes | Works with MinIO, Backblaze B2, Wasabi, etc. |
+| Google Drive | Yes | Yes | Richest source info and native quota reporting. |
+| Telegram | Yes | Yes | Uses bot API for chunk storage; quota remains unavailable. |
+| S3-compatible | Yes | Yes | Works with MinIO, Backblaze B2, Wasabi, etc.; health is supported without inventing provider-wide quota. |
 
 ## Data Model And Storage Behavior
 
@@ -83,7 +83,7 @@ copy:
   and source create/list responses echo stored credential payloads.
 - Do not imply identical observability across source types. Google Drive,
   Telegram, and S3-compatible sources return different levels of file/quota
-  detail.
+  detail, and only provider-native quota should be rendered as capacity.
 - Do not describe rate limiting as complete abuse protection. The API has
   in-memory request limits, but they are not a distributed production
   throttling layer.

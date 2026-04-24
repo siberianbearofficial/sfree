@@ -359,6 +359,7 @@ func DeleteSource(repo *repository.SourceRepository, bucketRepo *repository.Buck
 
 // GetSourceInfo godoc
 // @Summary Get source info
+// @Description Returns provider file inventory plus provider-reported storage usage fields when cheaply available. These storage totals are not a universal quota contract; use the health endpoint for honest quota/capacity signals.
 // @Tags sources
 // @Param id path string true "Source ID"
 // @Success 200 {object} sourceInfoResponse
@@ -411,7 +412,7 @@ func getSourceInfo(repo *repository.SourceRepository, factory manager.SourceClie
 
 // GetSourceHealth godoc
 // @Summary Check source health
-// @Description Runs a lightweight on-demand provider probe. Google Drive returns native quota when available; S3-compatible and Telegram quota fields are null because no cheap native capacity is available.
+// @Description Runs a lightweight on-demand provider probe. Google Drive returns native quota when available; S3-compatible and Telegram quota fields stay null because SFree does not invent provider-wide capacity where no cheap native signal exists.
 // @Tags sources
 // @Param id path string true "Source ID"
 // @Success 200 {object} sourceHealthResponse
