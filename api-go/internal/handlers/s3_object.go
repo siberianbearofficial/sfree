@@ -302,7 +302,7 @@ func PutObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.S
 }
 
 func PutObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, chunkSize int, factory manager.SourceClientFactory) gin.HandlerFunc {
-	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
+	objectSvc := manager.NewObjectWriteServiceWithSourceClientFactory(sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -351,7 +351,7 @@ func CopyObject(bucketRepo *repository.BucketRepository, sourceRepo *repository.
 }
 
 func CopyObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
-	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
+	objectSvc := manager.NewObjectWriteServiceWithSourceClientFactory(sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {
@@ -429,7 +429,7 @@ func DeleteObject(bucketRepo *repository.BucketRepository, sourceRepo *repositor
 }
 
 func DeleteObjectWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
-	objectSvc := manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, nil, factory)
+	objectSvc := manager.NewObjectDeleteServiceWithSourceClientFactory(sourceRepo, fileRepo, factory)
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		if bucketRepo == nil || sourceRepo == nil || fileRepo == nil {

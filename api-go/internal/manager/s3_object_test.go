@@ -462,9 +462,9 @@ func fileKey(bucketID primitive.ObjectID, name string) string {
 	return bucketID.Hex() + "/" + name
 }
 
-func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) *ObjectService {
+func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) *objectService {
 	now := time.Date(2026, 4, 21, 12, 0, 0, 0, time.UTC)
-	return &ObjectService{
+	return &objectService{
 		sources: &fakeObjectSources{sources: []repository.Source{{ID: objectServiceTestSourceID}}},
 		files:   files,
 		uploadChunks: func(_ context.Context, r io.Reader, _ []repository.Source, _ int, _ SourceSelector) ([]repository.FileChunk, error) {
@@ -483,12 +483,12 @@ func testObjectService(files *fakeObjectFiles, deleted *[]repository.FileChunk) 
 	}
 }
 
-func TestNewObjectServiceWithSourceClientFactoryUsesFactoryForUploads(t *testing.T) {
+func TestObjectWriteServiceWithSourceClientFactoryUsesFactoryForUploads(t *testing.T) {
 	t.Parallel()
 
 	sourceID := primitive.NewObjectID()
 	calls := 0
-	svc := NewObjectServiceWithSourceClientFactory(nil, nil, nil, func(_ context.Context, src *repository.Source) (SourceClient, error) {
+	svc := NewObjectWriteServiceWithSourceClientFactory(nil, nil, func(_ context.Context, src *repository.Source) (SourceClient, error) {
 		calls++
 		if src.ID != sourceID {
 			t.Fatalf("expected source %s, got %s", sourceID.Hex(), src.ID.Hex())
@@ -496,7 +496,7 @@ func TestNewObjectServiceWithSourceClientFactoryUsesFactoryForUploads(t *testing
 		return &stubSourceClient{}, nil
 	})
 
-	chunks, err := svc.uploadChunks(context.Background(), bytes.NewReader([]byte("payload")), []repository.Source{{ID: sourceID}}, len("payload"), &RoundRobinSelector{})
+	chunks, err := svc.service.uploadChunks(context.Background(), bytes.NewReader([]byte("payload")), []repository.Source{{ID: sourceID}}, len("payload"), &RoundRobinSelector{})
 	if err != nil {
 		t.Fatalf("upload chunks: %v", err)
 	}
@@ -635,7 +635,7 @@ func TestObjectServicePutObjectRejectsPartiallyResolvedSources(t *testing.T) {
 	missingID := primitive.NewObjectID()
 	files := newFakeObjectFiles()
 	uploadCalled := false
-	svc := &ObjectService{
+	svc := &objectService{
 		sources: &fakeObjectSources{sources: []repository.Source{{ID: presentID}}},
 		files:   files,
 		uploadChunks: func(context.Context, io.Reader, []repository.Source, int, SourceSelector) ([]repository.FileChunk, error) {

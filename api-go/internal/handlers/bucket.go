@@ -363,7 +363,7 @@ func DeleteBucketWithFactory(repo *repository.BucketRepository, sourceRepo *repo
 		}
 		var objectSvc bucketContentsDeleter
 		if sourceRepo != nil && fileRepo != nil {
-			objectSvc = manager.NewObjectServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, factory)
+			objectSvc = manager.NewBucketCleanupServiceWithSourceClientFactory(sourceRepo, fileRepo, mpRepo, factory)
 		}
 		var grantReader bucketAccessGrantReader
 		var grantDeleter bucketGrantBucketDeleter
