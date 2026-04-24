@@ -4,6 +4,7 @@ import {useEffect, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import {CreateBucketDialog} from "../../../features/bucket";
 import {deleteBucket, listBuckets} from "../../../shared/api/buckets";
+import {listSources} from "../../../shared/api/sources";
 import type {Bucket} from "../../../shared/api/buckets";
 import {DeleteIcon} from "@heroui/shared-icons";
 import {ConfirmDialog, EmptyState} from "../../../shared/ui";
@@ -11,6 +12,7 @@ import {showErrorToast} from "../../../shared/api/error";
 
 export function BucketsPage() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
+  const [sourceCount, setSourceCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -38,7 +40,12 @@ export function BucketsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      setBuckets(await listBuckets());
+      const [bucketList, sources] = await Promise.all([
+        listBuckets(),
+        listSources(),
+      ]);
+      setBuckets(bucketList);
+      setSourceCount(sources.length);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load buckets");
     } finally {
@@ -71,12 +78,21 @@ export function BucketsPage() {
           variant="danger"
         />
       ) : buckets.length === 0 ? (
-        <EmptyState
-          title="No buckets yet"
-          description="Buckets give you S3-compatible access to your files. Create one to get started."
-          ctaLabel="Add Bucket"
-          onCtaPress={create.onOpen}
-        />
+        sourceCount === 0 ? (
+          <EmptyState
+            title="Connect a source first"
+            description="Before creating a bucket you need at least one source. Head to Sources to connect one."
+            ctaLabel="Go to Sources"
+            onCtaPress={() => navigate("/sources")}
+          />
+        ) : (
+          <EmptyState
+            title="No buckets yet"
+            description="Step 2: create a bucket to get S3-compatible access to your files. Almost there!"
+            ctaLabel="Create Bucket"
+            onCtaPress={create.onOpen}
+          />
+        )
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {buckets.map((b) => (

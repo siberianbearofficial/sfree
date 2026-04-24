@@ -192,11 +192,15 @@ export function BucketPage() {
 
   const canManage = canManageBucket(bucket);
   const canWrite = canWriteFiles(bucket);
-  const emptyTitle = activeSearchQuery ? "No matching files" : "No files yet";
+  const emptyTitle = activeSearchQuery
+    ? "No matching files"
+    : canWrite
+      ? "Last step: upload your first file"
+      : "No files yet";
   const emptyDescription = activeSearchQuery
     ? `No files in this bucket match "${activeSearchQuery}".`
     : canWrite
-      ? "Drag and drop a file here, or use the Upload button."
+      ? "Drop a file here or click Upload to finish setting up your SFree account."
       : "Files shared in this bucket will appear here.";
 
   return (

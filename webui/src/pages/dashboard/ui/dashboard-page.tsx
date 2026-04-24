@@ -1,9 +1,12 @@
-import {Card, CardBody, CardHeader, Button, CircularProgress} from "@heroui/react";
+import {Card, CardBody, CardHeader, CircularProgress, useDisclosure} from "@heroui/react";
 import {useEffect, useState} from "react";
-import {Link, useNavigate} from "react-router-dom";
+import {useNavigate} from "react-router-dom";
 import {listSources, getSourceInfo} from "../../../shared/api/sources";
 import {listBuckets} from "../../../shared/api/buckets";
 import {SourceTypeChip} from "../../../entities/source";
+import {OnboardingHero} from "../../../features/onboarding";
+import {CreateSourceDialog} from "../../../features/source";
+import {CreateBucketDialog} from "../../../features/bucket";
 import type {Source, SourceInfo} from "../../../shared/api/sources";
 import type {Bucket} from "../../../shared/api/buckets";
 
@@ -22,34 +25,37 @@ export function DashboardPage() {
   const [sources, setSources] = useState<SourceWithInfo[]>([]);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const createSource = useDisclosure();
+  const createBucket = useDisclosure();
+
+  async function load() {
+    setIsLoading(true);
+    try {
+      const [srcList, bucketList] = await Promise.all([
+        listSources(),
+        listBuckets(),
+      ]);
+      setBuckets(bucketList);
+
+      const withInfo = await Promise.all(
+        srcList.map(async (s) => {
+          try {
+            const info = await getSourceInfo(s.id);
+            return {...s, info};
+          } catch {
+            return {...s, info: null};
+          }
+        }),
+      );
+      setSources(withInfo);
+    } catch {
+      // keep empty state
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      setIsLoading(true);
-      try {
-        const [srcList, bucketList] = await Promise.all([
-          listSources(),
-          listBuckets(),
-        ]);
-        setBuckets(bucketList);
-
-        const withInfo = await Promise.all(
-          srcList.map(async (s) => {
-            try {
-              const info = await getSourceInfo(s.id);
-              return {...s, info};
-            } catch {
-              return {...s, info: null};
-            }
-          }),
-        );
-        setSources(withInfo);
-      } catch {
-        // keep empty state
-      } finally {
-        setIsLoading(false);
-      }
-    }
     load();
   }, []);
 
@@ -61,6 +67,10 @@ export function DashboardPage() {
     (sum, s) => sum + (s.info?.storage_used ?? 0),
     0,
   );
+
+  const hasSources = sources.length > 0;
+  const hasBuckets = buckets.length > 0;
+  const showOnboarding = !hasSources || !hasBuckets;
 
   if (isLoading) {
     return (
@@ -74,6 +84,18 @@ export function DashboardPage() {
   return (
     <div className="p-6 sm:p-8 flex flex-col gap-8">
       <h1 className="text-3xl font-bold">Dashboard</h1>
+
+      {showOnboarding && (
+        <OnboardingHero
+          hasSources={hasSources}
+          hasBuckets={hasBuckets}
+          onAddSource={createSource.onOpen}
+          onAddBucket={createBucket.onOpen}
+          onGoToBucket={() => {
+            if (buckets.length > 0) navigate(`/buckets/${buckets[0].id}`);
+          }}
+        />
+      )}
 
       {/* Summary stat cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -104,18 +126,9 @@ export function DashboardPage() {
       </div>
 
       {/* Sources breakdown */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Sources</h2>
-        {sources.length === 0 ? (
-          <Card>
-            <CardBody className="text-center py-8">
-              <p className="text-default-500 mb-4">No sources configured yet.</p>
-              <Button as={Link} color="primary" to="/sources">
-                Add a Source
-              </Button>
-            </CardBody>
-          </Card>
-        ) : (
+      {hasSources && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Sources</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sources.map((s) => {
               const fileCount = s.info?.files.length ?? 0;
@@ -165,9 +178,11 @@ export function DashboardPage() {
               );
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
+      <CreateSourceDialog isOpen={createSource.isOpen} onOpenChange={createSource.onOpenChange} onCreated={load} />
+      <CreateBucketDialog isOpen={createBucket.isOpen} onOpenChange={createBucket.onOpenChange} onCreated={load} />
     </div>
   );
 }
