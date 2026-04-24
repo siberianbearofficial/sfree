@@ -26,28 +26,6 @@ import {ShareFileDialog} from "../../../features/bucket/ui/share-file-dialog";
 import {formatSize} from "../../../shared/lib/format";
 import {ApiError, showErrorToast} from "../../../shared/api/error";
 
-/* ------------------------------------------------------------------ */
-/*  Role helpers                                                       */
-/* ------------------------------------------------------------------ */
-
-function canManageBucket(bucket: Bucket) {
-  return bucket.role === "owner";
-}
-
-function canWriteFiles(bucket: Bucket) {
-  return bucket.role === "owner" || bucket.role === "editor";
-}
-
-const ROLE_COLOR: Record<string, "primary" | "secondary" | "default"> = {
-  owner: "primary",
-  editor: "secondary",
-  viewer: "default",
-};
-
-/* ------------------------------------------------------------------ */
-/*  Credentials panel                                                  */
-/* ------------------------------------------------------------------ */
-
 function CredentialsPanel({bucket}: {bucket: Bucket}) {
   const [open, setOpen] = useState(false);
 
@@ -103,99 +81,21 @@ function CredentialsPanel({bucket}: {bucket: Bucket}) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Drop zone                                                          */
-/* ------------------------------------------------------------------ */
-
-function DropZone({
-  active,
-  onDrop,
-  children,
-}: {
-  active: boolean;
-  onDrop: (files: FileList) => void;
-  children: React.ReactNode;
-}) {
-  const [dragging, setDragging] = useState(false);
-  const dragCounter = useRef(0);
-
-  function handleDragEnter(e: React.DragEvent) {
-    e.preventDefault();
-    dragCounter.current++;
-    setDragging(true);
-  }
-  function handleDragLeave(e: React.DragEvent) {
-    e.preventDefault();
-    dragCounter.current--;
-    if (dragCounter.current <= 0) {
-      dragCounter.current = 0;
-      setDragging(false);
-    }
-  }
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    dragCounter.current = 0;
-    setDragging(false);
-    if (active && e.dataTransfer.files.length > 0) {
-      onDrop(e.dataTransfer.files);
-    }
-  }
-
-  function suppressDrag(e: React.DragEvent) {
-    e.preventDefault();
-  }
-
-  return (
-    <div
-      className={`relative rounded-lg transition-colors ${
-        dragging && active ? "ring-2 ring-primary bg-primary/5" : ""
-      }`}
-      onDragEnter={active ? handleDragEnter : suppressDrag}
-      onDragOver={suppressDrag}
-      onDragLeave={active ? handleDragLeave : undefined}
-      onDrop={active ? handleDrop : suppressDrag}
-    >
-      {dragging && active && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/5 rounded-lg pointer-events-none">
-          <p className="text-primary font-medium">Drop files here</p>
-        </div>
-      )}
-      {children}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Upload queue indicator                                             */
-/* ------------------------------------------------------------------ */
-
-function UploadQueue({count}: {count: number}) {
-  if (count === 0) return null;
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg text-sm text-primary">
-      <Spinner size="sm" color="primary" />
-      <span>
-        Uploading {count} file{count > 1 ? "s" : ""}…
-      </span>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Main page                                                          */
-/* ------------------------------------------------------------------ */
+const ROLE_COLOR: Record<string, "primary" | "secondary" | "default"> = {
+  owner: "primary",
+  editor: "secondary",
+  viewer: "default",
+};
 
 export function BucketPage() {
   const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
-
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshingFiles, setIsRefreshingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-
   const fileInput = useRef<HTMLInputElement>(null);
   const hasLoadedRef = useRef(false);
   const requestIDRef = useRef(0);
@@ -209,11 +109,8 @@ export function BucketPage() {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const activeSearchQuery = deferredSearchQuery.trim();
 
-  const [uploadingCount, setUploadingCount] = useState(0);
   const [sortColumn, setSortColumn] = useState<"name" | "size" | "created_at">("name");
   const [sortDirection, setSortDirection] = useState<"ascending" | "descending">("ascending");
-
-  /* ---- data loading ---- */
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (!id) return;
@@ -230,12 +127,16 @@ export function BucketPage() {
         getBucket(id),
         listFiles(id, activeSearchQuery),
       ]);
-      if (requestID !== requestIDRef.current) return;
+      if (requestID !== requestIDRef.current) {
+        return;
+      }
       setBucket(loadedBucket);
       setFiles(fs);
       hasLoadedRef.current = true;
     } catch (err) {
-      if (requestID !== requestIDRef.current) return;
+      if (requestID !== requestIDRef.current) {
+        return;
+      }
       if (err instanceof ApiError && err.status === 404) {
         setBucket(null);
         setFiles([]);
@@ -263,8 +164,6 @@ export function BucketPage() {
     void load(hasLoadedRef.current ? "refresh" : "initial");
   }, [id, load]);
 
-  /* ---- sorted files ---- */
-
   const sortedFiles = useMemo(() => {
     const sorted = [...files];
     sorted.sort((a, b) => {
@@ -287,37 +186,28 @@ export function BucketPage() {
     }
   }
 
-  /* ---- uploads ---- */
-
-  async function handleMultiUpload(fileList: FileList) {
+  async function handleUpload(file: File) {
     if (!id || !bucket || !canWriteFiles(bucket)) return;
-    const filesToUpload = Array.from(fileList);
-    setUploadingCount((c) => c + filesToUpload.length);
-    const results = await Promise.allSettled(
-      filesToUpload.map(async (file) => {
-        try {
-          await uploadFile(id, file);
-          addToast({title: "File uploaded", description: `${file.name} added to bucket`, color: "success", timeout: 4000});
-        } finally {
-          setUploadingCount((c) => c - 1);
-        }
-      }),
-    );
-    for (const r of results) {
-      if (r.status === "rejected") showErrorToast(r.reason);
+    try {
+      await uploadFile(id, file);
+      addToast({title: "File uploaded", description: `${file.name} added to bucket`, color: "success", timeout: 4000});
+      await load("refresh");
+    } catch (err) {
+      showErrorToast(err);
     }
-    await load("refresh");
   }
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const fileList = e.target.files;
-    if (fileList && fileList.length > 0) {
-      handleMultiUpload(fileList);
-      e.target.value = "";
-    }
+    const f = e.target.files?.[0];
+    if (f) handleUpload(f);
   }
 
-  /* ---- delete ---- */
+  function onDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    if (!bucket || !canWriteFiles(bucket)) return;
+    const f = e.dataTransfer.files?.[0];
+    if (f) handleUpload(f);
+  }
 
   async function handleDelete() {
     if (!id || !deleteId) return;
@@ -334,7 +224,9 @@ export function BucketPage() {
     }
   }
 
-  /* ---- download ---- */
+  function openShareModal(file: FileInfo) {
+    setShareFile(file);
+  }
 
   async function handleDownload(file: FileInfo) {
     if (!id) return;
@@ -344,8 +236,6 @@ export function BucketPage() {
       showErrorToast(err);
     }
   }
-
-  /* ---- loading / error / not-found states ---- */
 
   if (isLoading) {
     return (
@@ -406,13 +296,9 @@ export function BucketPage() {
       <Link to="/buckets" className="text-sm text-default-500 hover:text-primary transition-colors">
         &larr; Buckets
       </Link>
-
-      {/* Header row */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold truncate">
-            {bucket.key}
-          </h1>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold">{bucket.key}</h1>
           <Chip size="sm" variant="flat" color={ROLE_COLOR[bucket.role]}>
             {bucket.role}
           </Chip>
@@ -422,38 +308,35 @@ export function BucketPage() {
             </Chip>
           )}
         </div>
-        <div className="flex gap-2 shrink-0">
-          {canManage && (
-            <Button variant="flat" onPress={shareBucket.onOpen}>
-              Share Bucket
-            </Button>
-          )}
-          {canWrite && (
-            <>
-              <input
-                type="file"
-                ref={fileInput}
-                className="hidden"
-                onChange={onFileChange}
-                multiple
-              />
-              <Button color="primary" onPress={() => fileInput.current?.click()}>
-                Upload File
-              </Button>
-            </>
-          )}
-        </div>
       </div>
-
-      {/* Credentials panel */}
       <CredentialsPanel bucket={bucket} />
-
-      {/* Upload queue */}
-      <UploadQueue count={uploadingCount} />
-
-      {/* File workspace */}
-      <DropZone active={canWrite} onDrop={handleMultiUpload}>
-        {/* Search bar */}
+      <div className="flex justify-end gap-2">
+        {canManage && (
+          <Button variant="flat" onPress={shareBucket.onOpen}>
+            Share Bucket
+          </Button>
+        )}
+        {canWrite && (
+          <>
+            <input
+              type="file"
+              ref={fileInput}
+              className="hidden"
+              onChange={onFileChange}
+            />
+            <Button color="primary" onPress={() => fileInput.current?.click()}>
+              Upload File
+            </Button>
+          </>
+        )}
+      </div>
+      <div
+        className={
+          canWrite ? "border-2 border-dashed rounded p-4" : "border rounded p-4"
+        }
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+      >
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <Input
             aria-label="Search files"
@@ -473,16 +356,13 @@ export function BucketPage() {
             </p>
           ) : null}
         </div>
-
         {files.length === 0 ? (
-          <div className="border-2 border-dashed border-default-300 rounded-lg p-8">
-            <EmptyState
-              title={emptyTitle}
-              description={emptyDescription}
-              ctaLabel={!activeSearchQuery && canWrite ? "Upload File" : undefined}
-              onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
-            />
-          </div>
+          <EmptyState
+            title={emptyTitle}
+            description={emptyDescription}
+            ctaLabel={!activeSearchQuery && canWrite ? "Upload File" : undefined}
+            onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
+          />
         ) : (
           <table className="w-full text-left">
             <thead>
@@ -522,7 +402,7 @@ export function BucketPage() {
                           isIconOnly
                           aria-label={`Share ${f.name}`}
                           variant="light"
-                          onPress={() => setShareFile(f)}
+                          onPress={() => openShareModal(f)}
                         >
                           <ShareIcon className="w-5 h-5" />
                         </Button>
@@ -556,17 +436,13 @@ export function BucketPage() {
             </tbody>
           </table>
         )}
-      </DropZone>
-
-      {/* File count summary */}
+      </div>
       {files.length > 0 && (
         <p className="text-xs text-default-400">
           {files.length} file{files.length !== 1 ? "s" : ""} &middot;{" "}
           {formatSize(files.reduce((acc, f) => acc + f.size, 0))} total
         </p>
       )}
-
-      {/* Modals */}
       <ConfirmDialog
         isOpen={confirm.isOpen}
         onOpenChange={(open) => {
@@ -574,7 +450,7 @@ export function BucketPage() {
           confirm.onOpenChange();
         }}
         title="Delete file?"
-        message="Are you sure you want to delete this file? This action cannot be undone."
+        message="Are you sure you want to delete this file?"
         onConfirm={handleDelete}
         confirmLabel="Delete"
         isConfirmLoading={isDeleting}
@@ -597,4 +473,12 @@ export function BucketPage() {
       />
     </div>
   );
+}
+
+function canManageBucket(bucket: Bucket) {
+  return bucket.role === "owner";
+}
+
+function canWriteFiles(bucket: Bucket) {
+  return bucket.role === "owner" || bucket.role === "editor";
 }
