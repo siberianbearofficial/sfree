@@ -102,9 +102,13 @@ test.describe("Source creation flow", () => {
       .or(dialog.getByRole("button", { name: "Connect Source" }))
       .click();
 
-    const successState = dialog.getByText(/^(Source Connected|My Drive is ready)$/);
-    if (await successState.first().isVisible().catch(() => false)) {
+    // Wait for either: dialog auto-closes (old flow) or success view appears (new flow)
+    const successText = dialog.getByText(/^(Source Connected|My Drive is ready)$/);
+    try {
+      await expect(successText.first()).toBeVisible({ timeout: 5000 });
       await dialog.getByRole("button", { name: "Close" }).click();
+    } catch {
+      // Old flow: dialog closed automatically on success
     }
 
     await expect(page.getByRole("dialog")).not.toBeVisible();
