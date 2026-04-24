@@ -47,18 +47,13 @@ test.describe("Error states", () => {
     ).toBeVisible();
 
     await dialog.getByLabel("Username").fill("newuser");
-    await dialog
-      .getByRole("button", { name: /^(Sign Up|Create Account)$/ })
-      .click();
+    await dialog.getByRole("button", { name: "Create Account" }).click();
 
     // Generated password is shown via Snippet
     await expect(dialog.getByText("generated-secret-pw")).toBeVisible();
 
-    // Dismiss with either the legacy or refreshed confirmation action
-    await dialog
-      .getByRole("button", { name: /^(Close|I saved my password)$/ })
-      .last()
-      .click();
+    // Confirmation button dismisses
+    await dialog.getByRole("button", { name: "I saved my password" }).click();
     await expect(dialog).not.toBeVisible();
   });
 
