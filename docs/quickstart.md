@@ -186,7 +186,32 @@ curl -s -X POST "http://localhost:8080/api/v1/buckets/$BUCKET_ID/upload" \
 }
 ```
 
-## 6. Download the file
+## 6. List or search bucket files
+
+You can list bucket files or narrow the result set with a case-insensitive
+filename query:
+
+```bash
+curl -s "http://localhost:8080/api/v1/buckets/$BUCKET_ID/files?q=readme" \
+  -H "Authorization: Basic $AUTH"
+```
+
+**Expected output:**
+
+```json
+[
+  {
+    "id": "FILE_ID",
+    "name": "README.md",
+    "created_at": "...",
+    "size": 1234
+  }
+]
+```
+
+Whitespace-only `q` behaves like the unfiltered file list.
+
+## 7. Download the file
 
 ```bash
 curl -s "http://localhost:8080/api/v1/buckets/$BUCKET_ID/files/FILE_ID/download" \
@@ -202,7 +227,7 @@ diff README.md downloaded-README.md
 
 No output means the files are identical — your upload and download worked.
 
-## 7. (Optional) Access via S3-compatible endpoint
+## 8. (Optional) Access via S3-compatible endpoint
 
 Every SFree bucket exposes an S3-compatible interface. Use the `access_key`
 and `access_secret` from step 4 with any S3-compatible client.

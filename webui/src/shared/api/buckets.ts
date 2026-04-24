@@ -41,9 +41,24 @@ export async function createBucket(
   });
 }
 
-export async function listFiles(bucketId: string): Promise<FileInfo[]> {
+function bucketFilesPath(bucketId: string, query?: string): string {
+  const params = new URLSearchParams();
+  const trimmedQuery = query?.trim();
+  if (trimmedQuery) {
+    params.set("q", trimmedQuery);
+  }
+  const encodedQuery = params.toString();
+  return encodedQuery
+    ? `/buckets/${bucketId}/files?${encodedQuery}`
+    : `/buckets/${bucketId}/files`;
+}
+
+export async function listFiles(
+  bucketId: string,
+  query?: string,
+): Promise<FileInfo[]> {
   return apiJson<FileInfo[]>(
-    `/buckets/${bucketId}/files`,
+    bucketFilesPath(bucketId, query),
     "Failed to list files",
   );
 }

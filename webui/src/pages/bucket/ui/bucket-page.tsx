@@ -1,10 +1,11 @@
 import {
   Button,
+  Input,
   Spinner,
   useDisclosure,
 } from "@heroui/react";
 import {addToast} from "@heroui/toast";
-import {useCallback, useEffect, useRef, useState} from "react";
+import {useCallback, useDeferredValue, useEffect, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
@@ -29,8 +30,12 @@ export function BucketPage() {
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshingFiles, setIsRefreshingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const hasLoadedRef = useRef(false);
+  const requestIDRef = useRef(0);
   const confirm = useDisclosure();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -38,19 +43,34 @@ export function BucketPage() {
 
   const shareBucket = useDisclosure();
   const [shareFile, setShareFile] = useState<FileInfo | null>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const activeSearchQuery = deferredSearchQuery.trim();
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (!id) return;
-    setIsLoading(true);
+    const requestID = requestIDRef.current + 1;
+    requestIDRef.current = requestID;
+    if (mode === "initial") {
+      setIsLoading(true);
+    } else {
+      setIsRefreshingFiles(true);
+    }
     setError(null);
     try {
       const [loadedBucket, fs] = await Promise.all([
         getBucket(id),
-        listFiles(id),
+        listFiles(id, activeSearchQuery),
       ]);
+      if (requestID !== requestIDRef.current) {
+        return;
+      }
       setBucket(loadedBucket);
       setFiles(fs);
+      hasLoadedRef.current = true;
     } catch (err) {
+      if (requestID !== requestIDRef.current) {
+        return;
+      }
       if (err instanceof ApiError && err.status === 404) {
         setBucket(null);
         setFiles([]);
@@ -58,20 +78,32 @@ export function BucketPage() {
       }
       setError(err instanceof Error ? err.message : "Failed to load bucket");
     } finally {
-      setIsLoading(false);
+      if (requestID === requestIDRef.current) {
+        if (mode === "initial") {
+          setIsLoading(false);
+        } else {
+          setIsRefreshingFiles(false);
+        }
+      }
     }
+  }, [activeSearchQuery, id]);
+
+  useEffect(() => {
+    hasLoadedRef.current = false;
+    setSearchQuery("");
   }, [id]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!id) return;
+    void load(hasLoadedRef.current ? "refresh" : "initial");
+  }, [id, load]);
 
   async function handleUpload(file: File) {
     if (!id || !bucket || !canWriteFiles(bucket)) return;
     try {
       await uploadFile(id, file);
       addToast({title: "File uploaded", description: `${file.name} added to bucket`, color: "success", timeout: 4000});
-      await load();
+      await load("refresh");
     } catch (err) {
       showErrorToast(err);
     }
@@ -95,7 +127,7 @@ export function BucketPage() {
     try {
       await deleteFile(id, deleteId);
       addToast({title: "File deleted", color: "success", timeout: 4000});
-      await load();
+      await load("refresh");
     } catch (err) {
       showErrorToast(err);
     } finally {
@@ -160,6 +192,12 @@ export function BucketPage() {
 
   const canManage = canManageBucket(bucket);
   const canWrite = canWriteFiles(bucket);
+  const emptyTitle = activeSearchQuery ? "No matching files" : "No files yet";
+  const emptyDescription = activeSearchQuery
+    ? `No files in this bucket match "${activeSearchQuery}".`
+    : canWrite
+      ? "Drag and drop a file here, or use the Upload button."
+      : "Files shared in this bucket will appear here.";
 
   return (
     <div className="p-8 flex flex-col gap-6">
@@ -204,16 +242,31 @@ export function BucketPage() {
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
       >
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <Input
+            aria-label="Search files"
+            className="w-full md:max-w-md"
+            isClearable
+            label="Search files"
+            placeholder="Filter by filename"
+            type="search"
+            value={searchQuery}
+            onClear={() => setSearchQuery("")}
+            onValueChange={setSearchQuery}
+            endContent={isRefreshingFiles ? <Spinner size="sm" /> : null}
+          />
+          {activeSearchQuery ? (
+            <p className="text-sm text-default-500">
+              {files.length === 1 ? "1 matching file" : `${files.length} matching files`}
+            </p>
+          ) : null}
+        </div>
         {files.length === 0 ? (
           <EmptyState
-            title="No files yet"
-            description={
-              canWrite
-                ? "Drag and drop a file here, or use the Upload button."
-                : "Files shared in this bucket will appear here."
-            }
-            ctaLabel={canWrite ? "Upload File" : undefined}
-            onCtaPress={canWrite ? () => fileInput.current?.click() : undefined}
+            title={emptyTitle}
+            description={emptyDescription}
+            ctaLabel={!activeSearchQuery && canWrite ? "Upload File" : undefined}
+            onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
           />
         ) : (
           <table className="w-full text-left">
