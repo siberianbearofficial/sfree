@@ -214,7 +214,12 @@ func GetObjectOrParts(bucketRepo *repository.BucketRepository, sourceRepo *repos
 
 func GetObjectOrPartsWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *repository.SourceRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository, factory manager.SourceClientFactory) gin.HandlerFunc {
 	getHandler := GetObjectWithFactory(bucketRepo, sourceRepo, fileRepo, factory)
+	listHandler := ListObjectsOrUploads(bucketRepo, fileRepo, mpRepo)
 	return func(c *gin.Context) {
+		if s3ObjectKey(c) == "" {
+			listHandler(c)
+			return
+		}
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploadId"); ok {
 				listParts(c, bucketRepo, mpRepo)
