@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/example/sfree/api-go/internal/config"
@@ -12,21 +13,21 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
-func SetupRouter(m *db.Mongo, cfg *config.Config) (*gin.Engine, error) {
-	return setupRouter(m, cfg, routerSetupOptions{})
+func SetupRouter(ctx context.Context, m *db.Mongo, cfg *config.Config) (*gin.Engine, error) {
+	return setupRouter(ctx, m, cfg, routerSetupOptions{})
 }
 
 type routerSetupOptions struct {
 	constructors routerDependencyConstructors
 }
 
-func setupRouter(m *db.Mongo, cfg *config.Config, opts routerSetupOptions) (*gin.Engine, error) {
+func setupRouter(ctx context.Context, m *db.Mongo, cfg *config.Config, opts routerSetupOptions) (*gin.Engine, error) {
 	router := gin.New()
 
 	limiters := registerMiddleware(router, cfg)
 	registerProbeRoutes(router, m, limiters)
 
-	deps, err := newRouterDependencies(m, cfg, opts.constructors)
+	deps, err := newRouterDependencies(ctx, m, cfg, opts.constructors)
 	if err != nil {
 		return nil, err
 	}

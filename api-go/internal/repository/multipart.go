@@ -36,9 +36,9 @@ type MultipartUploadRepository struct {
 const multipartPartChunkNameBucketIndex = "parts_chunks_name_bucket_id"
 const multipartBucketObjectUploadIndex = "bucket_id_object_key_upload_id"
 
-func NewMultipartUploadRepository(db *mongo.Database) (*MultipartUploadRepository, error) {
+func NewMultipartUploadRepository(ctx context.Context, db *mongo.Database) (*MultipartUploadRepository, error) {
 	coll := db.Collection("multipart_uploads")
-	_, err := coll.Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys:    bson.D{{Key: "upload_id", Value: 1}},
 			Options: options.Index().SetUnique(true),

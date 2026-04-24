@@ -42,9 +42,8 @@ const (
 	fileChunkReferenceIndex   = "chunks_source_id_name"
 )
 
-func NewFileRepository(db *mongo.Database) (*FileRepository, error) {
+func NewFileRepository(ctx context.Context, db *mongo.Database) (*FileRepository, error) {
 	coll := db.Collection("files")
-	ctx := context.Background()
 	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{
 			Keys: bson.D{{Key: "bucket_id", Value: 1}},

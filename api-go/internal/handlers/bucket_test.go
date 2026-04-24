@@ -29,7 +29,7 @@ func TestCreateBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	userRepo, err := repository.NewUserRepository(mongoConn.DB)
+	userRepo, err := repository.NewUserRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,11 @@ func TestCreateBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := repository.NewBucketRepository(mongoConn.DB)
+	repo, err := repository.NewBucketRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceRepo, err := repository.NewSourceRepository(mongoConn.DB)
+	sourceRepo, err := repository.NewSourceRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,15 +164,15 @@ func newBucketFileHandlerTestRepos(t *testing.T) (*repository.BucketRepository, 
 		_ = testDB.Drop(context.Background())
 		_ = mongoConn.Close(context.Background())
 	})
-	bucketRepo, err := repository.NewBucketRepository(testDB)
+	bucketRepo, err := repository.NewBucketRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fileRepo, err := repository.NewFileRepository(testDB)
+	fileRepo, err := repository.NewFileRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	grantRepo, err := repository.NewBucketGrantRepository(testDB)
+	grantRepo, err := repository.NewBucketGrantRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}

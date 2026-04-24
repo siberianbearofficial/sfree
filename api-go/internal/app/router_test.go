@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -21,7 +22,7 @@ import (
 func TestSetupRouter(t *testing.T) {
 	t.Parallel()
 
-	r, err := SetupRouter(nil, nil)
+	r, err := SetupRouter(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +40,7 @@ func TestSetupRouter(t *testing.T) {
 func TestSetupRouterNilMongoRouteSet(t *testing.T) {
 	t.Parallel()
 
-	r, err := SetupRouter(nil, nil)
+	r, err := SetupRouter(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +83,7 @@ func TestSetupRouterNilMongoRouteSet(t *testing.T) {
 func TestOpenAPIJSONRoute(t *testing.T) {
 	t.Parallel()
 
-	r, err := SetupRouter(nil, nil)
+	r, err := SetupRouter(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +179,7 @@ func TestRegisterS3RoutesIncludesRootAndLegacyEndpoints(t *testing.T) {
 func TestOpenAPIDocsRouteRedirectsToIndex(t *testing.T) {
 	t.Parallel()
 
-	r, err := SetupRouter(nil, nil)
+	r, err := SetupRouter(context.Background(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +261,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 		{
 			name: "user repository",
 			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
-				constructors.user = func(*mongo.Database) (*repository.UserRepository, error) {
+				constructors.user = func(context.Context, *mongo.Database) (*repository.UserRepository, error) {
 					return nil, failure
 				}
 				return constructors
@@ -269,7 +270,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 		{
 			name: "bucket repository",
 			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
-				constructors.bucket = func(*mongo.Database) (*repository.BucketRepository, error) {
+				constructors.bucket = func(context.Context, *mongo.Database) (*repository.BucketRepository, error) {
 					return nil, failure
 				}
 				return constructors
@@ -278,7 +279,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 		{
 			name: "source repository",
 			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
-				constructors.source = func(*mongo.Database, ...string) (*repository.SourceRepository, error) {
+				constructors.source = func(context.Context, *mongo.Database, ...string) (*repository.SourceRepository, error) {
 					return nil, failure
 				}
 				return constructors
@@ -287,7 +288,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 		{
 			name: "file repository",
 			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
-				constructors.file = func(*mongo.Database) (*repository.FileRepository, error) {
+				constructors.file = func(context.Context, *mongo.Database) (*repository.FileRepository, error) {
 					return nil, failure
 				}
 				return constructors
@@ -296,7 +297,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 		{
 			name: "multipart upload repository",
 			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
-				constructors.multipartUpload = func(*mongo.Database) (*repository.MultipartUploadRepository, error) {
+				constructors.multipartUpload = func(context.Context, *mongo.Database) (*repository.MultipartUploadRepository, error) {
 					return nil, failure
 				}
 				return constructors
@@ -305,7 +306,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 		{
 			name: "share link repository",
 			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
-				constructors.shareLink = func(*mongo.Database) (*repository.ShareLinkRepository, error) {
+				constructors.shareLink = func(context.Context, *mongo.Database) (*repository.ShareLinkRepository, error) {
 					return nil, failure
 				}
 				return constructors
@@ -314,7 +315,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 		{
 			name: "bucket grant repository",
 			fail: func(constructors routerDependencyConstructors, failure error) routerDependencyConstructors {
-				constructors.bucketGrant = func(*mongo.Database) (*repository.BucketGrantRepository, error) {
+				constructors.bucketGrant = func(context.Context, *mongo.Database) (*repository.BucketGrantRepository, error) {
 					return nil, failure
 				}
 				return constructors
@@ -330,7 +331,7 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 			failure := errors.New("create index")
 			constructors := tt.fail(stubRouterRepositoryConstructors(), failure)
 
-			deps, err := newRouterDependencies(&db.Mongo{}, nil, constructors)
+			deps, err := newRouterDependencies(context.Background(), &db.Mongo{}, nil, constructors)
 			if err == nil {
 				t.Fatal("expected repository initialization error")
 			}
@@ -344,6 +345,59 @@ func TestNewRouterDependenciesReturnsRepositoryErrors(t *testing.T) {
 				t.Fatalf("expected repository name in error, got %v", err)
 			}
 		})
+	}
+}
+
+func TestNewRouterDependenciesAppliesRepositoryInitTimeout(t *testing.T) {
+	t.Parallel()
+
+	constructors := stubRouterRepositoryConstructors()
+	constructors.user = func(ctx context.Context, _ *mongo.Database) (*repository.UserRepository, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("expected repository init context deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("expected positive remaining deadline, got %s", remaining)
+		}
+		if remaining > repositoryInitTimeout {
+			t.Fatalf("expected deadline no later than %s, got %s", repositoryInitTimeout, remaining)
+		}
+		if remaining < repositoryInitTimeout-time.Second {
+			t.Fatalf("expected deadline close to %s, got %s", repositoryInitTimeout, remaining)
+		}
+		return &repository.UserRepository{}, nil
+	}
+
+	if _, err := newRouterDependencies(context.Background(), &db.Mongo{}, nil, constructors); err != nil {
+		t.Fatalf("expected repository initialization to succeed, got %v", err)
+	}
+}
+
+func TestNewRouterDependenciesUsesParentContextForRepositoryInit(t *testing.T) {
+	t.Parallel()
+
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	constructors := stubRouterRepositoryConstructors()
+	constructors.user = func(ctx context.Context, _ *mongo.Database) (*repository.UserRepository, error) {
+		if !errors.Is(ctx.Err(), context.Canceled) {
+			t.Fatalf("expected canceled init context, got %v", ctx.Err())
+		}
+		return nil, ctx.Err()
+	}
+
+	deps, err := newRouterDependencies(parent, &db.Mongo{}, nil, constructors)
+	if err == nil {
+		t.Fatal("expected repository initialization error")
+	}
+	if deps != nil {
+		t.Fatal("expected nil dependencies on canceled initialization")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled error, got %v", err)
 	}
 }
 
@@ -398,25 +452,25 @@ func hasRoute(r *gin.Engine, method, path string) bool {
 
 func stubRouterRepositoryConstructors() routerDependencyConstructors {
 	return routerDependencyConstructors{
-		user: func(*mongo.Database) (*repository.UserRepository, error) {
+		user: func(context.Context, *mongo.Database) (*repository.UserRepository, error) {
 			return &repository.UserRepository{}, nil
 		},
-		bucket: func(*mongo.Database) (*repository.BucketRepository, error) {
+		bucket: func(context.Context, *mongo.Database) (*repository.BucketRepository, error) {
 			return &repository.BucketRepository{}, nil
 		},
-		source: func(*mongo.Database, ...string) (*repository.SourceRepository, error) {
+		source: func(context.Context, *mongo.Database, ...string) (*repository.SourceRepository, error) {
 			return &repository.SourceRepository{}, nil
 		},
-		file: func(*mongo.Database) (*repository.FileRepository, error) {
+		file: func(context.Context, *mongo.Database) (*repository.FileRepository, error) {
 			return &repository.FileRepository{}, nil
 		},
-		multipartUpload: func(*mongo.Database) (*repository.MultipartUploadRepository, error) {
+		multipartUpload: func(context.Context, *mongo.Database) (*repository.MultipartUploadRepository, error) {
 			return &repository.MultipartUploadRepository{}, nil
 		},
-		shareLink: func(*mongo.Database) (*repository.ShareLinkRepository, error) {
+		shareLink: func(context.Context, *mongo.Database) (*repository.ShareLinkRepository, error) {
 			return &repository.ShareLinkRepository{}, nil
 		},
-		bucketGrant: func(*mongo.Database) (*repository.BucketGrantRepository, error) {
+		bucketGrant: func(context.Context, *mongo.Database) (*repository.BucketGrantRepository, error) {
 			return &repository.BucketGrantRepository{}, nil
 		},
 	}

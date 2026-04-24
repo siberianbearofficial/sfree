@@ -77,7 +77,7 @@ func run(ctx context.Context) error {
 		}
 	}()
 
-	router, err := app.SetupRouter(mongoConn, cfg)
+	router, err := app.SetupRouter(ctx, mongoConn, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize router: %w", err)
 	}

@@ -228,7 +228,7 @@ func newMultipartRepositoryTestDB(t *testing.T) (*mongo.Database, *MultipartUplo
 		_ = testDB.Drop(context.Background())
 		_ = mongoConn.Close(context.Background())
 	})
-	repo, err := NewMultipartUploadRepository(testDB)
+	repo, err := NewMultipartUploadRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}

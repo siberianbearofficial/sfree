@@ -23,7 +23,7 @@ func TestCreateSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := NewSourceRepository(mongoConn.DB)
+	repo, err := NewSourceRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestListMetadataByUserDoesNotDecryptKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := NewSourceRepository(mongoConn.DB, "test-secret")
+	repo, err := NewSourceRepository(context.Background(), mongoConn.DB, "test-secret")
 	if err != nil {
 		t.Fatal(err)
 	}

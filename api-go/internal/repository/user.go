@@ -24,9 +24,9 @@ type UserRepository struct {
 	coll *mongo.Collection
 }
 
-func NewUserRepository(db *mongo.Database) (*UserRepository, error) {
+func NewUserRepository(ctx context.Context, db *mongo.Database) (*UserRepository, error) {
 	coll := db.Collection("users")
-	_, err := coll.Indexes().CreateOne(context.Background(), mongo.IndexModel{
+	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "username", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})

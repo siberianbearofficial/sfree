@@ -22,7 +22,7 @@ func TestBucketRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo, err := NewBucketRepository(mongoConn.DB)
+	repo, err := NewBucketRepository(context.Background(), mongoConn.DB)
 	if err != nil {
 		t.Fatal(err)
 	}

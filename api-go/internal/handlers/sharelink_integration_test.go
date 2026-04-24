@@ -112,15 +112,15 @@ func newShareLinkHandlerTestRepos(t *testing.T) (*repository.BucketRepository, *
 		_ = testDB.Drop(context.Background())
 		_ = mongoConn.Close(context.Background())
 	})
-	bucketRepo, err := repository.NewBucketRepository(testDB)
+	bucketRepo, err := repository.NewBucketRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fileRepo, err := repository.NewFileRepository(testDB)
+	fileRepo, err := repository.NewFileRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
-	shareLinkRepo, err := repository.NewShareLinkRepository(testDB)
+	shareLinkRepo, err := repository.NewShareLinkRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}

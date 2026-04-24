@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -27,14 +28,16 @@ type routerDependencies struct {
 }
 
 type routerDependencyConstructors struct {
-	user            func(*mongo.Database) (*repository.UserRepository, error)
-	bucket          func(*mongo.Database) (*repository.BucketRepository, error)
-	source          func(*mongo.Database, ...string) (*repository.SourceRepository, error)
-	file            func(*mongo.Database) (*repository.FileRepository, error)
-	shareLink       func(*mongo.Database) (*repository.ShareLinkRepository, error)
-	multipartUpload func(*mongo.Database) (*repository.MultipartUploadRepository, error)
-	bucketGrant     func(*mongo.Database) (*repository.BucketGrantRepository, error)
+	user            func(context.Context, *mongo.Database) (*repository.UserRepository, error)
+	bucket          func(context.Context, *mongo.Database) (*repository.BucketRepository, error)
+	source          func(context.Context, *mongo.Database, ...string) (*repository.SourceRepository, error)
+	file            func(context.Context, *mongo.Database) (*repository.FileRepository, error)
+	shareLink       func(context.Context, *mongo.Database) (*repository.ShareLinkRepository, error)
+	multipartUpload func(context.Context, *mongo.Database) (*repository.MultipartUploadRepository, error)
+	bucketGrant     func(context.Context, *mongo.Database) (*repository.BucketGrantRepository, error)
 }
+
+const repositoryInitTimeout = 10 * time.Second
 
 func (constructors routerDependencyConstructors) withDefaults() routerDependencyConstructors {
 	if constructors.user == nil {
@@ -61,41 +64,46 @@ func (constructors routerDependencyConstructors) withDefaults() routerDependency
 	return constructors
 }
 
-func newRouterDependencies(m *db.Mongo, cfg *config.Config, constructors routerDependencyConstructors) (*routerDependencies, error) {
+func newRouterDependencies(ctx context.Context, m *db.Mongo, cfg *config.Config, constructors routerDependencyConstructors) (*routerDependencies, error) {
 	deps := &routerDependencies{sourceFactory: routerSourceClientFactory(cfg)}
 	if m == nil {
 		return deps, nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	constructors = constructors.withDefaults()
+	initCtx, cancel := context.WithTimeout(ctx, repositoryInitTimeout)
+	defer cancel()
 
 	var err error
-	deps.userRepo, err = constructors.user(m.DB)
+	deps.userRepo, err = constructors.user(initCtx, m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize user repository: %w", err)
 	}
 	deps.auth = handlers.Auth(deps.userRepo, routerJWTSecret(cfg))
 
-	deps.bucketRepo, err = constructors.bucket(m.DB)
+	deps.bucketRepo, err = constructors.bucket(initCtx, m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize bucket repository: %w", err)
 	}
-	deps.sourceRepo, err = constructors.source(m.DB, routerAccessSecret(cfg))
+	deps.sourceRepo, err = constructors.source(initCtx, m.DB, routerAccessSecret(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("initialize source repository: %w", err)
 	}
-	deps.fileRepo, err = constructors.file(m.DB)
+	deps.fileRepo, err = constructors.file(initCtx, m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize file repository: %w", err)
 	}
-	deps.mpRepo, err = constructors.multipartUpload(m.DB)
+	deps.mpRepo, err = constructors.multipartUpload(initCtx, m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize multipart upload repository: %w", err)
 	}
-	deps.shareLinkRepo, err = constructors.shareLink(m.DB)
+	deps.shareLinkRepo, err = constructors.shareLink(initCtx, m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize share link repository: %w", err)
 	}
-	deps.grantRepo, err = constructors.bucketGrant(m.DB)
+	deps.grantRepo, err = constructors.bucketGrant(initCtx, m.DB)
 	if err != nil {
 		return nil, fmt.Errorf("initialize bucket grant repository: %w", err)
 	}
