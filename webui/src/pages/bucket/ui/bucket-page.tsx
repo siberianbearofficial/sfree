@@ -10,7 +10,6 @@ import {
   TableColumn,
   TableHeader,
   TableRow,
-  Tooltip,
   useDisclosure,
 } from "@heroui/react";
 import type {SortDescriptor} from "@heroui/react";
@@ -560,45 +559,39 @@ export function BucketPage() {
                   <TableCell>
                     <div className="flex gap-1 justify-end">
                       {canWrite && (
-                        <Tooltip content="Share">
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            aria-label={`Share ${file.name}`}
-                            variant="light"
-                            onPress={() => setShareFile(file)}
-                          >
-                            <ShareIcon className="w-4 h-4" />
-                          </Button>
-                        </Tooltip>
-                      )}
-                      <Tooltip content="Download">
                         <Button
                           isIconOnly
                           size="sm"
-                          aria-label={`Download ${file.name}`}
+                          aria-label={`Share ${file.name}`}
                           variant="light"
-                          onPress={() => handleDownload(file)}
+                          onPress={() => setShareFile(file)}
                         >
-                          <DownloadIcon className="w-4 h-4" />
+                          <ShareIcon className="w-4 h-4" />
                         </Button>
-                      </Tooltip>
+                      )}
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        aria-label={`Download ${file.name}`}
+                        variant="light"
+                        onPress={() => handleDownload(file)}
+                      >
+                        <DownloadIcon className="w-4 h-4" />
+                      </Button>
                       {canWrite && (
-                        <Tooltip content="Delete" color="danger">
-                          <Button
-                            isIconOnly
-                            size="sm"
-                            aria-label={`Delete ${file.name}`}
-                            variant="light"
-                            color="danger"
-                            onPress={() => {
-                              setDeleteId(file.id);
-                              confirm.onOpen();
-                            }}
-                          >
-                            <DeleteIcon className="w-4 h-4" />
-                          </Button>
-                        </Tooltip>
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          aria-label={`Delete ${file.name}`}
+                          variant="light"
+                          color="danger"
+                          onPress={() => {
+                            setDeleteId(file.id);
+                            confirm.onOpen();
+                          }}
+                        >
+                          <DeleteIcon className="w-4 h-4" />
+                        </Button>
                       )}
                     </div>
                   </TableCell>
