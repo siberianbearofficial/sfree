@@ -7,6 +7,7 @@ import SourcesPage from "../pages/sources";
 import SourcePage from "../pages/source";
 import {OAuthCallback} from "../pages/auth-callback";
 import {isAuthenticated} from "../shared/lib/auth";
+import {AppShell} from "../widgets/app-shell";
 
 export default function App() {
   return (
@@ -17,11 +18,13 @@ export default function App() {
           element={isAuthenticated() ? <Navigate to="/dashboard" replace /> : <LandingPage />}
         />
         <Route path="/auth/callback" element={<OAuthCallback />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/buckets" element={<BucketsPage />} />
-        <Route path="/buckets/:id" element={<BucketPage />} />
-        <Route path="/sources" element={<SourcesPage />} />
-        <Route path="/sources/:id" element={<SourcePage />} />
+        <Route element={<AppShell />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/buckets" element={<BucketsPage />} />
+          <Route path="/buckets/:id" element={<BucketPage />} />
+          <Route path="/sources" element={<SourcesPage />} />
+          <Route path="/sources/:id" element={<SourcePage />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );
