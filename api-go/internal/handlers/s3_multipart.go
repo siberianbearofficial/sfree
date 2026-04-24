@@ -227,17 +227,23 @@ func GetObjectOrPartsWithFactory(bucketRepo *repository.BucketRepository, source
 
 // ListObjectsOrUploads dispatches GET requests on bucket paths.
 // ?uploads → ListMultipartUploads
+// ?location → GetBucketLocation
 // ?list-type=2 → ListObjectsV2
 // otherwise → ListObjects
 func ListObjectsOrUploads(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository, mpRepo *repository.MultipartUploadRepository) gin.HandlerFunc {
 	listHandler := ListObjects(bucketRepo, fileRepo)
 	listV2Handler := ListObjectsV2(bucketRepo, fileRepo)
+	locationHandler := GetBucketLocation(bucketRepo)
 	return func(c *gin.Context) {
 		if mpRepo != nil {
 			if _, ok := c.GetQuery("uploads"); ok {
 				listMultipartUploads(c, bucketRepo, mpRepo)
 				return
 			}
+		}
+		if _, ok := c.GetQuery("location"); ok {
+			locationHandler(c)
+			return
 		}
 		if c.Query("list-type") == "2" {
 			listV2Handler(c)

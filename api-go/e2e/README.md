@@ -72,7 +72,7 @@ make test-e2e-python
 
 ## CI (Woodpecker)
 
-Pipeline `.woodpecker/api-go.yml` запускает `docker-compose.e2e.yml` через DinD только для `s3`. Этот режим использует локальный MinIO из `docker-compose.e2e.yml` и является обязательным PR-gate.
+Pipeline `.woodpecker/api-go.yml` запускает `docker-compose.e2e.yml` через DinD только для `s3`. Этот режим использует локальный MinIO из `docker-compose.e2e.yml` и является обязательным PR-gate. Отдельный smoke pipeline `.woodpecker/smoke.yml` дополнительно проверяет, что MinIO Client (`mc`) может читать объект через root-style endpoint SFree.
 
 Режимы `gdrive` и `telegram` остаются доступными для ручной или неблокирующей проверки. Для них нужны секреты:
 

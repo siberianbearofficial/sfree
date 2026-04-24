@@ -8,7 +8,7 @@ Reference: [Amazon S3 API operations](https://docs.aws.amazon.com/AmazonS3/lates
 
 ## Summary
 
-SFree supports the core object lifecycle: upload, download, head, copy, single-delete, multi-delete, ListObjectsV2, byte-range downloads, and multipart upload. The main compatibility gaps are bucket-discovery calls used by general-purpose clients, checksums, and advanced bucket/object APIs.
+SFree supports the core object lifecycle: upload, download, head, copy, single-delete, multi-delete, ListObjectsV2, byte-range downloads, multipart upload, and minimal bucket-discovery probes. The main compatibility gaps are full account-style bucket administration, checksums, and advanced bucket/object APIs.
 
 Validated v0.2 SDK compatibility scope:
 
@@ -63,10 +63,10 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 
 | S3 operation | Status | Notes |
 | --- | --- | --- |
-| ListBuckets | Missing | Buckets are managed through SFree REST APIs, not S3 `GET /`. |
-| HeadBucket | Missing | No S3 bucket existence probe route. |
+| ListBuckets | Partial | `GET /` and `GET /api/s3` now return the single bucket bound to the signed SFree bucket credentials. This covers setup/discovery probes but does not model account-wide multi-bucket inventory. |
+| HeadBucket | Implemented | `HEAD /{bucket}` and `HEAD /api/s3/{bucket}` validate bucket existence for the matching bucket credentials and return `x-amz-bucket-region: us-east-1`. |
 | CreateBucket / DeleteBucket | Missing | Bucket lifecycle uses `/api/v1/buckets`. |
-| GetBucketLocation | Missing | Many clients use this during setup or endpoint validation. |
+| GetBucketLocation | Implemented | `GET /{bucket}?location` and the legacy alias return an empty `LocationConstraint`, matching `us-east-1` semantics for setup and endpoint validation. |
 | Bucket policy, ACL, CORS, lifecycle, versioning, tagging, website, logging, replication APIs | Missing | Not modeled for the S3 API. |
 
 ### Authentication And Request Features
@@ -100,7 +100,7 @@ These checks are based on the current S3 API surface and known request patterns 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
 | Configure S3 remote with path-style endpoint | Partial | Requires explicit endpoint and path-style configuration. |
-| `rclone lsd` / bucket discovery | No | `ListBuckets` is missing. |
+| `rclone lsd` / bucket discovery | Expected for the signed bucket credentials | Minimal `ListBuckets`, `HeadBucket`, and `GetBucketLocation` probes now exist, but discovery remains bucket-scoped because SFree credentials map to a single bucket. Live rclone execution is still not automated in this PR. |
 | `rclone ls remote:bucket` | Expected for direct bucket paths | ListObjectsV2 prefix/delimiter/pagination is implemented, but live rclone validation is still manual/not automated in this PR. |
 | `rclone copy local remote:bucket` | Partial | Basic PutObject, multipart upload, copy, and listing paths exist; live rclone validation is still manual/not automated in this PR. |
 | `rclone cat remote:bucket/key` | Yes for full-object reads | Basic GetObject works. |
@@ -112,7 +112,7 @@ These checks are based on the current S3 API surface and known request patterns 
 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
-| `s3cmd ls` | No | `ListBuckets` is missing. |
+| `s3cmd ls` | Expected for the signed bucket credentials | Bucket-discovery probes now exist, but the returned inventory is intentionally limited to the bucket associated with the presented SFree bucket credentials. Live s3cmd validation is not automated in this PR. |
 | `s3cmd ls s3://bucket/` | Partial | V1 list behavior has Go e2e coverage for prefix/delimiter, but live s3cmd validation is not automated in this PR. |
 | `s3cmd put file s3://bucket/key` | Yes for simple uploads | PutObject works. |
 | `s3cmd get s3://bucket/key file` | Yes for full-object downloads | GetObject works. |
@@ -123,7 +123,7 @@ These checks are based on the current S3 API surface and known request patterns 
 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
-| `aws s3 ls` | No | `ListBuckets` is missing. |
+| `aws s3 ls` | Expected for the signed bucket credentials | Minimal bucket-discovery probes now exist, but the returned inventory remains bucket-scoped because SFree uses per-bucket S3 credentials. Live AWS CLI validation is still not automated in this PR. |
 | `aws s3 ls s3://bucket/` | Expected for direct bucket paths | High-level `aws s3` listing uses ListObjectsV2, which is now covered through SDK tests; live AWS CLI validation is not automated in this PR. |
 | `aws s3 cp local s3://bucket/key` | Yes for simple uploads | PutObject works, including Content-Type and user metadata persistence. |
 | `aws s3 cp s3://bucket/key local` | Yes for full-object downloads | GetObject works. |
@@ -136,9 +136,9 @@ These checks are based on the current S3 API surface and known request patterns 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
 | Configure alias with SFree endpoint | Yes for root-style endpoints | `mc alias set` accepts `scheme://host[:port]/`, so the root-style S3 endpoint now works without a reverse-proxy remap. The legacy `/api/s3` URL shape is still rejected by `mc` because it includes a resource component. If a bucket key collides with a reserved top-level app route on the same host, keep using the legacy `/api/s3` alias or a dedicated S3 hostname. |
-| `mc ls alias/bucket` | Expected for direct bucket paths | Root-style alias setup removes the endpoint-shape blocker; live `mc` execution still needs Woodpecker or documented manual evidence before broader compatibility claims change. |
+| `mc ls alias/bucket` | Expected for direct bucket paths | Root-style alias setup removes the endpoint-shape blocker; broader `mc` workflows beyond the current smoke coverage still need separate live validation. |
 | `mc cp file alias/bucket/key` | Expected for simple uploads | Root-style alias setup is now possible; broader recursive workflows still need separate live validation. |
-| `mc cat alias/bucket/key` | Expected for full-object reads | Root-style alias setup is now possible; direct read behavior should follow the existing GetObject surface. |
+| `mc cat alias/bucket/key` | Yes | Woodpecker smoke now validates a real `mc` read against the root-style endpoint after uploading a fixture object through SFree. |
 | `mc rm alias/bucket/key` | Expected for single keys | Root-style alias setup is now possible; delete semantics still need live-client verification for stronger public claims. |
 | Recursive remove or mirror | Partial at best | Even with an alias workaround, broader recursive workflows would still need live-client validation and may hit metadata fidelity gaps. |
 

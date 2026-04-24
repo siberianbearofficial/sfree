@@ -84,6 +84,15 @@ func (r *BucketRepository) GetByKey(ctx context.Context, key string) (*Bucket, e
 	return &b, nil
 }
 
+func (r *BucketRepository) GetByAccessKey(ctx context.Context, accessKey string) (*Bucket, error) {
+	var b Bucket
+	err := r.coll.FindOne(ctx, bson.M{"access_key": accessKey}).Decode(&b)
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
 func (r *BucketRepository) GetSecretByAccessKey(ctx context.Context, accessKey string) (string, error) {
 	var b Bucket
 	err := r.coll.FindOne(ctx, bson.M{"access_key": accessKey}).Decode(&b)

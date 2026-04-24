@@ -149,6 +149,9 @@ func TestRegisterS3RoutesIncludesRootAndLegacyEndpoints(t *testing.T) {
 		method string
 		path   string
 	}{
+		{http.MethodGet, "/"},
+		{http.MethodGet, "/api/s3"},
+		{http.MethodHead, "/:bucket"},
 		{http.MethodGet, "/:bucket"},
 		{http.MethodHead, "/:bucket/*object"},
 		{http.MethodGet, "/:bucket/*object"},
@@ -156,6 +159,7 @@ func TestRegisterS3RoutesIncludesRootAndLegacyEndpoints(t *testing.T) {
 		{http.MethodPost, "/:bucket"},
 		{http.MethodPost, "/:bucket/*object"},
 		{http.MethodDelete, "/:bucket/*object"},
+		{http.MethodHead, "/api/s3/:bucket"},
 		{http.MethodGet, "/api/s3/:bucket"},
 		{http.MethodHead, "/api/s3/:bucket/*object"},
 		{http.MethodGet, "/api/s3/:bucket/*object"},
