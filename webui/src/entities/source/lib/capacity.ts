@@ -33,6 +33,7 @@ export function getSourceQuotaState(
     health.quota_free_bytes !== null &&
     health.quota_total_bytes > 0
   ) {
+    const freeBytes = Math.max(0, health.quota_free_bytes);
     const percent = Math.max(
       0,
       Math.min(100, (health.quota_used_bytes / health.quota_total_bytes) * 100),
@@ -41,7 +42,7 @@ export function getSourceQuotaState(
       kind: "available",
       totalBytes: health.quota_total_bytes,
       usedBytes: health.quota_used_bytes,
-      freeBytes: health.quota_free_bytes,
+      freeBytes,
       percent,
     };
   }
