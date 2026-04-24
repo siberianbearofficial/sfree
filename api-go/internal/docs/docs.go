@@ -15,6 +15,68 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/": {
+            "get": {
+                "produces": [
+                    "text/xml"
+                ],
+                "tags": [
+                    "s3"
+                ],
+                "summary": "List buckets",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/s3": {
+            "get": {
+                "produces": [
+                    "text/xml"
+                ],
+                "tags": [
+                    "s3"
+                ],
+                "summary": "List buckets",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/s3/{bucket}": {
             "get": {
                 "produces": [
@@ -24,6 +86,41 @@ const docTemplate = `{
                     "s3"
                 ],
                 "summary": "List objects",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bucket key",
+                        "name": "bucket",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "head": {
+                "tags": [
+                    "s3"
+                ],
+                "summary": "Head bucket",
                 "parameters": [
                     {
                         "type": "string",
@@ -2003,6 +2100,41 @@ const docTemplate = `{
                     "s3"
                 ],
                 "summary": "List objects",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bucket key",
+                        "name": "bucket",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "head": {
+                "tags": [
+                    "s3"
+                ],
+                "summary": "Head bucket",
                 "parameters": [
                     {
                         "type": "string",
