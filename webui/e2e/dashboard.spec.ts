@@ -3,37 +3,39 @@
  *
  * Covers:
  * - Authenticated user at "/" redirects to "/dashboard"
- * - Dashboard heading and navigation cards render
- * - "Open" buttons navigate to /buckets and /sources
+ * - Fresh accounts see the onboarding hero on the dashboard
+ * - Returning users with sources and buckets see the normal dashboard view
  * - Unauthenticated user at "/" sees the landing page
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { injectAuth, mockGet, API_GLOB } from "./helpers";
 
-async function expectDashboardNav(
-  page: Page,
-  name: "Sources" | "Buckets",
-) {
-  const pattern =
-    name === "Sources"
-      ? /^(Manage Sources|Sources)$/
-      : /^(Manage Buckets|Buckets)$/;
-  await expect(
-    page.locator("a, button").filter({ hasText: pattern }).first(),
-  ).toBeVisible();
-}
+const MOCK_SOURCE = {
+  id: "src-1",
+  name: "My Drive",
+  type: "gdrive",
+  created_at: "2024-01-15T10:00:00Z",
+};
 
-async function clickDashboardNav(
-  page: Page,
-  name: "Sources" | "Buckets",
-) {
-  const pattern =
-    name === "Sources"
-      ? /^(Manage Sources|Sources)$/
-      : /^(Manage Buckets|Buckets)$/;
-  await page.locator("a, button").filter({ hasText: pattern }).first().click();
-}
+const MOCK_SOURCE_INFO = {
+  id: "src-1",
+  name: "My Drive",
+  type: "gdrive",
+  files: [{id: "file-1", name: "hello.txt", size: 12}],
+  storage_total: 1024,
+  storage_used: 12,
+  storage_free: 1012,
+};
+
+const MOCK_BUCKET = {
+  id: "bkt-1",
+  key: "first-bucket",
+  access_key: "AK123",
+  created_at: "2024-01-15T11:00:00Z",
+  role: "owner",
+  shared: false,
+};
 
 test.describe("Dashboard", () => {
   test("authenticated user at / redirects to /dashboard", async ({ page }) => {
@@ -43,10 +45,17 @@ test.describe("Dashboard", () => {
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   });
 
-  test("dashboard shows Buckets and Sources cards", async ({ page }) => {
+  test("fresh account dashboard shows onboarding hero", async ({ page }) => {
     await injectAuth(page);
+    await mockGet(page, "/sources", []);
+    await mockGet(page, "/buckets", []);
     await page.goto("/dashboard");
+
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Get started with SFree" })).toBeVisible();
+    await expect(page.getByText("Three steps to your first upload.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Source" })).toBeVisible();
+
     const summaryCards = page.locator(".grid.gap-4.grid-cols-2.lg\\:grid-cols-4");
     await expect(summaryCards.getByText("Sources", { exact: true })).toBeVisible();
     await expect(summaryCards.getByText("Buckets", { exact: true })).toBeVisible();
@@ -56,29 +65,26 @@ test.describe("Dashboard", () => {
     await expect(
       summaryCards.getByText("Storage Used", { exact: true }),
     ).toBeVisible();
-    await expectDashboardNav(page, "Sources");
-    await expectDashboardNav(page, "Buckets");
   });
 
-  test("Manage Buckets button navigates to /buckets", async ({ page }) => {
+  test("returning user dashboard hides onboarding and shows sources section", async ({ page }) => {
     await injectAuth(page);
-    await mockGet(page, "/buckets", []);
+    await mockGet(page, "/sources", [MOCK_SOURCE]);
+    await mockGet(page, "/sources/src-1/info", MOCK_SOURCE_INFO);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await page.goto("/dashboard");
-    await clickDashboardNav(page, "Buckets");
-    await expect(page).toHaveURL("/buckets");
+
     await expect(
-      page.getByRole("heading", { name: /^Buckets$/, level: 1 }),
+      page.getByRole("heading", { name: "Dashboard" }),
     ).toBeVisible();
-  });
-
-  test("Manage Sources button navigates to /sources", async ({ page }) => {
-    await injectAuth(page);
-    await mockGet(page, "/sources", []);
-    await page.goto("/dashboard");
-    await clickDashboardNav(page, "Sources");
-    await expect(page).toHaveURL("/sources");
     await expect(
-      page.getByRole("heading", { name: /^Sources$/, level: 1 }),
+      page.getByRole("heading", { name: "Get started with SFree" }),
+    ).not.toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Sources$/, level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("My Drive", { exact: true }),
     ).toBeVisible();
   });
 

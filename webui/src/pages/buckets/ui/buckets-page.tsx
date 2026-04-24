@@ -73,8 +73,8 @@ export function BucketsPage() {
       ) : buckets.length === 0 ? (
         <EmptyState
           title="No buckets yet"
-          description="Buckets give you S3-compatible access to your files. Create one to get started."
-          ctaLabel="Add Bucket"
+          description="Step 2: create a bucket to get S3-compatible access to your files. Almost there!"
+          ctaLabel="Create Bucket"
           onCtaPress={create.onOpen}
         />
       ) : (

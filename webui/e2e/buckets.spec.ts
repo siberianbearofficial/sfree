@@ -3,7 +3,7 @@
  *
  * Covers:
  * - Buckets page renders with empty state
- * - "Add Bucket" dialog loads available sources
+ * - "Create Bucket" dialog loads available sources
  * - Selecting a source and submitting creates a bucket and shows credentials
  * - Upload File button is present on the bucket detail page
  */
@@ -64,18 +64,18 @@ test.describe("Bucket creation flow", () => {
     ).toBeVisible();
     await expect(page.getByText("No buckets yet")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Add Bucket" }).first(),
+      page.getByRole("button", { name: /^(Add|Create) Bucket$/ }).first(),
     ).toBeVisible();
   });
 
-  test("Add Bucket dialog loads available sources", async ({ page }) => {
+  test("Create Bucket dialog loads available sources", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await mockGet(page, "/sources", [MOCK_SOURCE]);
     await page.goto("/buckets");
     const dialog = page.getByRole("dialog");
 
-    await page.getByRole("button", { name: "Add Bucket" }).first().click();
+    await page.getByRole("button", { name: /^(Add|Create) Bucket$/ }).first().click();
     await expect(dialog).toBeVisible();
     await expect(
       dialog.getByText("Create Bucket"),
@@ -86,7 +86,7 @@ test.describe("Bucket creation flow", () => {
     await expect(dialog.getByText("My Drive", { exact: true })).toBeVisible();
   });
 
-  test("Add Bucket dialog surfaces source loading failures and retries", async ({ page }) => {
+  test("Create Bucket dialog surfaces source loading failures and retries", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     let sourceRequests = 0;
@@ -106,7 +106,7 @@ test.describe("Bucket creation flow", () => {
     await page.goto("/buckets");
     const dialog = page.getByRole("dialog");
 
-    await page.getByRole("button", { name: "Add Bucket" }).first().click();
+    await page.getByRole("button", { name: /^(Add|Create) Bucket$/ }).first().click();
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText("Sources could not be loaded. Retry to try again.")).toBeVisible();
     await expect(dialog.getByText("Source service unavailable")).toBeVisible();
@@ -124,7 +124,7 @@ test.describe("Bucket creation flow", () => {
 
     await page.goto("/buckets");
     const dialog = page.getByRole("dialog");
-    await page.getByRole("button", { name: "Add Bucket" }).first().click();
+    await page.getByRole("button", { name: /^(Add|Create) Bucket$/ }).first().click();
     await expect(dialog).toBeVisible();
 
     // Wait for sources to load in dialog
@@ -174,7 +174,7 @@ test.describe("Bucket creation flow", () => {
     ).toBeVisible();
     await expect(
       page.locator("p").filter({
-        hasText: /(Drag and drop a file here|Drop files here)/,
+        hasText: /(Drag and drop a file here|Drop files here|Drop a file here)/,
       }).first(),
     ).toBeVisible();
   });

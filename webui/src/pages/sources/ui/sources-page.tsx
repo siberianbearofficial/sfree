@@ -150,7 +150,7 @@ export function SourcesPage() {
       ) : sources.length === 0 ? (
         <EmptyState
           title="No sources yet"
-          description="Connect a Google Drive, Telegram, or S3 source to get started."
+          description="This is step 1: connect a Google Drive, Telegram, or S3-compatible source so SFree knows where your files live."
           ctaLabel="Add Source"
           onCtaPress={create.onOpen}
         />
