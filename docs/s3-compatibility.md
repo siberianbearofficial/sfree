@@ -1,8 +1,8 @@
 # S3 Compatibility Matrix
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
-Baseline: `origin/main` at `214fdd7dec102fea85c8af4b4ada3e282e9eb183`. SFree exposes its S3-compatible API under `/api/s3` and uses path-style addressing: `/api/s3/{bucket}/{key}`.
+Baseline: `origin/main` at `ea8c3bcc33b4edc6a0474c70c86b155371aaf773`. SFree exposes its S3-compatible API on the root path using path-style addressing: `/{bucket}/{key}`. The legacy `/api/s3/{bucket}/{key}` alias remains supported for backward compatibility.
 
 Reference: [Amazon S3 API operations](https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html).
 
@@ -51,8 +51,8 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 
 | S3 operation | Status | Notes |
 | --- | --- | --- |
-| CreateMultipartUpload | Implemented | `POST /api/s3/{bucket}/{key}?uploads`; captures Content-Type and user metadata for completion. |
-| UploadPart | Implemented | `PUT /api/s3/{bucket}/{key}?uploadId=...&partNumber=...`. |
+| CreateMultipartUpload | Implemented | `POST /{bucket}/{key}?uploads`; the legacy `/api/s3/{bucket}/{key}?uploads` alias also works. Captures Content-Type and user metadata for completion. |
+| UploadPart | Implemented | `PUT /{bucket}/{key}?uploadId=...&partNumber=...`; the legacy `/api/s3/{bucket}/{key}` alias also works. |
 | CompleteMultipartUpload | Implemented | Validates part existence, ETags, ascending part order, and persists metadata captured during CreateMultipartUpload. |
 | AbortMultipartUpload | Implemented | Deletes uploaded part chunks and the multipart record. |
 | ListMultipartUploads | Partial | Bounded listing now supports `max-uploads`, `prefix`, `key-marker`, and `upload-id-marker` with S3-style truncation markers. `delimiter` still returns XML `NotImplemented`. |
@@ -77,7 +77,7 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | AWS Signature V4 presigned URLs | Implemented | Query-string presign validation supports default S3 unsigned payload behavior and a max TTL of seven days. Woodpecker-runnable Python SDK coverage now verifies aiobotocore-generated presigned `PUT` and `GET` URLs for simple object upload/download flows. |
 | AWS Signature V2 | Missing | Legacy clients that require V2 are unsupported. |
 | Anonymous access | Missing | S3 API requests require signed bucket credentials. |
-| Virtual-hosted-style addressing | Missing | Only path-style routing under `/api/s3/{bucket}` is supported. |
+| Virtual-hosted-style addressing | Missing | Path-style routing is supported on `/{bucket}` and the legacy `/api/s3/{bucket}` alias, but bucket-in-host virtual-hosted requests are still unsupported. |
 | Range requests | Partial | GetObject byte ranges and `Accept-Ranges` are covered by Go e2e and the Python SDK e2e fixture. HeadObject range behavior is not validated as a v0.2 SDK path. |
 | Conditional requests | Missing | `If-Match`, `If-None-Match`, `If-Modified-Since`, and related headers are not evaluated. |
 | User metadata | Partial | `x-amz-meta-*` headers are stored with lowercase keys, returned on HeadObject/GetObject, replaced on overwrite, and preserved by CopyObject COPY. Metadata search/listing and tags are not supported. |
@@ -135,11 +135,11 @@ These checks are based on the current S3 API surface and known request patterns 
 
 | Workflow | Expected result on `origin/main` | Blocking gaps |
 | --- | --- | --- |
-| Configure alias with SFree endpoint | No for the current `/api/s3` URL shape | `mc alias set` rejects URLs with a resource component and requires `scheme://host[:port]/`, so it cannot point directly at SFree's current S3 endpoint path. |
-| `mc ls alias/bucket` | Blocked until alias configuration is possible | Listing is not the blocker; alias creation fails before bucket operations begin. |
-| `mc cp file alias/bucket/key` | Blocked until alias configuration is possible | Upload is blocked by the same alias URL restriction. |
-| `mc cat alias/bucket/key` | Blocked until alias configuration is possible | Read flow is blocked by the same alias URL restriction. |
-| `mc rm alias/bucket/key` | Blocked until alias configuration is possible | Delete flow is blocked by the same alias URL restriction. |
+| Configure alias with SFree endpoint | Yes for root-style endpoints | `mc alias set` accepts `scheme://host[:port]/`, so the root-style S3 endpoint now works without a reverse-proxy remap. The legacy `/api/s3` URL shape is still rejected by `mc` because it includes a resource component. If a bucket key collides with a reserved top-level app route on the same host, keep using the legacy `/api/s3` alias or a dedicated S3 hostname. |
+| `mc ls alias/bucket` | Expected for direct bucket paths | Root-style alias setup removes the endpoint-shape blocker; live `mc` execution still needs Woodpecker or documented manual evidence before broader compatibility claims change. |
+| `mc cp file alias/bucket/key` | Expected for simple uploads | Root-style alias setup is now possible; broader recursive workflows still need separate live validation. |
+| `mc cat alias/bucket/key` | Expected for full-object reads | Root-style alias setup is now possible; direct read behavior should follow the existing GetObject surface. |
+| `mc rm alias/bucket/key` | Expected for single keys | Root-style alias setup is now possible; delete semantics still need live-client verification for stronger public claims. |
 | Recursive remove or mirror | Partial at best | Even with an alias workaround, broader recursive workflows would still need live-client validation and may hit metadata fidelity gaps. |
 
 ## v0.2.0 Scope Alignment
@@ -172,5 +172,5 @@ Covered SDK paths:
 
 Not automated in this PR:
 - AWS CLI, rclone, and s3cmd live binary smoke tests. They still need extra runtime installation and remain documented/manual in this PR.
-- MinIO `mc` live validation remains manual/blocked for the current endpoint shape because `mc alias set` rejects `http://host/...` URLs with a resource component such as `/api/s3`.
+- MinIO `mc` live validation still needs Woodpecker or documented manual execution. The root-style endpoint removes the alias-configuration blocker, but this PR does not itself add fresh `mc` runtime evidence.
 - AWS SDK for Go/JavaScript client fixtures. The Go e2e suite already validates signed S3 endpoint behavior directly; this PR keeps SDK automation to one pinned SDK path to avoid widening CI dependencies.

@@ -202,6 +202,32 @@ func TestValidatorHeaderAuthCanonicalQueryRejectsEncodedPlusRewrite(t *testing.T
 	}
 }
 
+func TestValidatorHeaderAuthRootStyleS3Path(t *testing.T) {
+	accessKey := "mybucketkey"
+	secretKey := "mysecretkey123"
+	now := time.Date(2026, 4, 24, 1, 0, 0, 0, time.UTC)
+
+	req, err := http.NewRequest("PUT", "https://sfree.example.com/mybucket/uploads/doc.pdf", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	signedHeaders := []string{"host", "x-amz-content-sha256", "x-amz-date"}
+	payloadHash := emptyPayloadHash()
+	signHeaderAuthRequest(t, req, accessKey, secretKey, "us-east-1", "s3", signedHeaders, now, payloadHash)
+
+	v := Validator{Now: func() time.Time { return now }}
+	res, err := v.Validate(context.Background(), req, accessKey, secretKey)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	expectedCanonical := "PUT\n/mybucket/uploads/doc.pdf\n\nhost:sfree.example.com\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + now.Format("20060102T150405Z") + "\n\nhost;x-amz-content-sha256;x-amz-date\n" + payloadHash
+	if res.CanonicalRequest != expectedCanonical {
+		t.Fatalf("canonical request mismatch:\nexpected:\n%s\n\nactual:\n%s", expectedCanonical, res.CanonicalRequest)
+	}
+}
+
 func TestValidatorPresignS3GetObject(t *testing.T) {
 	accessKey := "mybucketkey"
 	secretKey := "mysecretkey123"
@@ -246,6 +272,45 @@ func TestValidatorPresignS3GetObject(t *testing.T) {
 	}
 	if res.PayloadHash != "UNSIGNED-PAYLOAD" {
 		t.Fatalf("payload hash: expected UNSIGNED-PAYLOAD got %s", res.PayloadHash)
+	}
+}
+
+func TestValidatorPresignRootStyleS3GetObject(t *testing.T) {
+	accessKey := "mybucketkey"
+	secretKey := "mysecretkey123"
+	region := "us-east-1"
+	now := time.Date(2026, 4, 24, 1, 0, 0, 0, time.UTC)
+	dateStr := now.Format("20060102")
+	amzDate := now.Format("20060102T150405Z")
+	expires := "3600"
+	scope := dateStr + "/" + region + "/s3/aws4_request"
+	cred := accessKey + "/" + scope
+	signedHeaders := "host"
+	canonURI := "/mybucket/photos/cat.jpg"
+	canonQuery := "X-Amz-Algorithm=AWS4-HMAC-SHA256" +
+		"&X-Amz-Credential=" + url.QueryEscape(cred) +
+		"&X-Amz-Date=" + amzDate +
+		"&X-Amz-Expires=" + expires +
+		"&X-Amz-SignedHeaders=" + signedHeaders
+	canonHeaders := "host:sfree.example.com\n"
+	payloadHash := "UNSIGNED-PAYLOAD"
+	canonReq := "GET\n" + canonURI + "\n" + canonQuery + "\n" + canonHeaders + "\n" + signedHeaders + "\n" + payloadHash
+	stringToSign := buildStringToSign("AWS4-HMAC-SHA256", now, scope, canonReq)
+	sig := computeSignature(secretKey, dateStr, region, "s3", stringToSign)
+
+	fullURL := "https://sfree.example.com" + canonURI + "?" + canonQuery + "&X-Amz-Signature=" + sig
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	v := Validator{Now: func() time.Time { return now }}
+	res, err := v.Validate(context.Background(), req, accessKey, secretKey)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if res.CanonicalRequest != canonReq {
+		t.Fatalf("canonical request mismatch:\nexpected:\n%s\n\nactual:\n%s", canonReq, res.CanonicalRequest)
 	}
 }
 

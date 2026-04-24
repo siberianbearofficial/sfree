@@ -91,7 +91,7 @@ S3-compatible access credentials are generated automatically.`,
 		fmt.Printf("  Created:         %s\n", resp.CreatedAt)
 		fmt.Println()
 		fmt.Println("Use these credentials with any S3-compatible client:")
-		fmt.Printf("  aws s3 ls s3://%s/ --endpoint-url %s/api/s3\n", resp.Key, serverURL())
+		fmt.Printf("  aws s3 ls s3://%s/ --endpoint-url %s\n", resp.Key, serverURL())
 		return nil
 	},
 }

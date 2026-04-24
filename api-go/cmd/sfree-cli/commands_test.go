@@ -69,7 +69,7 @@ func TestBucketsCreateOutputContract(t *testing.T) {
 		"  Access Key:      AKIA_TEST",
 		"  Access Secret:   SECRET_TEST",
 		"  Created:         2026-04-22T05:00:00Z",
-		"  aws s3 ls s3://smoke-bucket/ --endpoint-url " + server.URL + "/api/s3",
+		"  aws s3 ls s3://smoke-bucket/ --endpoint-url " + server.URL,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q\noutput:\n%s", want, out)

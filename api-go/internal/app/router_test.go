@@ -107,7 +107,7 @@ func TestOpenAPIJSONRoute(t *testing.T) {
 	if doc.Swagger != "2.0" {
 		t.Fatalf("expected Swagger 2.0, got %q", doc.Swagger)
 	}
-	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
+	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/{bucket}", "/{bucket}/{object}", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("expected OpenAPI path %s", path)
 		}
@@ -129,6 +129,40 @@ func TestRegisterSourceRoutesIncludesQueryDownloadRoute(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/v1/sources/:id/download"},
 		{http.MethodGet, "/api/v1/sources/:id/files/:file_id/download"},
+	}
+	for _, expected := range expectedRoutes {
+		if !hasRoute(r, expected.method, expected.path) {
+			t.Fatalf("expected %s %s to be registered", expected.method, expected.path)
+		}
+	}
+}
+
+func TestRegisterS3RoutesIncludesRootAndLegacyEndpoints(t *testing.T) {
+	r := gin.New()
+	registerS3Routes(r, &config.Config{AccessSecretKey: "test-secret"}, &routerDependencies{
+		bucketRepo: &repository.BucketRepository{},
+		sourceRepo: &repository.SourceRepository{},
+		fileRepo:   &repository.FileRepository{},
+	}, nil)
+
+	expectedRoutes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, "/:bucket"},
+		{http.MethodHead, "/:bucket/*object"},
+		{http.MethodGet, "/:bucket/*object"},
+		{http.MethodPut, "/:bucket/*object"},
+		{http.MethodPost, "/:bucket"},
+		{http.MethodPost, "/:bucket/*object"},
+		{http.MethodDelete, "/:bucket/*object"},
+		{http.MethodGet, "/api/s3/:bucket"},
+		{http.MethodHead, "/api/s3/:bucket/*object"},
+		{http.MethodGet, "/api/s3/:bucket/*object"},
+		{http.MethodPut, "/api/s3/:bucket/*object"},
+		{http.MethodPost, "/api/s3/:bucket"},
+		{http.MethodPost, "/api/s3/:bucket/*object"},
+		{http.MethodDelete, "/api/s3/:bucket/*object"},
 	}
 	for _, expected := range expectedRoutes {
 		if !hasRoute(r, expected.method, expected.path) {
