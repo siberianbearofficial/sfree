@@ -4,7 +4,6 @@ import {useEffect, useState} from "react";
 import {useNavigate} from "react-router-dom";
 import {CreateBucketDialog} from "../../../features/bucket";
 import {deleteBucket, listBuckets} from "../../../shared/api/buckets";
-import {listSources} from "../../../shared/api/sources";
 import type {Bucket} from "../../../shared/api/buckets";
 import {DeleteIcon} from "@heroui/shared-icons";
 import {ConfirmDialog, EmptyState} from "../../../shared/ui";
@@ -12,7 +11,6 @@ import {showErrorToast} from "../../../shared/api/error";
 
 export function BucketsPage() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
-  const [sourceCount, setSourceCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -46,15 +44,6 @@ export function BucketsPage() {
     } finally {
       setIsLoading(false);
     }
-    // Load source count independently so a source API failure
-    // never prevents viewing existing buckets.
-    try {
-      const sources = await listSources();
-      setSourceCount(sources.length);
-    } catch {
-      // Source count stays null; empty-state falls back to the
-      // generic "no buckets" message which still works fine.
-    }
   }
 
   useEffect(() => {
@@ -82,21 +71,12 @@ export function BucketsPage() {
           variant="danger"
         />
       ) : buckets.length === 0 ? (
-        sourceCount === 0 ? (
-          <EmptyState
-            title="Connect a source first"
-            description="Before creating a bucket you need at least one source. Head to Sources to connect one."
-            ctaLabel="Go to Sources"
-            onCtaPress={() => navigate("/sources")}
-          />
-        ) : (
-          <EmptyState
-            title="No buckets yet"
-            description="Step 2: create a bucket to get S3-compatible access to your files. Almost there!"
-            ctaLabel="Create Bucket"
-            onCtaPress={create.onOpen}
-          />
-        )
+        <EmptyState
+          title="No buckets yet"
+          description="Step 2: create a bucket to get S3-compatible access to your files. Almost there!"
+          ctaLabel="Create Bucket"
+          onCtaPress={create.onOpen}
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {buckets.map((b) => (
