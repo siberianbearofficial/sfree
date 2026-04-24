@@ -207,7 +207,7 @@ export function SourcesPage() {
           ))}
         </div>
       )}
-      <CreateSourceDialog isOpen={create.isOpen} onOpenChange={create.onOpenChange} onCreated={load} />
+      <CreateSourceDialog isOpen={create.isOpen} onOpenChange={create.onOpenChange} onCreated={load} onNavigateToSource={(id) => navigate(`/sources/${id}`)} />
       <ConfirmDialog
         isOpen={confirm.isOpen}
         onOpenChange={(open) => {
