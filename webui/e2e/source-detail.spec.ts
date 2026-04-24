@@ -75,7 +75,10 @@ test.describe("Source detail", () => {
     await expect(page.getByRole("heading", {name: "Archive Bucket"})).toBeVisible();
     await expect(capacitySignalCard.getByText("Quota unavailable", {exact: true})).toBeVisible();
     await expect(
-      page.getByText("S3-compatible sources are checked for reachability here, not provider-wide capacity limits."),
+      capacitySignalCard.getByText(
+        "S3-compatible sources are checked for reachability here, not provider-wide capacity limits.",
+        {exact: true},
+      ),
     ).toBeVisible();
   });
 });
