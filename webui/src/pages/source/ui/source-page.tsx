@@ -1,32 +1,47 @@
-import {Button, CircularProgress, Spinner} from "@heroui/react";
+import {Button, Card, CardBody, Chip, CircularProgress, Spinner} from "@heroui/react";
 import {useCallback, useEffect, useState} from "react";
 import {Link, useNavigate, useParams} from "react-router-dom";
-import {downloadFile, getSourceInfo} from "../../../shared/api/sources";
-import type {SourceFile, SourceInfo} from "../../../shared/api/sources";
+import {downloadFile, getSourceHealth, getSourceInfo} from "../../../shared/api/sources";
+import type {SourceFile, SourceHealth, SourceInfo} from "../../../shared/api/sources";
 import {showErrorToast} from "../../../shared/api/error";
 import {SourceTypeChip} from "../../../entities/source";
+import {getSourceQuotaState, sourceHealthColor} from "../../../entities/source/lib/capacity";
 import {DownloadIcon} from "../../../shared/icons";
 import {EmptyState} from "../../../shared/ui";
+import {formatSize} from "../../../shared/lib/format";
 
 export function SourcePage() {
   const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
   const [info, setInfo] = useState<SourceInfo | null>(null);
+  const [health, setHealth] = useState<SourceHealth | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
     setError(null);
-    getSourceInfo(id)
-      .then(setInfo)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load source"))
-      .finally(() => setIsLoading(false));
+    const [infoResult, healthResult] = await Promise.allSettled([
+      getSourceInfo(id),
+      getSourceHealth(id),
+    ]);
+
+    if (infoResult.status === "rejected") {
+      setInfo(null);
+      setHealth(null);
+      setError(infoResult.reason instanceof Error ? infoResult.reason.message : "Failed to load source");
+      setIsLoading(false);
+      return;
+    }
+
+    setInfo(infoResult.value);
+    setHealth(healthResult.status === "fulfilled" ? healthResult.value : null);
+    setIsLoading(false);
   }, [id]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   async function handleDownload(file: SourceFile) {
@@ -79,29 +94,98 @@ export function SourcePage() {
     );
   }
 
-  const percent = info.storage_total
-    ? (info.storage_used / info.storage_total) * 100
-    : 0;
+  const quota = getSourceQuotaState(health);
+  const fileCount = info.files.length;
 
   return (
     <div className="p-6 sm:p-8 flex flex-col gap-6">
       <Link to="/sources" className="text-sm text-default-500 hover:text-primary transition-colors">
         &larr; Sources
       </Link>
-      <h1 className="text-3xl font-bold">{info.name}</h1>
-      <SourceTypeChip type={info.type} />
-      <div className="flex justify-center">
-        <CircularProgress
-          classNames={{
-            svg: "w-36 h-36 drop-shadow-md",
-            indicator: "stroke-white",
-            track: "stroke-white/10",
-            value: "text-3xl font-semibold text-white",
-          }}
-          showValueLabel
-          strokeWidth={4}
-          value={percent}
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold">{info.name}</h1>
+          <SourceTypeChip type={info.type} />
+        </div>
+        {health ? (
+          <Chip size="sm" variant="flat" color={sourceHealthColor[health.status]}>
+            {health.status}
+          </Chip>
+        ) : (
+          <Chip size="sm" variant="flat" color="default">
+            health unavailable
+          </Chip>
+        )}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[220px,minmax(0,1fr)]">
+        <Card>
+          <CardBody className="items-center justify-center gap-4 py-6 text-center">
+            {quota.kind === "available" ? (
+              <>
+                <CircularProgress
+                  classNames={{
+                    svg: "w-36 h-36",
+                    indicator:
+                      health?.status === "healthy"
+                        ? "stroke-success"
+                        : health?.status === "degraded"
+                          ? "stroke-warning"
+                          : "stroke-danger",
+                    track: "stroke-default-200",
+                    value: "text-3xl font-semibold",
+                  }}
+                  showValueLabel
+                  strokeWidth={4}
+                  value={quota.percent}
+                />
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium">Native quota</p>
+                  <p className="text-sm text-default-500">
+                    {formatSize(quota.usedBytes)} of {formatSize(quota.totalBytes)}
+                  </p>
+                  <p className="text-xs text-default-400">
+                    {formatSize(quota.freeBytes)} free
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2">
+                <p className="text-sm font-medium">{quota.label}</p>
+                <p className="text-sm text-default-500">{quota.description}</p>
+              </div>
+            )}
+          </CardBody>
+        </Card>
+        <Card>
+          <CardBody className="gap-4 py-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border border-default-200 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-default-400">Stored In Source</p>
+                <p className="mt-2 text-2xl font-semibold">{formatSize(info.storage_used)}</p>
+                <p className="mt-1 text-sm text-default-500">
+                  {fileCount} listed file{fileCount === 1 ? "" : "s"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-default-200 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-default-400">Capacity Signal</p>
+                <p className="mt-2 text-base font-semibold">
+                  {quota.kind === "available" ? "Provider quota available" : quota.label}
+                </p>
+                <p className="mt-1 text-sm text-default-500">
+                  {quota.kind === "available"
+                    ? "This meter comes from native provider quota metadata."
+                    : quota.description}
+                </p>
+              </div>
+            </div>
+            {health && (
+              <div className="rounded-lg border border-default-200 bg-default-50 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-default-400">Health Probe</p>
+                <p className="mt-2 text-sm text-default-700">{health.message}</p>
+              </div>
+            )}
+          </CardBody>
+        </Card>
       </div>
       <div className="border-2 border-dashed rounded p-4">
         {info.files.length === 0 ? (
@@ -122,7 +206,7 @@ export function SourcePage() {
               {info.files.map((f) => (
                 <tr key={f.id} className="border-t">
                   <td className="py-2">{f.name}</td>
-                  <td className="py-2">{f.size}</td>
+                  <td className="py-2">{formatSize(f.size)}</td>
                   <td className="py-2">
                     <Button
                       isIconOnly

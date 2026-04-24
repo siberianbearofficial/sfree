@@ -57,9 +57,9 @@ disappears. See [Launch Caveats](#launch-caveats) for the full picture.
 
 | Backend | API | Browser UI | Notes |
 | --- | --- | --- | --- |
-| Google Drive | Yes | Yes | Richest quota and file metadata reporting |
-| Telegram | Yes | Yes | Uses bot API for chunk storage |
-| S3-compatible | Yes | Yes | Works with MinIO, Backblaze B2, Wasabi, etc. |
+| Google Drive | Yes | Yes | Native quota and file metadata reporting |
+| Telegram | Yes | Yes | Uses bot API for chunk storage; no native quota meter |
+| S3-compatible | Yes | Yes | Works with MinIO, Backblaze B2, Wasabi, etc.; health is supported but provider-wide quota is not inferred |
 
 ## Architecture
 
@@ -257,7 +257,8 @@ SFree is an early-stage project. These constraints are current and intentional:
 - **Authentication is still early.** The API supports HTTP Basic Auth and OAuth,
   but auth flows and browser token storage are not production-hardened.
 - **Uneven observability.** Google Drive sources expose the richest file and
-  quota info. Telegram and S3-compatible sources return less metadata.
+  quota info. Telegram and S3-compatible sources can still show health and
+  stored bytes, but SFree does not fake provider-wide capacity for them.
 
 ## Contributing
 

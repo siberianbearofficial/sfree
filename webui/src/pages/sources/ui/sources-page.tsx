@@ -4,8 +4,9 @@ import {useNavigate} from "react-router-dom";
 import {useCallback, useEffect, useState} from "react";
 import {CreateSourceDialog} from "../../../features/source";
 import {deleteSource, getSourceHealth, listSources} from "../../../shared/api/sources";
-import type {Source, SourceHealth, SourceHealthStatus} from "../../../shared/api/sources";
+import type {Source, SourceHealth} from "../../../shared/api/sources";
 import {SourceTypeChip} from "../../../entities/source";
+import {sourceHealthColor} from "../../../entities/source/lib/capacity";
 import {DeleteIcon} from "@heroui/shared-icons";
 import {ConfirmDialog, EmptyState} from "../../../shared/ui";
 import {showErrorToast} from "../../../shared/api/error";
@@ -14,12 +15,6 @@ type HealthState =
   | {state: "checking"}
   | {state: "ready"; health: SourceHealth}
   | {state: "error"; message: string};
-
-const healthColor: Record<SourceHealthStatus, "success" | "warning" | "danger"> = {
-  healthy: "success",
-  degraded: "warning",
-  unhealthy: "danger",
-};
 
 function RefreshIcon(props: {className?: string}) {
   return (
@@ -120,7 +115,7 @@ export function SourcesPage() {
     }
     return (
       <Tooltip content={health.health.message}>
-        <Chip size="sm" variant="flat" color={healthColor[health.health.status]}>
+        <Chip size="sm" variant="flat" color={sourceHealthColor[health.health.status]}>
           {health.health.status}
         </Chip>
       </Tooltip>

@@ -1828,7 +1828,7 @@ const docTemplate = `{
                         "BasicAuth": []
                     }
                 ],
-                "description": "Runs a lightweight on-demand provider probe. Google Drive returns native quota when available; S3-compatible and Telegram quota fields are null because no cheap native capacity is available.",
+                "description": "Runs a lightweight on-demand provider probe. Google Drive returns native quota when available; S3-compatible and Telegram quota fields stay null because SFree does not invent provider-wide capacity where no cheap native signal exists.",
                 "tags": [
                     "sources"
                 ],
@@ -1883,6 +1883,7 @@ const docTemplate = `{
                         "BasicAuth": []
                     }
                 ],
+                "description": "Returns provider file inventory plus provider-reported storage usage fields when cheaply available. These storage totals are not a universal quota contract; use the health endpoint for honest quota/capacity signals.",
                 "tags": [
                     "sources"
                 ],
