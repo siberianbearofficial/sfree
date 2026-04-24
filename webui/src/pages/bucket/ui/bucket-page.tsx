@@ -1,11 +1,21 @@
 import {
   Button,
+  Chip,
   Input,
+  Snippet,
   Spinner,
+  Table,
+  TableBody,
+  TableCell,
+  TableColumn,
+  TableHeader,
+  TableRow,
+  Tooltip,
   useDisclosure,
 } from "@heroui/react";
+import type {SortDescriptor} from "@heroui/react";
 import {addToast} from "@heroui/toast";
-import {useCallback, useDeferredValue, useEffect, useRef, useState} from "react";
+import {useCallback, useDeferredValue, useEffect, useMemo, useRef, useState} from "react";
 import {Link, useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
@@ -24,15 +34,176 @@ import {ShareFileDialog} from "../../../features/bucket/ui/share-file-dialog";
 import {formatSize} from "../../../shared/lib/format";
 import {ApiError, showErrorToast} from "../../../shared/api/error";
 
+/* ------------------------------------------------------------------ */
+/*  Role helpers                                                       */
+/* ------------------------------------------------------------------ */
+
+function canManageBucket(bucket: Bucket) {
+  return bucket.role === "owner";
+}
+
+function canWriteFiles(bucket: Bucket) {
+  return bucket.role === "owner" || bucket.role === "editor";
+}
+
+const ROLE_COLOR: Record<string, "primary" | "secondary" | "default"> = {
+  owner: "primary",
+  editor: "secondary",
+  viewer: "default",
+};
+
+/* ------------------------------------------------------------------ */
+/*  Credentials panel                                                  */
+/* ------------------------------------------------------------------ */
+
+function CredentialsPanel({bucket}: {bucket: Bucket}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border border-divider rounded-lg">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-foreground hover:bg-default-100 transition-colors rounded-lg cursor-pointer"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <span>S3 Credentials</span>
+        <svg
+          className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 flex flex-col gap-3">
+          <div>
+            <label className="text-xs text-default-500 mb-1 block">
+              Bucket ID
+            </label>
+            <Snippet size="sm" symbol="" className="w-full">
+              {bucket.id}
+            </Snippet>
+          </div>
+          <div>
+            <label className="text-xs text-default-500 mb-1 block">
+              Access Key
+            </label>
+            <Snippet size="sm" symbol="" className="w-full">
+              {bucket.access_key}
+            </Snippet>
+          </div>
+          <div>
+            <label className="text-xs text-default-500 mb-1 block">
+              Created
+            </label>
+            <p className="text-sm text-default-700">
+              {new Date(bucket.created_at).toLocaleString()}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Drop zone                                                          */
+/* ------------------------------------------------------------------ */
+
+function DropZone({
+  active,
+  onDrop,
+  children,
+}: {
+  active: boolean;
+  onDrop: (files: FileList) => void;
+  children: React.ReactNode;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current++;
+    setDragging(true);
+  }
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setDragging(false);
+    }
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+    if (active && e.dataTransfer.files.length > 0) {
+      onDrop(e.dataTransfer.files);
+    }
+  }
+
+  function suppressDrag(e: React.DragEvent) {
+    e.preventDefault();
+  }
+
+  return (
+    <div
+      className={`relative rounded-lg transition-colors ${
+        dragging && active ? "ring-2 ring-primary bg-primary/5" : ""
+      }`}
+      onDragEnter={active ? handleDragEnter : suppressDrag}
+      onDragOver={suppressDrag}
+      onDragLeave={active ? handleDragLeave : undefined}
+      onDrop={active ? handleDrop : suppressDrag}
+    >
+      {dragging && active && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/5 rounded-lg pointer-events-none">
+          <p className="text-primary font-medium">Drop files here</p>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Upload queue indicator                                             */
+/* ------------------------------------------------------------------ */
+
+function UploadQueue({count}: {count: number}) {
+  if (count === 0) return null;
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg text-sm text-primary">
+      <Spinner size="sm" color="primary" />
+      <span>
+        Uploading {count} file{count > 1 ? "s" : ""}…
+      </span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main page                                                          */
+/* ------------------------------------------------------------------ */
+
 export function BucketPage() {
   const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
+
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshingFiles, setIsRefreshingFiles] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
   const fileInput = useRef<HTMLInputElement>(null);
   const hasLoadedRef = useRef(false);
   const requestIDRef = useRef(0);
@@ -45,6 +216,14 @@ export function BucketPage() {
   const [shareFile, setShareFile] = useState<FileInfo | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const activeSearchQuery = deferredSearchQuery.trim();
+
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [sortDescriptor, setSortDescriptor] = useState<SortDescriptor>({
+    column: "name",
+    direction: "ascending",
+  });
+
+  /* ---- data loading ---- */
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (!id) return;
@@ -61,16 +240,12 @@ export function BucketPage() {
         getBucket(id),
         listFiles(id, activeSearchQuery),
       ]);
-      if (requestID !== requestIDRef.current) {
-        return;
-      }
+      if (requestID !== requestIDRef.current) return;
       setBucket(loadedBucket);
       setFiles(fs);
       hasLoadedRef.current = true;
     } catch (err) {
-      if (requestID !== requestIDRef.current) {
-        return;
-      }
+      if (requestID !== requestIDRef.current) return;
       if (err instanceof ApiError && err.status === 404) {
         setBucket(null);
         setFiles([]);
@@ -98,28 +273,62 @@ export function BucketPage() {
     void load(hasLoadedRef.current ? "refresh" : "initial");
   }, [id, load]);
 
-  async function handleUpload(file: File) {
+  /* ---- sorted files ---- */
+
+  const sortedFiles = useMemo(() => {
+    const sorted = [...files];
+    const {column, direction} = sortDescriptor;
+    sorted.sort((a, b) => {
+      let cmp = 0;
+      if (column === "name") {
+        cmp = a.name.localeCompare(b.name);
+      } else if (column === "size") {
+        cmp = a.size - b.size;
+      } else if (column === "created_at") {
+        cmp =
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      return direction === "descending" ? -cmp : cmp;
+    });
+    return sorted;
+  }, [files, sortDescriptor]);
+
+  /* ---- uploads ---- */
+
+  async function handleMultiUpload(fileList: FileList) {
     if (!id || !bucket || !canWriteFiles(bucket)) return;
-    try {
-      await uploadFile(id, file);
-      addToast({title: "File uploaded", description: `${file.name} added to bucket`, color: "success", timeout: 4000});
-      await load("refresh");
-    } catch (err) {
-      showErrorToast(err);
+    const filesToUpload = Array.from(fileList);
+    setUploadingCount((c) => c + filesToUpload.length);
+    const results = await Promise.allSettled(
+      filesToUpload.map(async (file) => {
+        try {
+          await uploadFile(id, file);
+          addToast({
+            title: "File uploaded",
+            description: `${file.name} added to bucket`,
+            color: "success",
+            timeout: 4000,
+          });
+        } finally {
+          setUploadingCount((c) => c - 1);
+        }
+      }),
+    );
+    for (const r of results) {
+      if (r.status === "rejected") showErrorToast(r.reason);
     }
+    await load("refresh");
   }
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (f) handleUpload(f);
+    const fileList = e.target.files;
+    if (fileList && fileList.length > 0) {
+      handleMultiUpload(fileList);
+      e.target.value = "";
+    }
   }
 
-  function onDrop(e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    if (!bucket || !canWriteFiles(bucket)) return;
-    const f = e.dataTransfer.files?.[0];
-    if (f) handleUpload(f);
-  }
+  /* ---- delete ---- */
 
   async function handleDelete() {
     if (!id || !deleteId) return;
@@ -136,9 +345,7 @@ export function BucketPage() {
     }
   }
 
-  function openShareModal(file: FileInfo) {
-    setShareFile(file);
-  }
+  /* ---- download ---- */
 
   async function handleDownload(file: FileInfo) {
     if (!id) return;
@@ -148,6 +355,8 @@ export function BucketPage() {
       showErrorToast(err);
     }
   }
+
+  /* ---- loading / error / not-found states ---- */
 
   if (isLoading) {
     return (
@@ -208,39 +417,63 @@ export function BucketPage() {
       <Link to="/buckets" className="text-sm text-default-500 hover:text-primary transition-colors">
         &larr; Buckets
       </Link>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold">{bucket.key}</h1>
-        <p>ID: {bucket.id}</p>
-        <p>Access Key: {bucket.access_key}</p>
-        <p>Created: {new Date(bucket.created_at).toLocaleString()}</p>
-      </div>
-      <div className="flex justify-end gap-2">
-        {canManage && (
-          <Button variant="flat" onPress={shareBucket.onOpen}>
-            Share Bucket
-          </Button>
-        )}
-        {canWrite && (
-          <>
-            <input
-              type="file"
-              ref={fileInput}
-              className="hidden"
-              onChange={onFileChange}
-            />
-            <Button color="primary" onPress={() => fileInput.current?.click()}>
-              Upload File
+
+      {/* Header row */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold truncate">
+            {bucket.key}
+          </h1>
+          <Chip size="sm" variant="flat" color={ROLE_COLOR[bucket.role]}>
+            {bucket.role}
+          </Chip>
+          {bucket.shared && (
+            <Chip size="sm" variant="flat" color="warning">
+              shared
+            </Chip>
+          )}
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {canManage && (
+            <Button
+              variant="flat"
+              size="sm"
+              startContent={<ShareIcon className="w-4 h-4" />}
+              onPress={shareBucket.onOpen}
+            >
+              <span className="hidden sm:inline">Share</span>
             </Button>
-          </>
-        )}
+          )}
+          {canWrite && (
+            <>
+              <input
+                type="file"
+                ref={fileInput}
+                className="hidden"
+                onChange={onFileChange}
+                multiple
+              />
+              <Button
+                color="primary"
+                size="sm"
+                onPress={() => fileInput.current?.click()}
+              >
+                Upload
+              </Button>
+            </>
+          )}
+        </div>
       </div>
-      <div
-        className={
-          canWrite ? "border-2 border-dashed rounded p-4" : "border rounded p-4"
-        }
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-      >
+
+      {/* Credentials panel */}
+      <CredentialsPanel bucket={bucket} />
+
+      {/* Upload queue */}
+      <UploadQueue count={uploadingCount} />
+
+      {/* File workspace */}
+      <DropZone active={canWrite} onDrop={handleMultiUpload}>
+        {/* Search bar */}
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <Input
             aria-label="Search files"
@@ -260,81 +493,131 @@ export function BucketPage() {
             </p>
           ) : null}
         </div>
+
         {files.length === 0 ? (
-          <EmptyState
-            title={emptyTitle}
-            description={emptyDescription}
-            ctaLabel={!activeSearchQuery && canWrite ? "Upload File" : undefined}
-            onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
-          />
+          <div className="border-2 border-dashed border-default-300 rounded-lg p-8">
+            <EmptyState
+              title={emptyTitle}
+              description={emptyDescription}
+              ctaLabel={!activeSearchQuery && canWrite ? "Upload File" : undefined}
+              onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
+            />
+          </div>
         ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr>
-                <th className="pb-2">Name</th>
-                <th className="pb-2">Size</th>
-                <th className="pb-2">Created</th>
-                <th className="pb-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {files.map((f) => (
-                <tr key={f.id} className="border-t">
-                  <td className="py-2">
+          <Table
+            aria-label="Files in bucket"
+            sortDescriptor={sortDescriptor}
+            onSortChange={setSortDescriptor}
+            classNames={{
+              wrapper: "shadow-none border border-divider",
+            }}
+          >
+            <TableHeader>
+              <TableColumn key="name" allowsSorting>
+                Name
+              </TableColumn>
+              <TableColumn
+                key="size"
+                allowsSorting
+                className="hidden sm:table-cell"
+              >
+                Size
+              </TableColumn>
+              <TableColumn
+                key="created_at"
+                allowsSorting
+                className="hidden md:table-cell"
+              >
+                Created
+              </TableColumn>
+              <TableColumn key="actions" className="text-right w-[1%]">
+                Actions
+              </TableColumn>
+            </TableHeader>
+            <TableBody items={sortedFiles}>
+              {(file) => (
+                <TableRow key={file.id}>
+                  <TableCell>
                     <button
                       type="button"
-                      className="text-left hover:text-primary transition-colors cursor-pointer"
-                      onClick={() => setPreviewFile(f)}
+                      className="text-left hover:text-primary transition-colors cursor-pointer truncate max-w-[200px] sm:max-w-[300px] md:max-w-none"
+                      onClick={() => setPreviewFile(file)}
+                      title={file.name}
                     >
-                      {f.name}
+                      {file.name}
                     </button>
-                  </td>
-                  <td className="py-2">{formatSize(f.size)}</td>
-                  <td className="py-2">
-                    {new Date(f.created_at).toLocaleString()}
-                  </td>
-                  <td className="py-2">
-                    <div className="flex gap-2">
+                    {/* Mobile-only size beneath file name */}
+                    <span className="block sm:hidden text-xs text-default-400 mt-0.5">
+                      {formatSize(file.size)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell text-default-500 text-sm">
+                    {formatSize(file.size)}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-default-500 text-sm whitespace-nowrap">
+                    {new Date(file.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1 justify-end">
                       {canWrite && (
-                        <Button
-                          isIconOnly
-                          aria-label={`Share ${f.name}`}
-                          variant="light"
-                          onPress={() => openShareModal(f)}
-                        >
-                          <ShareIcon className="w-5 h-5" />
-                        </Button>
+                        <Tooltip content="Share">
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            aria-label={`Share ${file.name}`}
+                            variant="light"
+                            onPress={() => setShareFile(file)}
+                          >
+                            <ShareIcon className="w-4 h-4" />
+                          </Button>
+                        </Tooltip>
                       )}
-                      <Button
-                        isIconOnly
-                        aria-label={`Download ${f.name}`}
-                        variant="light"
-                        onPress={() => handleDownload(f)}
-                      >
-                        <DownloadIcon className="w-5 h-5" />
-                      </Button>
-                      {canWrite && (
+                      <Tooltip content="Download">
                         <Button
                           isIconOnly
-                          aria-label={`Delete ${f.name}`}
+                          size="sm"
+                          aria-label={`Download ${file.name}`}
                           variant="light"
-                          color="danger"
-                          onPress={() => {
-                            setDeleteId(f.id);
-                            confirm.onOpen();
-                          }}
+                          onPress={() => handleDownload(file)}
                         >
-                          <DeleteIcon className="w-5 h-5" />
+                          <DownloadIcon className="w-4 h-4" />
                         </Button>
+                      </Tooltip>
+                      {canWrite && (
+                        <Tooltip content="Delete" color="danger">
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            aria-label={`Delete ${file.name}`}
+                            variant="light"
+                            color="danger"
+                            onPress={() => {
+                              setDeleteId(file.id);
+                              confirm.onOpen();
+                            }}
+                          >
+                            <DeleteIcon className="w-4 h-4" />
+                          </Button>
+                        </Tooltip>
                       )}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         )}
-      </div>
+      </DropZone>
+
+      {/* File count summary */}
+      {files.length > 0 && (
+        <p className="text-xs text-default-400">
+          {files.length} file{files.length !== 1 ? "s" : ""} &middot;{" "}
+          {formatSize(files.reduce((acc, f) => acc + f.size, 0))} total
+        </p>
+      )}
+
+      {/* Modals */}
       <ConfirmDialog
         isOpen={confirm.isOpen}
         onOpenChange={(open) => {
@@ -342,7 +625,7 @@ export function BucketPage() {
           confirm.onOpenChange();
         }}
         title="Delete file?"
-        message="Are you sure you want to delete this file?"
+        message="Are you sure you want to delete this file? This action cannot be undone."
         onConfirm={handleDelete}
         confirmLabel="Delete"
         isConfirmLoading={isDeleting}
@@ -365,12 +648,4 @@ export function BucketPage() {
       />
     </div>
   );
-}
-
-function canManageBucket(bucket: Bucket) {
-  return bucket.role === "owner";
-}
-
-function canWriteFiles(bucket: Bucket) {
-  return bucket.role === "owner" || bucket.role === "editor";
 }
