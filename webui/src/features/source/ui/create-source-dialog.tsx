@@ -18,6 +18,7 @@ import {
   createS3Source,
   createTelegramSource,
 } from "../../../shared/api/sources";
+import type {Source} from "../../../shared/api/sources";
 import {showErrorToast} from "../../../shared/api/error";
 import {GoogleDriveIcon, TelegramIcon, S3Icon} from "../../../shared/icons";
 
