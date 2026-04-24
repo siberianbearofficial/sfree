@@ -193,7 +193,7 @@ func newFileRepositoryTestDB(t *testing.T) (*mongo.Database, *FileRepository) {
 		_ = testDB.Drop(context.Background())
 		_ = mongoConn.Close(context.Background())
 	})
-	repo, err := NewFileRepository(ctx, testDB)
+	repo, err := NewFileRepository(context.Background(), testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
