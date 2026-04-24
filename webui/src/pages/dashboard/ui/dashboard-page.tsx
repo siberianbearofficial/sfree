@@ -64,7 +64,7 @@ export function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 flex flex-col gap-8">
+      <div className="p-6 sm:p-8 flex flex-col gap-8">
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="text-default-500">Loading...</p>
       </div>
@@ -72,7 +72,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="p-8 flex flex-col gap-8">
+    <div className="p-6 sm:p-8 flex flex-col gap-8">
       <h1 className="text-3xl font-bold">Dashboard</h1>
 
       {/* Summary stat cards */}
@@ -168,15 +168,6 @@ export function DashboardPage() {
         )}
       </div>
 
-      {/* Quick actions */}
-      <div className="flex gap-4">
-        <Button as={Link} variant="flat" to="/sources">
-          Manage Sources
-        </Button>
-        <Button as={Link} variant="flat" to="/buckets">
-          Manage Buckets
-        </Button>
-      </div>
     </div>
   );
 }

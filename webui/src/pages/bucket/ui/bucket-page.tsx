@@ -6,7 +6,7 @@ import {
 } from "@heroui/react";
 import {addToast} from "@heroui/toast";
 import {useCallback, useDeferredValue, useEffect, useRef, useState} from "react";
-import {useNavigate, useParams} from "react-router-dom";
+import {Link, useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
   downloadFile,
@@ -16,7 +16,7 @@ import {
 } from "../../../shared/api/buckets";
 import type {Bucket, FileInfo} from "../../../shared/api/buckets";
 import {DownloadIcon, ShareIcon} from "../../../shared/icons";
-import {DeleteIcon, ArrowLeftIcon} from "@heroui/shared-icons";
+import {DeleteIcon} from "@heroui/shared-icons";
 import {ConfirmDialog, EmptyState} from "../../../shared/ui";
 import {FilePreviewModal} from "../../../features/bucket/ui/file-preview-modal";
 import {ShareBucketDialog} from "../../../features/bucket/ui/share-bucket-dialog";
@@ -151,7 +151,7 @@ export function BucketPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-[200px]">
+      <div className="p-6 sm:p-8 flex items-center justify-center min-h-[200px]">
         <Spinner size="lg" />
       </div>
     );
@@ -159,10 +159,10 @@ export function BucketPage() {
 
   if (error) {
     return (
-      <div className="p-8">
-        <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
-          <ArrowLeftIcon className="w-5 h-5" />
-        </Button>
+      <div className="p-6 sm:p-8">
+        <Link to="/buckets" className="text-sm text-default-500 hover:text-primary transition-colors">
+          &larr; Buckets
+        </Link>
         <EmptyState
           title="Failed to load bucket"
           description={error}
@@ -176,10 +176,10 @@ export function BucketPage() {
 
   if (!bucket) {
     return (
-      <div className="p-8">
-        <Button isIconOnly variant="light" onPress={() => navigate("/buckets")}>
-          <ArrowLeftIcon className="w-5 h-5" />
-        </Button>
+      <div className="p-6 sm:p-8">
+        <Link to="/buckets" className="text-sm text-default-500 hover:text-primary transition-colors">
+          &larr; Buckets
+        </Link>
         <EmptyState
           title="Bucket not found"
           description="This bucket may have been deleted."
@@ -200,15 +200,10 @@ export function BucketPage() {
       : "Files shared in this bucket will appear here.";
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <Button
-        isIconOnly
-        aria-label="Back"
-        variant="light"
-        onPress={() => navigate(-1)}
-      >
-        <ArrowLeftIcon className="w-5 h-5" />
-      </Button>
+    <div className="p-6 sm:p-8 flex flex-col gap-6">
+      <Link to="/buckets" className="text-sm text-default-500 hover:text-primary transition-colors">
+        &larr; Buckets
+      </Link>
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold">{bucket.key}</h1>
         <p>ID: {bucket.id}</p>

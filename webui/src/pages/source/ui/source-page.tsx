@@ -1,12 +1,11 @@
 import {Button, CircularProgress, Spinner} from "@heroui/react";
 import {useCallback, useEffect, useState} from "react";
-import {useNavigate, useParams} from "react-router-dom";
+import {Link, useNavigate, useParams} from "react-router-dom";
 import {downloadFile, getSourceInfo} from "../../../shared/api/sources";
 import type {SourceFile, SourceInfo} from "../../../shared/api/sources";
 import {showErrorToast} from "../../../shared/api/error";
 import {SourceTypeChip} from "../../../entities/source";
 import {DownloadIcon} from "../../../shared/icons";
-import {ArrowLeftIcon} from "@heroui/shared-icons";
 import {EmptyState} from "../../../shared/ui";
 
 export function SourcePage() {
@@ -41,7 +40,7 @@ export function SourcePage() {
 
   if (isLoading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-[200px]">
+      <div className="p-6 sm:p-8 flex items-center justify-center min-h-[200px]">
         <Spinner size="lg" />
       </div>
     );
@@ -49,10 +48,10 @@ export function SourcePage() {
 
   if (error) {
     return (
-      <div className="p-8">
-        <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
-          <ArrowLeftIcon className="w-5 h-5" />
-        </Button>
+      <div className="p-6 sm:p-8">
+        <Link to="/sources" className="text-sm text-default-500 hover:text-primary transition-colors">
+          &larr; Sources
+        </Link>
         <EmptyState
           title="Failed to load source"
           description={error}
@@ -66,10 +65,10 @@ export function SourcePage() {
 
   if (!info) {
     return (
-      <div className="p-8">
-        <Button isIconOnly variant="light" onPress={() => navigate("/sources")}>
-          <ArrowLeftIcon className="w-5 h-5" />
-        </Button>
+      <div className="p-6 sm:p-8">
+        <Link to="/sources" className="text-sm text-default-500 hover:text-primary transition-colors">
+          &larr; Sources
+        </Link>
         <EmptyState
           title="Source not found"
           description="This source may have been deleted."
@@ -85,10 +84,10 @@ export function SourcePage() {
     : 0;
 
   return (
-    <div className="p-8 flex flex-col gap-6">
-      <Button isIconOnly variant="light" onPress={() => navigate(-1)}>
-        <ArrowLeftIcon className="w-5 h-5" />
-      </Button>
+    <div className="p-6 sm:p-8 flex flex-col gap-6">
+      <Link to="/sources" className="text-sm text-default-500 hover:text-primary transition-colors">
+        &larr; Sources
+      </Link>
       <h1 className="text-3xl font-bold">{info.name}</h1>
       <SourceTypeChip type={info.type} />
       <div className="flex justify-center">

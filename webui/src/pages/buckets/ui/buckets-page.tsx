@@ -51,7 +51,7 @@ export function BucketsPage() {
   }, []);
 
   return (
-    <div className="p-8 flex flex-col gap-6">
+    <div className="p-6 sm:p-8 flex flex-col gap-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Buckets</h1>
         <Button color="primary" onPress={create.onOpen}>
