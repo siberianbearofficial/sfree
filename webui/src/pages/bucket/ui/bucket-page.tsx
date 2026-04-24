@@ -560,6 +560,7 @@ export function BucketPage() {
                             variant="light"
                             onPress={() => setShareFile(file)}
                           >
+                            <span className="sr-only">{`Share ${file.name}`}</span>
                             <ShareIcon className="w-4 h-4" />
                           </Button>
                         )}
@@ -570,6 +571,7 @@ export function BucketPage() {
                           variant="light"
                           onPress={() => handleDownload(file)}
                         >
+                          <span className="sr-only">{`Download ${file.name}`}</span>
                           <DownloadIcon className="w-4 h-4" />
                         </Button>
                         {canWrite && (
@@ -584,6 +586,7 @@ export function BucketPage() {
                               confirm.onOpen();
                             }}
                           >
+                            <span className="sr-only">{`Delete ${file.name}`}</span>
                             <DeleteIcon className="w-4 h-4" />
                           </Button>
                         )}
