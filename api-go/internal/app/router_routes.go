@@ -128,8 +128,12 @@ func registerS3Routes(router *gin.Engine, cfg *config.Config, deps *routerDepend
 	}
 	s3Auth := handlers.AWS4Auth(deps.bucketRepo, routerAccessSecret(cfg))
 	uploadChunkSize := routerUploadChunkSize(cfg)
+	for _, root := range []string{"/", "/api/s3"} {
+		router.GET(root, protectedHandlers(limits, s3Auth, handlers.ListBucketsS3(deps.bucketRepo))...)
+	}
 	for _, prefix := range []string{"", "/api/s3"} {
 		bucketPath, objectPath := s3RoutePaths(prefix)
+		router.HEAD(bucketPath, protectedHandlers(limits, s3Auth, handlers.HeadBucket(deps.bucketRepo))...)
 		router.HEAD(objectPath, protectedHandlers(limits, s3Auth, handlers.HeadObject(deps.bucketRepo, deps.fileRepo))...)
 		router.GET(objectPath, protectedHandlers(limits, s3Auth, handlers.GetObjectOrPartsWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
 		router.GET(bucketPath, protectedHandlers(limits, s3Auth, handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo))...)

@@ -130,7 +130,7 @@ source_name="smoke-source-$suffix"
 bucket_key="smoke-bucket-$suffix"
 payload="$tmpdir/payload.txt"
 cli_download="$tmpdir/cli-download.txt"
-s3_download="$tmpdir/s3-download.txt"
+mc_download="$tmpdir/mc-download.txt"
 share_download="$tmpdir/share-download.txt"
 
 printf 'sfree smoke payload %s\n' "$suffix" > "$payload"
@@ -179,10 +179,16 @@ step "CLI download"
 cmp "$payload" "$cli_download"
 pass "sfree download returns matching bytes"
 
-step "S3 credential download"
-"$tmpdir/smoke-helper" s3-get "$base_url/api/s3" "$access_key" "$access_secret" "$bucket_key" "$(basename "$payload")" "$s3_download"
-cmp "$payload" "$s3_download"
-pass "Downloaded bytes match through S3-compatible credentials"
+step "MinIO client root-endpoint download"
+docker run --rm \
+	--network "${COMPOSE_PROJECT_NAME}_default" \
+	--entrypoint sh \
+	"$MINIO_MC_IMAGE" -ceu '
+		mc alias set --api S3v4 --path on sfree http://api:8080 "$1" "$2" >/dev/null
+		mc cat "sfree/$3/$4"
+	' sh "$access_key" "$access_secret" "$bucket_key" "$(basename "$payload")" > "$mc_download"
+cmp "$payload" "$mc_download"
+pass "Downloaded bytes match through MinIO client on the root S3 endpoint"
 
 step "Frontend-origin public share download"
 share_path="$("$tmpdir/smoke-helper" share-url "$base_url" "$username" "$password" "$bucket_id" "$file_id")"

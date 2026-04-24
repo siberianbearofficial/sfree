@@ -144,13 +144,11 @@ instance for local S3-compatible source testing.
    ```
 3. Create a bucket in the UI (select the MinIO source).
 4. Upload a file through the UI.
-5. Download the same file via aws-cli using the bucket's S3 credentials:
+5. Download the same file via an S3 client using the bucket's S3 credentials:
    ```bash
-   aws s3 ls s3://BUCKET_KEY/ \
-     --endpoint-url http://localhost:8080/api/s3
+   mc alias set --api S3v4 --path on sfree http://localhost:8080 BUCKET_ACCESS_KEY BUCKET_ACCESS_SECRET
 
-   aws s3 cp s3://BUCKET_KEY/OBJECT_KEY ./local-copy \
-     --endpoint-url http://localhost:8080/api/s3
+   mc cat sfree/BUCKET_KEY/OBJECT_KEY > ./local-copy
    ```
 
 ### Manual dev setup (without Docker Compose)

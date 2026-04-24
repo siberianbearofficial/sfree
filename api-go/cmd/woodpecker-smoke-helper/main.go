@@ -10,11 +10,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const requestTimeout = 20 * time.Second
@@ -69,11 +64,6 @@ func run(args []string) error {
 			return usage()
 		}
 		return downloadURL(args[1], args[2])
-	case "s3-get":
-		if len(args) != 7 {
-			return usage()
-		}
-		return s3Get(args[1], args[2], args[3], args[4], args[5], args[6])
 	default:
 		return usage()
 	}
@@ -82,7 +72,7 @@ func run(args []string) error {
 }
 
 func usage() error {
-	return errors.New("usage: smoke-helper ready URL | create-user BASE_URL USERNAME | create-source BASE_URL USERNAME PASSWORD SOURCE_NAME | share-url BASE_URL USERNAME PASSWORD BUCKET_ID FILE_ID | download-url URL OUTPUT | s3-get ENDPOINT ACCESS_KEY SECRET_KEY BUCKET KEY OUTPUT")
+	return errors.New("usage: smoke-helper ready URL | create-user BASE_URL USERNAME | create-source BASE_URL USERNAME PASSWORD SOURCE_NAME | share-url BASE_URL USERNAME PASSWORD BUCKET_ID FILE_ID | download-url URL OUTPUT")
 }
 
 func ready(rawURL string) error {
@@ -207,32 +197,6 @@ func downloadURL(rawURL, output string) error {
 		return fmt.Errorf("GET %s returned %s: %s", rawURL, resp.Status, string(responseBody))
 	}
 	return writeFile(output, resp.Body)
-}
-
-func s3Get(endpoint, accessKey, secretKey, bucket, key, output string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion("us-east-1"),
-		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
-	)
-	if err != nil {
-		return err
-	}
-	client := awss3.NewFromConfig(cfg, func(opts *awss3.Options) {
-		opts.BaseEndpoint = aws.String(endpoint)
-		opts.UsePathStyle = true
-	})
-	result, err := client.GetObject(ctx, &awss3.GetObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = result.Body.Close() }()
-	return writeFile(output, result.Body)
 }
 
 func writeFile(output string, source io.Reader) error {
