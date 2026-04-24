@@ -11,7 +11,7 @@ import {
   ModalHeader,
   Textarea,
 } from "@heroui/react";
-import {useState, useMemo} from "react";
+import {useState, useMemo, useRef} from "react";
 import {
   createGDriveSource,
   createS3Source,
@@ -169,6 +169,9 @@ export function CreateSourceDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [createdSource, setCreatedSource] = useState<Source | null>(null);
 
+  // Guards against late async responses after dialog close/back navigation
+  const createGeneration = useRef(0);
+
   // shared
   const [name, setName] = useState("");
   // gdrive
@@ -193,7 +196,16 @@ export function CreateSourceDialog({
 
   const isValid = useMemo(() => {
     if (!name.trim()) return false;
-    if (sourceType === "gdrive") return !!key.trim();
+    if (sourceType === "gdrive") {
+      if (!key.trim()) return false;
+      try {
+        const parsed = JSON.parse(key);
+        if (!parsed.type || !parsed.project_id) return false;
+      } catch {
+        return false;
+      }
+      return true;
+    }
     if (sourceType === "telegram")
       return !!token.trim() && !!chatId.trim();
     return (
@@ -220,6 +232,7 @@ export function CreateSourceDialog({
   }
 
   function reset() {
+    createGeneration.current++;
     setStep("select");
     setSourceType("gdrive");
     setName("");
@@ -243,11 +256,13 @@ export function CreateSourceDialog({
   }
 
   function handleBack() {
+    createGeneration.current++;
     setStep("select");
     setTouched(new Set());
   }
 
   async function handleCreate() {
+    const gen = ++createGeneration.current;
     setIsLoading(true);
     try {
       let source: Source;
@@ -266,13 +281,17 @@ export function CreateSourceDialog({
           path_style: pathStyle || undefined,
         });
       }
+      if (gen !== createGeneration.current) return;
       setCreatedSource(source);
       setStep("success");
       onCreated();
     } catch (err) {
+      if (gen !== createGeneration.current) return;
       showErrorToast(err);
     } finally {
-      setIsLoading(false);
+      if (gen === createGeneration.current) {
+        setIsLoading(false);
+      }
     }
   }
 
