@@ -453,8 +453,12 @@ function CredentialsPanel({bucket}: {bucket: Bucket}) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      {open && (
-        <div id="credentials-panel" className="px-4 pb-4 flex flex-col gap-3 overflow-hidden">
+      <div
+        id="credentials-panel"
+        hidden={!open}
+        aria-hidden={!open}
+        className="px-4 pb-4 flex flex-col gap-3 overflow-hidden"
+      >
           <div className="min-w-0">
             <p className="text-xs text-default-500 mb-1">Bucket ID</p>
             <Snippet size="sm" variant="flat" symbol="" classNames={{base: "max-w-full", pre: "whitespace-pre-wrap break-all"}}>{bucket.id}</Snippet>
@@ -466,8 +470,7 @@ function CredentialsPanel({bucket}: {bucket: Bucket}) {
           <p className="text-xs text-default-500">
             Created {new Date(bucket.created_at).toLocaleString()}
           </p>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
