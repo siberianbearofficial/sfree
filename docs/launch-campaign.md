@@ -217,9 +217,13 @@ based on early reactions.
 - [ ] README Quick Start verified end-to-end (fresh clone to running)
 - [ ] API docs accessible and accurate
 - [ ] Docker Compose brings up a working instance
-- [ ] GitHub repo has: description, topics, license badge, social preview image
-- [ ] GitHub topics set: `storage`, `s3`, `self-hosted`, `google-drive`,
-      `telegram`, `homelab`, `object-storage`, `golang`
+- [x] GitHub repo description is live and matches the current prototype caveats
+- [x] GitHub topics are set intentionally for launch discovery (`storage`, `s3`,
+      `self-hosted`, `google-drive`, `telegram`, `homelab`,
+      `object-storage`, `golang`, plus closely related supporting topics)
+- [x] GitHub repo license badge is visible in README
+- [ ] GitHub social preview image is uploaded in repo Settings and matches the
+      README/launch visuals
 
 ---
 
