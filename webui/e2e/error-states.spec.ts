@@ -17,7 +17,13 @@ test.describe("Error states", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets/does-not-exist", { error: "not found" }, 404);
-    await mockGet(page, "/buckets/does-not-exist/files", []);
+    await page.route("**/api/v1/buckets/does-not-exist/files*", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({status: 200, json: {items: []}});
+    });
     await page.goto("/buckets/does-not-exist");
 
     await expect(page.getByText("Bucket not found")).toBeVisible();
