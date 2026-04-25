@@ -783,3 +783,42 @@ func TestHeadObjectIfUnmodifiedSinceReturnsPreconditionFailed(t *testing.T) {
 		t.Fatalf("expected persisted ETag header, got %q", got)
 	}
 }
+
+func TestHeadObjectIgnoresResponseHeaderOverrides(t *testing.T) {
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	bucketID := primitive.NewObjectID()
+	r.HEAD("/api/s3/:bucket/*object", headObject(
+		fakeObjectBucketReader{
+			bucket: &repository.Bucket{
+				ID:        bucketID,
+				Key:       "bucket",
+				AccessKey: "access-key",
+			},
+		},
+		fakeObjectFileReader{
+			file: &repository.File{
+				ID:          primitive.NewObjectID(),
+				BucketID:    bucketID,
+				Name:        "object.txt",
+				ContentType: "application/json",
+				CreatedAt:   time.Unix(1700000000, 0).UTC(),
+				ETag:        `"persisted-etag"`,
+			},
+		},
+	))
+
+	req := httptest.NewRequest(http.MethodHead, "/api/s3/bucket/object.txt?response-content-type=text/plain", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("expected persisted content type, got %q", got)
+	}
+}

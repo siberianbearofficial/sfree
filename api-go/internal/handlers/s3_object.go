@@ -168,7 +168,6 @@ func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
 	for key, value := range fileDoc.UserMetadata {
 		c.Header(userMetadataHeaderPrefix+key, value)
 	}
-	applyResponseHeaderOverrides(c)
 }
 
 func applyResponseHeaderOverrides(c *gin.Context) {
@@ -311,6 +310,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		if rangeHeader == "" {
 			w := newDeferredResponseWriter(c, func() {
 				setObjectHeaders(c, fileDoc, total)
+				applyResponseHeaderOverrides(c)
 				c.Status(http.StatusOK)
 			})
 			if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, w); err != nil {
@@ -335,6 +335,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		}
 		w := newDeferredResponseWriter(c, func() {
 			setObjectHeaders(c, fileDoc, total)
+			applyResponseHeaderOverrides(c)
 			c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
 			c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
 			c.Status(http.StatusPartialContent)
