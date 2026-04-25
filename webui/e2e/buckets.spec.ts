@@ -8,7 +8,7 @@
  * - Upload File button is present on the bucket detail page
  */
 
-import { test, expect, type Route } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 import { API_GLOB, injectAuth, mockGet, mockPost } from "./helpers";
 
 const MOCK_SOURCE = {
@@ -50,6 +50,16 @@ const MOCK_GRANT = {
   granted_by: "user-1",
   created_at: "2024-01-15T12:00:00Z",
 };
+
+async function mockBucketFiles(page: Page, bucketId: string, items: unknown[]) {
+  await page.route(`**/api/v1/buckets/${bucketId}/files*`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({status: 200, json: {items}});
+  });
+}
 
 test.describe("Bucket creation flow", () => {
   test("buckets page shows empty state when no buckets exist", async ({
@@ -163,7 +173,7 @@ test.describe("Bucket creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, "bkt-1", []);
     await page.goto("/buckets/bkt-1");
 
     await expect(
@@ -185,7 +195,7 @@ test.describe("Bucket creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, "bkt-1", []);
 
     let fulfillGrants: (() => Promise<void>) | undefined;
     await page.route(`${API_GLOB}/buckets/bkt-1/grants`, async (route) => {
@@ -212,7 +222,7 @@ test.describe("Bucket creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, "bkt-1", []);
     await mockGet(
       page,
       "/buckets/bkt-1/grants",
@@ -236,7 +246,7 @@ test.describe("Bucket creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, "bkt-1", []);
 
     const grantRoutes: Route[] = [];
     await page.route(`${API_GLOB}/buckets/bkt-1/grants`, async (route) => {
@@ -273,7 +283,7 @@ test.describe("Bucket creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, "bkt-1", []);
     await page.goto("/buckets/bkt-1");
 
     await expect(page.getByRole("button", { name: "Upload File" })).not.toBeVisible();

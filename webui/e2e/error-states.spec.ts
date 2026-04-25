@@ -17,7 +17,13 @@ test.describe("Error states", () => {
   }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets/does-not-exist", { error: "not found" }, 404);
-    await mockGet(page, "/buckets/does-not-exist/files", []);
+    await page.route("**/api/v1/buckets/does-not-exist/files*", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({status: 200, json: {items: []}});
+    });
     await page.goto("/buckets/does-not-exist");
 
     await expect(page.getByText("Bucket not found")).toBeVisible();
@@ -49,10 +55,15 @@ test.describe("Error states", () => {
     await dialog.getByLabel("Username").fill("newuser");
     await dialog.getByRole("button", { name: "Create Account" }).click();
 
-    // Generated password is shown via Snippet
     await expect(dialog.getByText("generated-secret-pw")).toBeVisible();
 
-    // Confirmation button dismisses
+    await page.route(`${API_GLOB}/auth/session`, (route) =>
+      route.fulfill({status: 204, body: ""}),
+    );
+    await page.route(`${API_GLOB}/auth/me`, (route) =>
+      route.fulfill({status: 200, json: {id: "u-new", username: "newuser"}}),
+    );
+
     await dialog.getByRole("button", { name: "I saved my password" }).click();
     await expect(dialog).not.toBeVisible();
   });
@@ -60,7 +71,6 @@ test.describe("Error states", () => {
   test("Login dialog opens and closes, storing credentials", async ({
     page,
   }) => {
-    // Login is purely client-side — saves btoa(user:pass) to localStorage
     await page.route(`${API_GLOB}/**`, (route) => route.abort());
 
     await page.goto("/");
@@ -73,10 +83,8 @@ test.describe("Error states", () => {
     await dialog.getByLabel("Password").fill("secret");
     await dialog.getByRole("button", { name: "Log In" }).click();
 
-    // Dialog closes after login
     await expect(dialog).not.toBeVisible();
 
-    // localStorage should now have auth set
     const auth = await page.evaluate(() => localStorage.getItem("auth"));
     expect(auth).toBe(btoa("alice:secret"));
   });

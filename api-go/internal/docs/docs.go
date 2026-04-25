@@ -758,6 +758,18 @@ const docTemplate = `{
                         "description": "Filename search query",
                         "name": "q",
                         "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size for bounded file listing",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Continuation cursor for bounded file listing",
+                        "name": "cursor",
+                        "in": "query"
                     }
                 ],
                 "responses": {

@@ -16,6 +16,11 @@ export type FileInfo = {
   size: number;
 };
 
+export type FileListPage = {
+  items: FileInfo[];
+  next_cursor?: string;
+};
+
 export type BatchDeleteFileResult = {
   id: string;
   name: string;
@@ -70,11 +75,24 @@ export async function createBucket(
   });
 }
 
-function bucketFilesPath(bucketId: string, query?: string): string {
+type BucketFilesQuery = {
+  query?: string;
+  limit?: number;
+  cursor?: string;
+};
+
+function bucketFilesPath(bucketId: string, opts: BucketFilesQuery = {}): string {
   const params = new URLSearchParams();
-  const trimmedQuery = query?.trim();
+  const trimmedQuery = opts.query?.trim();
   if (trimmedQuery) {
     params.set("q", trimmedQuery);
+  }
+  if (opts.limit !== undefined) {
+    params.set("limit", String(opts.limit));
+  }
+  const trimmedCursor = opts.cursor?.trim();
+  if (trimmedCursor) {
+    params.set("cursor", trimmedCursor);
   }
   const encodedQuery = params.toString();
   return encodedQuery
@@ -87,7 +105,17 @@ export async function listFiles(
   query?: string,
 ): Promise<FileInfo[]> {
   return apiJson<FileInfo[]>(
-    bucketFilesPath(bucketId, query),
+    bucketFilesPath(bucketId, {query}),
+    "Failed to list files",
+  );
+}
+
+export async function listFilesPage(
+  bucketId: string,
+  opts: BucketFilesQuery = {},
+): Promise<FileListPage> {
+  return apiJson<FileListPage>(
+    bucketFilesPath(bucketId, opts),
     "Failed to list files",
   );
 }

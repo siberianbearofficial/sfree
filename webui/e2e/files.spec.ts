@@ -55,6 +55,24 @@ const LARGE_TEXT_FILE = {
   created_at: "2024-01-22T08:15:00Z",
 };
 
+function filePage(items: typeof MOCK_FILES, nextCursor?: string) {
+  return nextCursor ? {items, next_cursor: nextCursor} : {items};
+}
+
+async function mockBucketFiles(
+  page: Page,
+  items: typeof MOCK_FILES,
+  nextCursor?: string,
+) {
+  await page.route("**/api/v1/buckets/bkt-1/files*", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({status: 200, json: filePage(items, nextCursor)});
+  });
+}
+
 test.describe("File listing and download", () => {
   async function revealCredentialsIfNeeded(
     page: Page,
@@ -75,7 +93,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, []);
     await page.goto("/buckets/bkt-1");
 
     await expect(page.getByRole("heading", { name: "my-bucket" })).toBeVisible();
@@ -87,7 +105,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, []);
     await page.goto("/buckets/bkt-1");
 
     await expect(
@@ -101,7 +119,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+    await mockBucketFiles(page, MOCK_FILES);
     await page.goto("/buckets/bkt-1");
 
     // Table headers
@@ -120,7 +138,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+    await mockBucketFiles(page, MOCK_FILES);
     await page.goto("/buckets/bkt-1");
 
     // There should be one download button per file row (icon buttons)
@@ -163,7 +181,7 @@ test.describe("File listing and download", () => {
             file.name.toLowerCase().includes(query.toLowerCase()),
           )
         : MOCK_FILES;
-      await route.fulfill({status: 200, json: body});
+      await route.fulfill({status: 200, json: filePage(body)});
     });
 
     await page.goto("/buckets/bkt-1");
@@ -193,7 +211,7 @@ test.describe("File listing and download", () => {
       }
       const query = new URL(route.request().url()).searchParams.get("q") ?? "";
       const body = query === "missing" ? [] : MOCK_FILES;
-      await route.fulfill({status: 200, json: body});
+      await route.fulfill({status: 200, json: filePage(body)});
     });
 
     await page.goto("/buckets/bkt-1");
@@ -209,11 +227,38 @@ test.describe("File listing and download", () => {
     await expect(page.getByRole("button", {name: "Upload File"})).toHaveCount(1);
   });
 
+  test("bucket detail loads additional file pages on demand", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+
+    await page.route("**/api/v1/buckets/bkt-1/files*", async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.continue();
+        return;
+      }
+      const cursor = new URL(route.request().url()).searchParams.get("cursor") ?? "";
+      const body = cursor
+        ? filePage([{id: "file-3", name: "zeta.txt", size: 512, created_at: "2024-01-23T10:00:00Z"}])
+        : filePage([MOCK_FILES[0]], MOCK_FILES[0].name);
+      await route.fulfill({status: 200, json: body});
+    });
+
+    await page.goto("/buckets/bkt-1");
+    await expect(page.getByText("report.pdf")).toBeVisible();
+    await expect(page.getByRole("button", {name: "Load More"})).toBeVisible();
+
+    await page.getByRole("button", {name: "Load More"}).click();
+
+    await expect(page.getByText("zeta.txt")).toBeVisible();
+    await expect(page.getByRole("button", {name: "Load More"})).toHaveCount(0);
+  });
+
   test("viewer file rows only expose download actions", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+    await mockBucketFiles(page, MOCK_FILES);
     await page.goto("/buckets/bkt-1");
 
     const firstRowActions = page.locator("tbody tr").first().locator("td").last();
@@ -240,7 +285,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_EDITOR_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_EDITOR_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
+    await mockBucketFiles(page, [MOCK_FILES[0]]);
     await page.goto("/buckets/bkt-1");
 
     await expect(
@@ -260,7 +305,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
+    await mockBucketFiles(page, [MOCK_FILES[0]]);
 
     // Intercept download call and fulfill with a blob
     let downloadCalled = false;
@@ -287,7 +332,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+    await mockBucketFiles(page, MOCK_FILES);
 
     let reportDownloaded = false;
     let dataDownloaded = false;
@@ -326,7 +371,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", [MOCK_FILES[0]]);
+    await mockBucketFiles(page, [MOCK_FILES[0]]);
 
     await page.route("**/api/v1/buckets/bkt-1/files/file-1/download", async (route) => {
       await route.fulfill({
@@ -355,7 +400,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", [LARGE_TEXT_FILE]);
+    await mockBucketFiles(page, [LARGE_TEXT_FILE]);
 
     let previewRequests = 0;
     await page.route("**/api/v1/buckets/bkt-1/files/file-3/download", async (route) => {
@@ -385,7 +430,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", []);
+    await mockBucketFiles(page, []);
     await page.goto("/buckets");
     // Navigate to bucket detail
     await page.goto("/buckets/bkt-1");

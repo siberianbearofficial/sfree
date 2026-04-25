@@ -149,6 +149,81 @@ func TestListFilesSearchQueryWithGrantAccess(t *testing.T) {
 	}
 }
 
+func TestListFilesPagination(t *testing.T) {
+	bucketRepo, fileRepo, grantRepo := newBucketFileHandlerTestRepos(t)
+	ctx := context.Background()
+	ownerID := primitive.NewObjectID()
+	bucket := createBucketFileTestBucket(t, ctx, bucketRepo, ownerID)
+
+	now := time.Now().UTC()
+	for _, file := range []repository.File{
+		{BucketID: bucket.ID, Name: "alpha.txt", CreatedAt: now},
+		{BucketID: bucket.ID, Name: "report-final.txt", CreatedAt: now},
+		{BucketID: bucket.ID, Name: "report-notes.txt", CreatedAt: now},
+		{BucketID: bucket.ID, Name: "report-summary.txt", CreatedAt: now},
+	} {
+		if _, err := fileRepo.Create(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	router := gin.New()
+	router.GET("/buckets/:id/files", setUserID(ownerID.Hex()), ListFiles(bucketRepo, fileRepo, grantRepo))
+
+	firstReq, _ := http.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files?q=report&limit=2", nil)
+	firstW := httptest.NewRecorder()
+	router.ServeHTTP(firstW, firstReq)
+	if firstW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", firstW.Code)
+	}
+
+	var firstPage paginatedFileResponse
+	if err := json.Unmarshal(firstW.Body.Bytes(), &firstPage); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if firstPage.NextCursor != "report-notes.txt" {
+		t.Fatalf("unexpected next cursor: %+v", firstPage)
+	}
+	if len(firstPage.Items) != 2 || firstPage.Items[0].Name != "report-final.txt" || firstPage.Items[1].Name != "report-notes.txt" {
+		t.Fatalf("unexpected first page: %+v", firstPage)
+	}
+
+	secondReq, _ := http.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files?q=report&limit=2&cursor="+firstPage.NextCursor, nil)
+	secondW := httptest.NewRecorder()
+	router.ServeHTTP(secondW, secondReq)
+	if secondW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", secondW.Code)
+	}
+
+	var secondPage paginatedFileResponse
+	if err := json.Unmarshal(secondW.Body.Bytes(), &secondPage); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if secondPage.NextCursor != "" {
+		t.Fatalf("expected empty next cursor on last page, got %+v", secondPage)
+	}
+	if len(secondPage.Items) != 1 || secondPage.Items[0].Name != "report-summary.txt" {
+		t.Fatalf("unexpected second page: %+v", secondPage)
+	}
+}
+
+func TestListFilesRejectsInvalidLimit(t *testing.T) {
+	bucketRepo, fileRepo, grantRepo := newBucketFileHandlerTestRepos(t)
+	ctx := context.Background()
+	ownerID := primitive.NewObjectID()
+	bucket := createBucketFileTestBucket(t, ctx, bucketRepo, ownerID)
+
+	router := gin.New()
+	router.GET("/buckets/:id/files", setUserID(ownerID.Hex()), ListFiles(bucketRepo, fileRepo, grantRepo))
+
+	req, _ := http.NewRequest(http.MethodGet, "/buckets/"+bucket.ID.Hex()+"/files?limit=0", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
 func newBucketFileHandlerTestRepos(t *testing.T) (*repository.BucketRepository, *repository.FileRepository, *repository.BucketGrantRepository) {
 	t.Helper()
 	cfg, err := config.Load()
