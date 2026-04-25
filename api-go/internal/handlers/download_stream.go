@@ -71,3 +71,8 @@ func setAttachmentDownloadHeaders(c *gin.Context, filename string, total int64) 
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Length", strconv.FormatInt(total, 10))
 }
+
+func setArchiveDownloadHeaders(c *gin.Context, filename string) {
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeFilename(filename)))
+	c.Header("Content-Type", "application/zip")
+}

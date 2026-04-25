@@ -108,9 +108,34 @@ func TestOpenAPIJSONRoute(t *testing.T) {
 	if doc.Swagger != "2.0" {
 		t.Fatalf("expected Swagger 2.0, got %q", doc.Swagger)
 	}
-	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/{bucket}", "/{bucket}/{object}", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
+	for _, path := range []string{"/api/v1/buckets", "/api/v1/buckets/{id}/files/download", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/{bucket}", "/{bucket}/{object}", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("expected OpenAPI path %s", path)
+		}
+	}
+}
+
+func TestRegisterBucketFileRoutesIncludesBatchDownloadRoute(t *testing.T) {
+	r := gin.New()
+	registerBucketFileRoutes(r, &config.Config{}, &routerDependencies{
+		auth: func(c *gin.Context) {
+			c.Next()
+		},
+		bucketRepo: &repository.BucketRepository{},
+		sourceRepo: &repository.SourceRepository{},
+		fileRepo:   &repository.FileRepository{},
+	}, nil)
+
+	expectedRoutes := []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/api/v1/buckets/:id/files/download"},
+		{http.MethodGet, "/api/v1/buckets/:id/files/:file_id/download"},
+	}
+	for _, expected := range expectedRoutes {
+		if !hasRoute(r, expected.method, expected.path) {
+			t.Fatalf("expected %s %s to be registered", expected.method, expected.path)
 		}
 	}
 }

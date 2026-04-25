@@ -78,6 +78,7 @@ func registerBucketFileRoutes(router *gin.Engine, cfg *config.Config, deps *rout
 	}
 	router.POST("/api/v1/buckets/:id/upload", protectedHandlers(limits, deps.auth, handlers.UploadFileWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo, routerUploadChunkSize(cfg), deps.sourceFactory))...)
 	router.GET("/api/v1/buckets/:id/files", protectedHandlers(limits, deps.auth, handlers.ListFiles(deps.bucketRepo, deps.fileRepo, deps.grantRepo))...)
+	router.POST("/api/v1/buckets/:id/files/download", protectedHandlers(limits, deps.auth, handlers.DownloadFilesArchiveWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo, deps.sourceFactory))...)
 	router.GET("/api/v1/buckets/:id/files/:file_id/download", protectedHandlers(limits, deps.auth, handlers.DownloadFileWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.grantRepo, deps.sourceFactory))...)
 	router.DELETE("/api/v1/buckets/:id/files/:file_id", protectedHandlers(limits, deps.auth, handlers.DeleteFileWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.shareLinkRepo, deps.grantRepo, deps.sourceFactory))...)
 	if deps.shareLinkRepo == nil {

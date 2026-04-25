@@ -12,6 +12,7 @@ import {Link, useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
   downloadFile,
+  downloadFiles,
   getBucket,
   listFiles,
   uploadFile,
@@ -50,6 +51,7 @@ export function BucketPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileInfo | null>(null);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
 
   const shareBucket = useDisclosure();
   const [shareFile, setShareFile] = useState<FileInfo | null>(null);
@@ -133,12 +135,21 @@ export function BucketPage() {
   useEffect(() => {
     hasLoadedRef.current = false;
     setSearchQuery("");
+    setSelectedFileIds([]);
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
     void load(hasLoadedRef.current ? "refresh" : "initial");
   }, [id, load]);
+
+  useEffect(() => {
+    setSelectedFileIds((prev) => {
+      const visibleIds = new Set(files.map((file) => file.id));
+      const next = prev.filter((fileId) => visibleIds.has(fileId));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [files]);
 
   async function handleUpload(file: File) {
     if (!id || !bucket || !canWriteFiles(bucket)) return;
@@ -191,6 +202,39 @@ export function BucketPage() {
     }
   }
 
+  function toggleFileSelection(fileId: string) {
+    setSelectedFileIds((prev) =>
+      prev.includes(fileId)
+        ? prev.filter((id) => id !== fileId)
+        : [...prev, fileId],
+    );
+  }
+
+  function toggleAllVisibleFiles() {
+    if (sortedFiles.length === 0) return;
+    const allVisibleSelected = sortedFiles.every((file) => selectedFileIds.includes(file.id));
+    if (allVisibleSelected) {
+      setSelectedFileIds([]);
+      return;
+    }
+    setSelectedFileIds(sortedFiles.map((file) => file.id));
+  }
+
+  async function handleDownloadSelected() {
+    if (!id || !bucket || selectedFileIds.length === 0) return;
+    try {
+      await downloadFiles(
+        id,
+        sortedFiles
+          .filter((file) => selectedFileIds.includes(file.id))
+          .map((file) => file.id),
+        `${bucket.key}-files.zip`,
+      );
+    } catch (err) {
+      showErrorToast(err);
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="p-6 sm:p-8 flex items-center justify-center min-h-[200px]">
@@ -234,6 +278,8 @@ export function BucketPage() {
 
   const canManage = canManageBucket(bucket);
   const canWrite = canWriteFiles(bucket);
+  const selectedVisibleCount = sortedFiles.filter((file) => selectedFileIds.includes(file.id)).length;
+  const allVisibleSelected = sortedFiles.length > 0 && selectedVisibleCount === sortedFiles.length;
   const emptyTitle = activeSearchQuery
     ? "No matching files"
     : canWrite
@@ -288,24 +334,40 @@ export function BucketPage() {
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
       >
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <Input
-            aria-label="Search files"
-            className="w-full md:max-w-md"
-            isClearable
-            label="Search files"
-            placeholder="Filter by filename"
-            type="search"
-            value={searchQuery}
-            onClear={() => setSearchQuery("")}
-            onValueChange={setSearchQuery}
-            endContent={isRefreshingFiles ? <Spinner size="sm" /> : null}
-          />
-          {activeSearchQuery ? (
-            <p className="text-sm text-default-500" aria-live="polite">
-              {files.length === 1 ? "1 matching file" : `${files.length} matching files`}
-            </p>
-          ) : null}
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+            <Input
+              aria-label="Search files"
+              className="w-full md:min-w-[20rem] md:max-w-md"
+              isClearable
+              label="Search files"
+              placeholder="Filter by filename"
+              type="search"
+              value={searchQuery}
+              onClear={() => setSearchQuery("")}
+              onValueChange={setSearchQuery}
+              endContent={isRefreshingFiles ? <Spinner size="sm" /> : null}
+            />
+            {activeSearchQuery ? (
+              <p className="text-sm text-default-500" aria-live="polite">
+                {files.length === 1 ? "1 matching file" : `${files.length} matching files`}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {selectedVisibleCount > 0 ? (
+              <p className="text-sm text-default-500" aria-live="polite">
+                {selectedVisibleCount === 1 ? "1 file selected" : `${selectedVisibleCount} files selected`}
+              </p>
+            ) : null}
+            <Button
+              variant="flat"
+              isDisabled={selectedVisibleCount === 0}
+              onPress={handleDownloadSelected}
+            >
+              Download Selected
+            </Button>
+          </div>
         </div>
         {sortedFiles.length === 0 ? (
           <EmptyState
@@ -319,6 +381,14 @@ export function BucketPage() {
             <table className="w-full text-left">
               <thead>
                 <tr>
+                  <th scope="col" className="pb-2 pr-3 w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all files"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisibleFiles}
+                    />
+                  </th>
                   <th scope="col" className="pb-2" aria-sort={sortBy === "name" ? (sortAsc ? "ascending" : "descending") : undefined}>
                     <button type="button" className="cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("name")}>
                       Name<SortArrow field="name" sortBy={sortBy} sortAsc={sortAsc} />
@@ -340,6 +410,14 @@ export function BucketPage() {
               <tbody>
                 {sortedFiles.map((f) => (
                   <tr key={f.id} className="border-t">
+                    <td className="py-2 pr-3 align-middle">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${f.name}`}
+                        checked={selectedFileIds.includes(f.id)}
+                        onChange={() => toggleFileSelection(f.id)}
+                      />
+                    </td>
                     <td className="py-2">
                       <button
                         type="button"

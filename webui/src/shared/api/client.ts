@@ -56,8 +56,9 @@ export async function apiDownload(
   path: string,
   filename: string,
   fallback: string,
+  options?: ApiFetchOptions,
 ): Promise<void> {
-  const res = await apiFetch(path, fallback);
+  const res = await apiFetch(path, fallback, options);
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");

@@ -96,6 +96,22 @@ export async function downloadFile(
   );
 }
 
+export async function downloadFiles(
+  bucketId: string,
+  fileIds: string[],
+  filename: string,
+): Promise<void> {
+  await apiDownload(
+    `/buckets/${bucketId}/files/download`,
+    filename,
+    "Failed to download files",
+    {
+      method: "POST",
+      json: {file_ids: fileIds},
+    },
+  );
+}
+
 export async function fetchFileBlob(
   bucketId: string,
   fileId: string,

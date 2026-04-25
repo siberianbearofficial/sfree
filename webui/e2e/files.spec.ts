@@ -276,6 +276,32 @@ test.describe("File listing and download", () => {
     await expect.poll(() => downloadCalled).toBe(true);
   });
 
+  test("selected files can be downloaded together", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_BUCKET);
+    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+
+    let batchDownloadBody: unknown = null;
+    await page.route("**/api/v1/buckets/bkt-1/files/download", async (route) => {
+      batchDownloadBody = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        headers: {"Content-Type": "application/zip"},
+        body: Buffer.from("fake-zip"),
+      });
+    });
+
+    await page.goto("/buckets/bkt-1");
+    await page.getByRole("checkbox", {name: "Select report.pdf"}).check();
+    await page.getByRole("checkbox", {name: "Select data.csv"}).check();
+    await page.getByRole("button", {name: "Download Selected"}).click();
+
+    await expect.poll(() => batchDownloadBody).toEqual({
+      file_ids: ["file-1", "file-2"],
+    });
+  });
+
   test("failed bucket download shows an error toast", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_BUCKET]);
