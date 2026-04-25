@@ -43,6 +43,17 @@ func evaluateObjectReadPreconditions(r *http.Request, etag string, modifiedAt ti
 	return 0, false
 }
 
+func shouldApplyIfRange(r *http.Request, etag string, modifiedAt time.Time) bool {
+	raw := strings.TrimSpace(r.Header.Get("If-Range"))
+	if raw == "" {
+		return true
+	}
+	if t, ok := parseConditionalTime(raw); ok {
+		return !objectModifiedAfter(modifiedAt, t)
+	}
+	return !strings.HasPrefix(raw, "W/") && raw == etag
+}
+
 func parseConditionalTime(raw string) (time.Time, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

@@ -168,6 +168,34 @@ func TestParseObjectRange(t *testing.T) {
 	}
 }
 
+func TestIsBoundedObjectRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "bounded", raw: "bytes=2-5", want: true},
+		{name: "open ended", raw: "bytes=2-", want: false},
+		{name: "suffix", raw: "bytes=-5", want: false},
+		{name: "multi range", raw: "bytes=0-1,3-4", want: false},
+		{name: "invalid unit", raw: "items=2-5", want: false},
+		{name: "invalid number", raw: "bytes=two-5", want: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isBoundedObjectRange(tt.raw); got != tt.want {
+				t.Fatalf("expected %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestRequestObjectMetadataExtraction(t *testing.T) {
 	t.Parallel()
 
