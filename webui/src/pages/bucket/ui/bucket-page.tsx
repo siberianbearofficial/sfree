@@ -272,6 +272,7 @@ export function BucketPage() {
               ref={fileInput}
               className="hidden"
               onChange={onFileChange}
+              aria-label="Choose file to upload"
             />
             <Button color="primary" onPress={() => fileInput.current?.click()}>
               Upload File
@@ -279,7 +280,8 @@ export function BucketPage() {
           </>
         )}
       </div>
-      <div
+      <section
+        aria-label="File list"
         className={
           canWrite ? "border-2 border-dashed rounded p-4" : "border rounded p-4"
         }
@@ -300,7 +302,7 @@ export function BucketPage() {
             endContent={isRefreshingFiles ? <Spinner size="sm" /> : null}
           />
           {activeSearchQuery ? (
-            <p className="text-sm text-default-500">
+            <p className="text-sm text-default-500" aria-live="polite">
               {files.length === 1 ? "1 matching file" : `${files.length} matching files`}
             </p>
           ) : null}
@@ -317,16 +319,22 @@ export function BucketPage() {
             <table className="w-full text-left">
               <thead>
                 <tr>
-                  <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("name")}>
-                    Name<SortArrow field="name" sortBy={sortBy} sortAsc={sortAsc} />
+                  <th scope="col" className="pb-2" aria-sort={sortBy === "name" ? (sortAsc ? "ascending" : "descending") : undefined}>
+                    <button type="button" className="cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("name")}>
+                      Name<SortArrow field="name" sortBy={sortBy} sortAsc={sortAsc} />
+                    </button>
                   </th>
-                  <th className="pb-2 cursor-pointer select-none whitespace-nowrap" onClick={() => toggleSort("size")}>
-                    Size<SortArrow field="size" sortBy={sortBy} sortAsc={sortAsc} />
+                  <th scope="col" className="pb-2 whitespace-nowrap" aria-sort={sortBy === "size" ? (sortAsc ? "ascending" : "descending") : undefined}>
+                    <button type="button" className="cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("size")}>
+                      Size<SortArrow field="size" sortBy={sortBy} sortAsc={sortAsc} />
+                    </button>
                   </th>
-                  <th className="pb-2 cursor-pointer select-none whitespace-nowrap hidden sm:table-cell" onClick={() => toggleSort("created_at")}>
-                    Created<SortArrow field="created_at" sortBy={sortBy} sortAsc={sortAsc} />
+                  <th scope="col" className="pb-2 whitespace-nowrap hidden sm:table-cell" aria-sort={sortBy === "created_at" ? (sortAsc ? "ascending" : "descending") : undefined}>
+                    <button type="button" className="cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("created_at")}>
+                      Created<SortArrow field="created_at" sortBy={sortBy} sortAsc={sortAsc} />
+                    </button>
                   </th>
-                  <th className="pb-2"></th>
+                  <th scope="col" className="pb-2"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -390,7 +398,7 @@ export function BucketPage() {
             </table>
           </div>
         )}
-      </div>
+      </section>
       <ConfirmDialog
         isOpen={confirm.isOpen}
         onOpenChange={(open) => {
@@ -432,6 +440,7 @@ function CredentialsPanel({bucket}: {bucket: Bucket}) {
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-default-100 transition-colors rounded-lg cursor-pointer"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
+        aria-controls="credentials-panel"
       >
         <span>S3 Credentials</span>
         <svg
@@ -445,7 +454,7 @@ function CredentialsPanel({bucket}: {bucket: Bucket}) {
         </svg>
       </button>
       {open && (
-        <div className="px-4 pb-4 flex flex-col gap-3 overflow-hidden">
+        <div id="credentials-panel" className="px-4 pb-4 flex flex-col gap-3 overflow-hidden">
           <div className="min-w-0">
             <p className="text-xs text-default-500 mb-1">Bucket ID</p>
             <Snippet size="sm" variant="flat" symbol="" classNames={{base: "max-w-full", pre: "whitespace-pre-wrap break-all"}}>{bucket.id}</Snippet>

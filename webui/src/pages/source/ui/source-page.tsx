@@ -123,6 +123,7 @@ export function SourcePage() {
             {quota.kind === "available" ? (
               <>
                 <CircularProgress
+                  aria-label={`Quota usage: ${quota.percent}%`}
                   classNames={{
                     svg: "w-24 h-24 sm:w-36 sm:h-36",
                     indicator:
@@ -198,9 +199,9 @@ export function SourcePage() {
             <table className="w-full text-left">
               <thead>
                 <tr>
-                  <th className="pb-2">Name</th>
-                  <th className="pb-2 whitespace-nowrap">Size</th>
-                  <th className="pb-2"></th>
+                  <th scope="col" className="pb-2">Name</th>
+                  <th scope="col" className="pb-2 whitespace-nowrap">Size</th>
+                  <th scope="col" className="pb-2"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -212,6 +213,7 @@ export function SourcePage() {
                       <Button
                         isIconOnly
                         variant="light"
+                        aria-label={`Download ${f.name}`}
                         onPress={() => handleDownload(f)}
                       >
                         <DownloadIcon className="w-5 h-5" />
