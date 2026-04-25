@@ -56,8 +56,8 @@ test.describe("Source detail", () => {
     await page.goto("/sources/src-1");
 
     await expect(page.getByRole("heading", {name: "My Drive"})).toBeVisible();
-    await expect(page.getByText("Native quota", {exact: true})).toBeVisible();
-    await expect(page.getByText("Stored In Source", {exact: true})).toBeVisible();
+    await expect(page.getByText("Quota", {exact: true})).toBeVisible();
+    await expect(page.getByText("Storage Used", {exact: true})).toBeVisible();
     await expect(page.getByText("Google Drive quota is nearly exhausted.")).toBeVisible();
   });
 
@@ -68,17 +68,42 @@ test.describe("Source detail", () => {
 
     await page.goto("/sources/src-2");
 
-    const capacitySignalCard = page
-      .locator("div.rounded-lg.border.border-default-200")
-      .filter({has: page.getByText("Capacity Signal", {exact: true})});
-
     await expect(page.getByRole("heading", {name: "Archive Bucket"})).toBeVisible();
-    await expect(capacitySignalCard.getByText("Quota unavailable", {exact: true})).toBeVisible();
+    await expect(page.getByText("Quota unavailable", {exact: true})).toBeVisible();
     await expect(
-      capacitySignalCard.getByText(
+      page.getByText(
         "S3-compatible sources are checked for reachability here, not provider-wide capacity limits.",
         {exact: true},
       ),
     ).toBeVisible();
+  });
+
+  test("shows provider capabilities section", async ({page}) => {
+    await injectAuth(page);
+    await mockGet(page, "/sources/src-1/info", GDRIVE_INFO);
+    await mockGet(page, "/sources/src-1/health", GDRIVE_HEALTH);
+
+    await page.goto("/sources/src-1");
+
+    await expect(page.getByText("Provider Capabilities", {exact: true})).toBeVisible();
+    await expect(page.getByText("Native quota reporting")).toBeVisible();
+    await expect(page.getByText("File listing")).toBeVisible();
+    await expect(page.getByText("Direct file download")).toBeVisible();
+  });
+
+  test("files section is collapsed by default and can be expanded", async ({page}) => {
+    await injectAuth(page);
+    await mockGet(page, "/sources/src-1/info", GDRIVE_INFO);
+    await mockGet(page, "/sources/src-1/health", GDRIVE_HEALTH);
+
+    await page.goto("/sources/src-1");
+
+    const toggle = page.getByRole("button", {name: /Source Files/});
+    await expect(toggle).toBeVisible();
+    // File table not visible initially
+    await expect(page.getByText("hello.txt")).not.toBeVisible();
+    // Expand
+    await toggle.click();
+    await expect(page.getByText("hello.txt")).toBeVisible();
   });
 });
