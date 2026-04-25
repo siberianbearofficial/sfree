@@ -161,9 +161,10 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
                   onPress={async () => {
                     setIsLoading(true);
                     try {
-                      const res = await createBucket(key, selectedSourceIds);
+                      const trimmedKey = key.trim();
+                      const res = await createBucket(trimmedKey, selectedSourceIds);
                       setCreds({accessKey: res.access_key, accessSecret: res.access_secret});
-                      addToast({title: "Bucket created", description: `${key} is ready`, color: "success", timeout: 4000});
+                      addToast({title: "Bucket created", description: `${trimmedKey} is ready`, color: "success", timeout: 4000});
                       onCreated();
                     } catch (err) {
                       showErrorToast(err);
