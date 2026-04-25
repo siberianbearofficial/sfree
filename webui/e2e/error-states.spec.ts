@@ -5,7 +5,7 @@
  * - "Bucket not found" when navigating to a non-existent bucket ID
  * - Landing page auth dialogs open and close without crashing
  * - Register flow shows password after API call
- * - Login flow closes dialog and starts a session
+ * - Login flow closes dialog and persists auth
  */
 
 import { test, expect } from "@playwright/test";
@@ -68,15 +68,10 @@ test.describe("Error states", () => {
     await expect(dialog).not.toBeVisible();
   });
 
-  test("Login dialog opens and closes, starting a session", async ({
+  test("Login dialog opens and closes, storing credentials", async ({
     page,
   }) => {
-    await page.route(`${API_GLOB}/auth/session`, (route) =>
-      route.fulfill({status: 204, body: ""}),
-    );
-    await page.route(`${API_GLOB}/auth/me`, (route) =>
-      route.fulfill({status: 200, json: {id: "u-1", username: "alice"}}),
-    );
+    await page.route(`${API_GLOB}/**`, (route) => route.abort());
 
     await page.goto("/");
     await page.getByRole("button", { name: "Log In" }).first().click();
@@ -89,7 +84,9 @@ test.describe("Error states", () => {
     await dialog.getByRole("button", { name: "Log In" }).click();
 
     await expect(dialog).not.toBeVisible();
-    await expect(page).toHaveURL("/dashboard");
+
+    const auth = await page.evaluate(() => localStorage.getItem("auth"));
+    expect(auth).toBe(btoa("alice:secret"));
   });
 
   test("sources page renders without crashing when API returns error", async ({
