@@ -1,24 +1,12 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useState,
   type ReactNode,
 } from "react";
 import {getCurrentUser, type CurrentUser} from "../../shared/api/auth";
 import {ApiError, showErrorToast} from "../../shared/api/error";
-
-type AuthStatus = "loading" | "authenticated" | "unauthenticated";
-
-type AuthContextValue = {
-  clearSession: () => void;
-  refreshSession: () => Promise<CurrentUser | null>;
-  status: AuthStatus;
-  user: CurrentUser | null;
-};
-
-const AuthContext = createContext<AuthContextValue | null>(null);
+import {AuthContext, type AuthStatus, type AuthContextValue} from "./auth-context";
 
 export function AuthProvider({children}: {children: ReactNode}) {
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -58,12 +46,4 @@ export function AuthProvider({children}: {children: ReactNode}) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-export function useAuth(): AuthContextValue {
-  const value = useContext(AuthContext);
-  if (value === null) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return value;
 }

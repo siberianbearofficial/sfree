@@ -1,2 +1,3 @@
-export {AuthProvider, useAuth} from "./auth";
+export {AuthProvider} from "./auth";
+export {useAuth} from "./auth-context";
 export {ThemeProvider} from "./theme";
