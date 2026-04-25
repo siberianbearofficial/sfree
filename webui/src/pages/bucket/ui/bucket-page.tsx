@@ -56,7 +56,7 @@ export function BucketPage() {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const activeSearchQuery = deferredSearchQuery.trim();
 
-  const [sortBy, setSortBy] = useState<SortField>("name");
+  const [sortBy, setSortBy] = useState<SortField | null>(null);
   const [sortAsc, setSortAsc] = useState(true);
 
   function toggleSort(field: SortField) {
@@ -69,9 +69,11 @@ export function BucketPage() {
   }
 
   const sortedFiles = useMemo(() => {
-    const sorted = [...files].sort((a, b) => {
+    if (!sortBy) return files;
+    const field = sortBy;
+    return [...files].sort((a, b) => {
       let cmp: number;
-      switch (sortBy) {
+      switch (field) {
         case "name":
           cmp = a.name.localeCompare(b.name);
           break;
@@ -81,12 +83,9 @@ export function BucketPage() {
         case "created_at":
           cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           break;
-        default:
-          cmp = 0;
       }
       return sortAsc ? cmp : -cmp;
     });
-    return sorted;
   }, [files, sortBy, sortAsc]);
 
   const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
@@ -459,7 +458,7 @@ function CredentialsPanel({bucket}: {bucket: Bucket}) {
   );
 }
 
-function SortArrow({field, sortBy, sortAsc}: {field: SortField; sortBy: SortField; sortAsc: boolean}) {
+function SortArrow({field, sortBy, sortAsc}: {field: SortField; sortBy: SortField | null; sortAsc: boolean}) {
   if (sortBy !== field) return null;
   return (
     <span aria-hidden="true" className="ml-1 text-default-400">
