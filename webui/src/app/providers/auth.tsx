@@ -6,7 +6,7 @@ import {
 } from "react";
 import {getCurrentUser, type CurrentUser} from "../../shared/api/auth";
 import {ApiError, showErrorToast} from "../../shared/api/error";
-import {AuthContext, type AuthStatus, type AuthContextValue} from "./auth-context";
+import {AuthContext, type AuthStatus} from "./auth-context";
 
 export function AuthProvider({children}: {children: ReactNode}) {
   const [status, setStatus] = useState<AuthStatus>("loading");
