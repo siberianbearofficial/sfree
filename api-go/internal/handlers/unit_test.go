@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -406,7 +408,13 @@ func TestCreateBucketRejectsDuplicateSourceIDs(t *testing.T) {
 		},
 	}}
 	r := gin.New()
-	r.POST("/buckets", setUserID(userID.Hex()), CreateBucket(bucketRepo, sourceRepo, "secret"))
+	r.POST("/buckets", setUserID(userID.Hex()), CreateBucketWithFactory(bucketRepo, sourceRepo, "secret", func(context.Context, *repository.Source) (manager.SourceClient, error) {
+		return bucketPreflightClient{health: sourcecap.Health{
+			Status:     sourcecap.HealthHealthy,
+			ReasonCode: "ok",
+			Message:    "Source is reachable.",
+		}}, nil
+	}))
 
 	body, _ := json.Marshal(map[string]any{"key": "k", "source_ids": []string{sourceID.Hex(), sourceID.Hex()}})
 	req, _ := http.NewRequest(http.MethodPost, "/buckets", bytes.NewReader(body))
@@ -448,7 +456,13 @@ func TestCreateBucketAllowsMultipleDistinctSources(t *testing.T) {
 		},
 	}}
 	r := gin.New()
-	r.POST("/buckets", setUserID(userID.Hex()), CreateBucket(bucketRepo, sourceRepo, "secret"))
+	r.POST("/buckets", setUserID(userID.Hex()), CreateBucketWithFactory(bucketRepo, sourceRepo, "secret", func(context.Context, *repository.Source) (manager.SourceClient, error) {
+		return bucketPreflightClient{health: sourcecap.Health{
+			Status:     sourcecap.HealthHealthy,
+			ReasonCode: "ok",
+			Message:    "Source is reachable.",
+		}}, nil
+	}))
 
 	body, _ := json.Marshal(map[string]any{"key": "k", "source_ids": []string{firstSourceID.Hex(), secondSourceID.Hex()}})
 	req, _ := http.NewRequest(http.MethodPost, "/buckets", bytes.NewReader(body))

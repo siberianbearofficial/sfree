@@ -553,6 +553,62 @@ const docTemplate = `{
                     "409": {
                         "description": "Conflict",
                         "schema": {
+                            "$ref": "#/definitions/handlers.bucketPreflightConflictResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/buckets/preflight": {
+            "post": {
+                "security": [
+                    {
+                        "BasicAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "buckets"
+                ],
+                "summary": "Preflight bucket creation",
+                "parameters": [
+                    {
+                        "description": "Bucket preflight request",
+                        "name": "bucket",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.bucketPreflightRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.bucketPreflightResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
                             "type": "string"
                         }
                     }
@@ -2476,6 +2532,126 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.bucketPreflightConflictResponse": {
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string"
+                },
+                "degraded_source_count": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "healthy_source_count": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "near_capacity_source_count": {
+                    "type": "integer"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.bucketPreflightSourceResponse"
+                    }
+                },
+                "unhealthy_source_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handlers.bucketPreflightRequest": {
+            "type": "object",
+            "required": [
+                "source_ids"
+            ],
+            "properties": {
+                "source_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "handlers.bucketPreflightResponse": {
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string"
+                },
+                "degraded_source_count": {
+                    "type": "integer"
+                },
+                "healthy_source_count": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "near_capacity_source_count": {
+                    "type": "integer"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.bucketPreflightSourceResponse"
+                    }
+                },
+                "unhealthy_source_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handlers.bucketPreflightSourceResponse": {
+            "type": "object",
+            "properties": {
+                "blocks_creation": {
+                    "type": "boolean"
+                },
+                "checked_at": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "quota_free_bytes": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "quota_total_bytes": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "quota_used_bytes": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "reason_code": {
+                    "type": "string"
+                },
+                "requires_confirmation": {
+                    "type": "boolean"
+                },
+                "source_id": {
+                    "type": "string"
+                },
+                "source_name": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.bucketResponse": {
             "type": "object",
             "properties": {
@@ -2511,6 +2687,9 @@ const docTemplate = `{
                 },
                 "key": {
                     "type": "string"
+                },
+                "risk_acknowledged": {
+                    "type": "boolean"
                 },
                 "source_ids": {
                     "type": "array",

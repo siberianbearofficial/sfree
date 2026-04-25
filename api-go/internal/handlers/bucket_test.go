@@ -14,7 +14,9 @@ import (
 
 	"github.com/example/sfree/api-go/internal/config"
 	"github.com/example/sfree/api-go/internal/db"
+	"github.com/example/sfree/api-go/internal/manager"
 	"github.com/example/sfree/api-go/internal/repository"
+	"github.com/example/sfree/api-go/internal/sourcecap"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
@@ -62,7 +64,13 @@ func TestCreateBucket(t *testing.T) {
 	}
 	router := gin.New()
 	auth := BasicAuth(userRepo)
-	router.POST("/api/v1/buckets", auth, CreateBucket(repo, sourceRepo, "testkey"))
+	router.POST("/api/v1/buckets", auth, CreateBucketWithFactory(repo, sourceRepo, "testkey", func(context.Context, *repository.Source) (manager.SourceClient, error) {
+		return bucketPreflightClient{health: sourcecap.Health{
+			Status:     sourcecap.HealthHealthy,
+			ReasonCode: "ok",
+			Message:    "Source is reachable.",
+		}}, nil
+	}))
 	body, _ := json.Marshal(map[string]any{"key": "bucket-test", "source_ids": []string{source.ID.Hex()}})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v1/buckets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

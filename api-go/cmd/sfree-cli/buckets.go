@@ -17,8 +17,9 @@ type bucketItem struct {
 }
 
 type createBucketReq struct {
-	Key       string   `json:"key"`
-	SourceIDs []string `json:"source_ids"`
+	Key              string   `json:"key"`
+	SourceIDs        []string `json:"source_ids"`
+	RiskAcknowledged bool     `json:"risk_acknowledged,omitempty"`
 }
 
 type createBucketResp struct {
@@ -59,8 +60,9 @@ var bucketsListCmd = &cobra.Command{
 }
 
 var (
-	bucketCreateKey     string
-	bucketCreateSources string
+	bucketCreateKey             string
+	bucketCreateSources         string
+	bucketCreateAcknowledgeRisk bool
 )
 
 var bucketsCreateCmd = &cobra.Command{
@@ -78,8 +80,9 @@ S3-compatible access credentials are generated automatically.`,
 		ids := strings.Split(bucketCreateSources, ",")
 		var resp createBucketResp
 		if err := apiPost("/api/v1/buckets", createBucketReq{
-			Key:       bucketCreateKey,
-			SourceIDs: ids,
+			Key:              bucketCreateKey,
+			SourceIDs:        ids,
+			RiskAcknowledged: bucketCreateAcknowledgeRisk,
 		}, &resp); err != nil {
 			return err
 		}
@@ -99,6 +102,7 @@ S3-compatible access credentials are generated automatically.`,
 func init() {
 	bucketsCreateCmd.Flags().StringVar(&bucketCreateKey, "key", "", "Bucket key (name)")
 	bucketsCreateCmd.Flags().StringVar(&bucketCreateSources, "sources", "", "Comma-separated source IDs")
+	bucketsCreateCmd.Flags().BoolVar(&bucketCreateAcknowledgeRisk, "acknowledge-source-risk", false, "Allow bucket creation when the API requires explicit confirmation for degraded or near-capacity sources")
 	bucketsCmd.AddCommand(bucketsListCmd, bucketsCreateCmd)
 	rootCmd.AddCommand(bucketsCmd)
 }

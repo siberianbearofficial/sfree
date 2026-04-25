@@ -19,6 +19,7 @@ import (
 type createBucketRequest struct {
 	Key                  string         `json:"key" binding:"required"`
 	SourceIDs            []string       `json:"source_ids" binding:"required,min=1"`
+	RiskAcknowledged     bool           `json:"risk_acknowledged,omitempty"`
 	DistributionStrategy string         `json:"distribution_strategy,omitempty"`
 	SourceWeights        map[string]int `json:"source_weights,omitempty"`
 }
@@ -115,10 +116,14 @@ func isNilDependency(dep any) bool {
 // @Success 200 {object} createBucketResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
-// @Failure 409 {string} string ""
+// @Failure 409 {object} bucketPreflightConflictResponse
 // @Security BasicAuth
 // @Router /api/v1/buckets [post]
 func CreateBucket(repo bucketCreator, sourceRepo sourceGetter, secretKey string) gin.HandlerFunc {
+	return CreateBucketWithFactory(repo, sourceRepo, secretKey, nil)
+}
+
+func CreateBucketWithFactory(repo bucketCreator, sourceRepo sourceGetter, secretKey string, factory manager.SourceClientFactory) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		var req createBucketRequest
@@ -154,34 +159,25 @@ func CreateBucket(repo bucketCreator, sourceRepo sourceGetter, secretKey string)
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		sourceIDs := make([]primitive.ObjectID, 0, len(req.SourceIDs))
-		seenSourceIDs := make(map[primitive.ObjectID]struct{}, len(req.SourceIDs))
-		for _, sourceIDHex := range req.SourceIDs {
-			sourceID, err := primitive.ObjectIDFromHex(sourceIDHex)
-			if err != nil {
-				c.Status(http.StatusBadRequest)
+		preflight, sourceIDs, err := bucketPreflightForSources(ctx, userID, sourceRepo, req.SourceIDs, factory)
+		if err != nil {
+			if inputErr, ok := err.(bucketPreflightInputError); ok {
+				c.JSON(inputErr.status, gin.H{"error": inputErr.message})
 				return
 			}
-			sourceDoc, err := sourceRepo.GetByID(c.Request.Context(), sourceID)
-			if err != nil {
-				if err == mongo.ErrNoDocuments {
-					c.Status(http.StatusBadRequest)
-					return
-				}
-				slog.ErrorContext(ctx, "create bucket: get source", slog.String("error", err.Error()))
-				c.Status(http.StatusInternalServerError)
+			slog.ErrorContext(ctx, "create bucket: preflight failed", slog.String("error", err.Error()))
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		switch bucketPreflightDecision(preflight.Decision) {
+		case bucketPreflightDecisionBlocked:
+			c.JSON(http.StatusConflict, bucketPreflightConflict(preflight))
+			return
+		case bucketPreflightDecisionConfirmRequired:
+			if !req.RiskAcknowledged {
+				c.JSON(http.StatusConflict, bucketPreflightConflict(preflight))
 				return
 			}
-			if sourceDoc.UserID != userID {
-				c.Status(http.StatusBadRequest)
-				return
-			}
-			if _, ok := seenSourceIDs[sourceID]; ok {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("source_ids contains duplicate source id %q", sourceIDHex)})
-				return
-			}
-			seenSourceIDs[sourceID] = struct{}{}
-			sourceIDs = append(sourceIDs, sourceID)
 		}
 		strategy := repository.DistributionStrategy(req.DistributionStrategy)
 		if strategy == "" {
