@@ -33,6 +33,18 @@ export type BatchDeleteFilesResponse = {
   warnings: BatchDeleteFileIssue[];
 };
 
+export type BatchDownloadFileIssue = {
+  file: FileInfo;
+  error: unknown;
+};
+
+export type BatchDownloadFilesResult = {
+  downloaded: FileInfo[];
+  failed: BatchDownloadFileIssue[];
+};
+
+export const MAX_MULTI_FILE_DOWNLOAD_COUNT = 5;
+
 type CreateBucketResponse = {
   key: string;
   access_key: string;
@@ -111,6 +123,28 @@ export async function downloadFile(
     file.name,
     "Failed to download file",
   );
+}
+
+export async function downloadFiles(
+  bucketId: string,
+  files: FileInfo[],
+): Promise<BatchDownloadFilesResult> {
+  const boundedFiles = files.slice(0, MAX_MULTI_FILE_DOWNLOAD_COUNT);
+  const result: BatchDownloadFilesResult = {
+    downloaded: [],
+    failed: [],
+  };
+
+  for (const file of boundedFiles) {
+    try {
+      await downloadFile(bucketId, file);
+      result.downloaded.push(file);
+    } catch (error) {
+      result.failed.push({file, error});
+    }
+  }
+
+  return result;
 }
 
 export async function fetchFileBlob(
