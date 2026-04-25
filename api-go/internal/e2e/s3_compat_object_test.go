@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // against the SFree S3-compatible API.
@@ -438,4 +439,68 @@ func TestS3CompatHeadObject(t *testing.T) {
 
 	// Cleanup
 	s3Do(t, http.MethodDelete, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+}
+
+func TestS3CompatObjectConditionalReads(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	suffix := uniqueSuffix()
+	ts, bucket := setupS3CompatTest(t, env, suffix)
+
+	objectKey := "conditional-" + suffix + ".txt"
+	objectContent := []byte("conditional read test payload")
+	s3URL := fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, objectKey)
+
+	status, body := s3Do(t, http.MethodPut, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, objectContent)
+	if status != http.StatusOK {
+		t.Fatalf("PUT object: expected 200, got %d: %s", status, body)
+	}
+
+	status, headers, body := s3DoWithHeaders(t, http.MethodHead, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("HEAD object: expected 200, got %d: %s", status, body)
+	}
+	etag := headers.Get("ETag")
+	lastModified := headers.Get("Last-Modified")
+	if etag == "" || lastModified == "" {
+		t.Fatalf("expected ETag and Last-Modified, got etag=%q last-modified=%q", etag, lastModified)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"If-Match": etag})
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET If-Match mismatch: status=%d body=%q", status, body)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodHead, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"If-None-Match": etag})
+	if status != http.StatusNotModified || len(body) != 0 {
+		t.Fatalf("HEAD If-None-Match mismatch: status=%d body=%q", status, body)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"If-Match": `"other-etag"`})
+	if status != http.StatusPreconditionFailed {
+		t.Fatalf("GET If-Match mismatch: expected 412, got %d: %s", status, body)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{"If-Modified-Since": lastModified})
+	if status != http.StatusNotModified {
+		t.Fatalf("GET If-Modified-Since: expected 304, got %d: %s", status, body)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodHead, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{
+		"If-Unmodified-Since": time.Unix(0, 0).UTC().Format(http.TimeFormat),
+	})
+	if status != http.StatusPreconditionFailed {
+		t.Fatalf("HEAD If-Unmodified-Since: expected 412, got %d: %s", status, body)
+	}
+
+	status, _, body = s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, map[string]string{
+		"If-None-Match":     `"other-etag"`,
+		"If-Modified-Since": time.Now().UTC().Add(time.Hour).Format(http.TimeFormat),
+	})
+	if status != http.StatusOK || !bytes.Equal(body, objectContent) {
+		t.Fatalf("GET combined conditional headers mismatch: status=%d body=%q", status, body)
+	}
 }

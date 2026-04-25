@@ -181,6 +181,10 @@ func requestObjectUserMetadata(r *http.Request) map[string]string {
 // @Router /{bucket}/{object} [head]
 // @Router /api/s3/{bucket}/{object} [head]
 func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.FileRepository) gin.HandlerFunc {
+	return headObject(bucketRepo, fileRepo)
+}
+
+func headObject(bucketRepo objectBucketReader, fileRepo objectFileReader) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if bucketRepo == nil || fileRepo == nil {
 			c.Status(http.StatusServiceUnavailable)
@@ -188,6 +192,9 @@ func HeadObject(bucketRepo *repository.BucketRepository, fileRepo *repository.Fi
 		}
 		fileDoc, total, ok := lookupObject(c, bucketRepo, fileRepo)
 		if !ok {
+			return
+		}
+		if writeObjectConditionalResponse(c, fileDoc) {
 			return
 		}
 		setObjectHeaders(c, fileDoc, total)
@@ -237,6 +244,9 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		}
 		fileDoc, total, ok := lookupObject(c, bucketRepo, fileRepo)
 		if !ok {
+			return
+		}
+		if writeObjectConditionalResponse(c, fileDoc) {
 			return
 		}
 		rangeHeader := c.GetHeader("Range")
