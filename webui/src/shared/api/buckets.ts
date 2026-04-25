@@ -52,6 +52,33 @@ type CreateBucketResponse = {
   created_at: string;
 };
 
+export type BucketPreflightDecision = "ready" | "confirm_required" | "blocked";
+
+export type BucketPreflightSource = {
+  source_id: string;
+  source_name: string;
+  source_type: string;
+  status: "healthy" | "degraded" | "unhealthy";
+  reason_code: string;
+  message: string;
+  quota_total_bytes: number | null;
+  quota_used_bytes: number | null;
+  quota_free_bytes: number | null;
+  requires_confirmation: boolean;
+  blocks_creation: boolean;
+  checked_at: string;
+};
+
+export type BucketPreflight = {
+  decision: BucketPreflightDecision;
+  message: string;
+  healthy_source_count: number;
+  degraded_source_count: number;
+  unhealthy_source_count: number;
+  near_capacity_source_count: number;
+  sources: BucketPreflightSource[];
+};
+
 export async function listBuckets(): Promise<Bucket[]> {
   return apiJson<Bucket[]>("/buckets", "Failed to list buckets");
 }
@@ -63,11 +90,25 @@ export async function getBucket(id: string): Promise<Bucket> {
 export async function createBucket(
   key: string,
   sourceIds: string[],
+  riskAcknowledged = false,
 ): Promise<CreateBucketResponse> {
   return apiJson<CreateBucketResponse>("/buckets", "Failed to create bucket", {
     method: "POST",
-    json: {key, source_ids: sourceIds},
+    json: {key, source_ids: sourceIds, risk_acknowledged: riskAcknowledged},
   });
+}
+
+export async function preflightBucket(
+  sourceIds: string[],
+): Promise<BucketPreflight> {
+  return apiJson<BucketPreflight>(
+    "/buckets/preflight",
+    "Failed to preflight bucket creation",
+    {
+      method: "POST",
+      json: {source_ids: sourceIds},
+    },
+  );
 }
 
 function bucketFilesPath(bucketId: string, query?: string): string {

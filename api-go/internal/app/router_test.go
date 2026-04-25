@@ -108,10 +108,25 @@ func TestOpenAPIJSONRoute(t *testing.T) {
 	if doc.Swagger != "2.0" {
 		t.Fatalf("expected Swagger 2.0, got %q", doc.Swagger)
 	}
-	for _, path := range []string{"/api/v1/buckets", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/{bucket}", "/{bucket}/{object}", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
+	for _, path := range []string{"/api/v1/buckets", "/api/v1/buckets/preflight", "/api/v1/sources/s3", "/api/v1/sources/{id}/download", "/{bucket}", "/{bucket}/{object}", "/api/s3/{bucket}", "/api/s3/{bucket}/{object}"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("expected OpenAPI path %s", path)
 		}
+	}
+}
+
+func TestRegisterBucketRoutesIncludesPreflightRoute(t *testing.T) {
+	r := gin.New()
+	registerBucketRoutes(r, &config.Config{AccessSecretKey: "test-secret"}, &routerDependencies{
+		auth: func(c *gin.Context) {
+			c.Next()
+		},
+		bucketRepo: &repository.BucketRepository{},
+		sourceRepo: &repository.SourceRepository{},
+	}, nil)
+
+	if !hasRoute(r, http.MethodPost, "/api/v1/buckets/preflight") {
+		t.Fatalf("expected POST /api/v1/buckets/preflight to be registered")
 	}
 }
 

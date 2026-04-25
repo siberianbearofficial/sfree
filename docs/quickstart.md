@@ -114,6 +114,49 @@ Save the `id` — you need it to create a bucket.
 
 A bucket groups one or more sources into a single storage namespace.
 
+Before creating the bucket, run the bounded preflight so SFree can tell
+you whether the selected sources are currently ready, require explicit
+confirmation, or are blocked because they are already unhealthy.
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/buckets/preflight \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Basic $AUTH" \
+  -d '{
+    "source_ids": ["SOURCE_ID"]
+  }'
+```
+
+**Expected output for a healthy source:**
+
+```json
+{
+  "decision": "ready",
+  "message": "Selected sources passed the current bucket preflight.",
+  "healthy_source_count": 1,
+  "degraded_source_count": 0,
+  "unhealthy_source_count": 0,
+  "near_capacity_source_count": 0,
+  "sources": [
+    {
+      "source_id": "SOURCE_ID",
+      "source_name": "local-minio",
+      "source_type": "s3",
+      "status": "healthy",
+      "reason_code": "ok",
+      "message": "S3 bucket metadata is reachable.",
+      "requires_confirmation": false,
+      "blocks_creation": false
+    }
+  ]
+}
+```
+
+If the preflight returns `"decision": "confirm_required"`, repeat the
+create request below with `"risk_acknowledged": true`. If the preflight
+returns `"decision": "blocked"`, remove or replace the unhealthy source
+before creating the bucket.
+
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/buckets \
   -H 'Content-Type: application/json' \

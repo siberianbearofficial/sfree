@@ -1,31 +1,31 @@
 import {Button, Checkbox, CheckboxGroup, Chip, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Snippet, Spinner} from "@heroui/react";
 import {addToast} from "@heroui/toast";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
-import {createBucket} from "../../../shared/api/buckets";
-import {getSourceHealth, listSources} from "../../../shared/api/sources";
-import type {Source, SourceHealth} from "../../../shared/api/sources";
-import {showErrorToast} from "../../../shared/api/error";
+import {createBucket, preflightBucket} from "../../../shared/api/buckets";
+import type {BucketPreflight, BucketPreflightSource} from "../../../shared/api/buckets";
+import {listSources} from "../../../shared/api/sources";
+import type {Source} from "../../../shared/api/sources";
+import {ApiError, showErrorToast} from "../../../shared/api/error";
 import {SourceTypeChip} from "../../../entities/source";
-import {getSourceQuotaState, sourceHealthColor} from "../../../entities/source/lib/capacity";
+import {sourceHealthColor} from "../../../entities/source/lib/capacity";
 import {formatSize} from "../../../shared/lib/format";
 
 type Props = {isOpen: boolean; onOpenChange: (open: boolean) => void; onCreated: () => void};
 
-type HealthState =
-  | {state: "checking"}
-  | {state: "ready"; health: SourceHealth}
-  | {state: "error"; message: string};
-
 export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
   const [key, setKey] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
-  const [healthBySource, setHealthBySource] = useState<Record<string, HealthState>>({});
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [preflight, setPreflight] = useState<BucketPreflight | null>(null);
+  const [riskAcknowledged, setRiskAcknowledged] = useState(false);
   const [creds, setCreds] = useState<{accessKey: string; accessSecret: string} | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSourcesLoading, setIsSourcesLoading] = useState(false);
+  const [isPreflightLoading, setIsPreflightLoading] = useState(false);
   const [sourceLoadError, setSourceLoadError] = useState<string | null>(null);
+  const [preflightError, setPreflightError] = useState<string | null>(null);
   const sourceLoadRequestId = useRef(0);
+  const preflightRequestId = useRef(0);
 
   const loadSources = useCallback(async () => {
     const requestId = sourceLoadRequestId.current + 1;
@@ -38,30 +38,9 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
       const nextSourceIds = new Set(nextSources.map((source) => source.id));
       setSources(nextSources);
       setSelectedSourceIds((current) => current.filter((id) => nextSourceIds.has(id)));
-      const checking = Object.fromEntries(nextSources.map((source) => [source.id, {state: "checking"} as HealthState]));
-      setHealthBySource(checking);
-      const healthEntries = await Promise.all(
-        nextSources.map(async (source) => {
-          try {
-            const health = await getSourceHealth(source.id);
-            return [source.id, {state: "ready", health} as HealthState] as const;
-          } catch (err) {
-            return [
-              source.id,
-              {
-                state: "error",
-                message: err instanceof Error ? err.message : "Health check failed",
-              } as HealthState,
-            ] as const;
-          }
-        }),
-      );
-      if (sourceLoadRequestId.current !== requestId) return;
-      setHealthBySource(Object.fromEntries(healthEntries));
     } catch (err) {
       if (sourceLoadRequestId.current !== requestId) return;
       setSources([]);
-      setHealthBySource({});
       setSelectedSourceIds([]);
       setSourceLoadError(err instanceof Error ? err.message : "Failed to load sources");
       showErrorToast(err);
@@ -72,17 +51,50 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
     }
   }, []);
 
+  const loadPreflight = useCallback(async (sourceIds: string[]) => {
+    const requestId = preflightRequestId.current + 1;
+    preflightRequestId.current = requestId;
+    setIsPreflightLoading(true);
+    setPreflightError(null);
+    try {
+      const nextPreflight = await preflightBucket(sourceIds);
+      if (preflightRequestId.current !== requestId) return;
+      setPreflight(nextPreflight);
+    } catch (err) {
+      if (preflightRequestId.current !== requestId) return;
+      setPreflight(null);
+      setPreflightError(err instanceof Error ? err.message : "Failed to preflight bucket creation");
+    } finally {
+      if (preflightRequestId.current === requestId) {
+        setIsPreflightLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen || creds) return;
     void loadSources();
   }, [creds, isOpen, loadSources]);
+
+  useEffect(() => {
+    if (!isOpen || creds) return;
+    setRiskAcknowledged(false);
+    if (selectedSourceIds.length === 0) {
+      preflightRequestId.current += 1;
+      setIsPreflightLoading(false);
+      setPreflight(null);
+      setPreflightError(null);
+      return;
+    }
+    void loadPreflight(selectedSourceIds);
+  }, [creds, isOpen, loadPreflight, selectedSourceIds]);
 
   const hasSources = sources.length > 0;
   const helperText = useMemo(() => {
     if (isSourcesLoading) return "Loading sources...";
     if (sourceLoadError) return "Sources could not be loaded. Retry to try again.";
     if (!hasSources) return "Create at least one source before creating a bucket.";
-    return "Choose which sources this bucket is allowed to use for uploads. Each source shows its latest health signal before you create the bucket.";
+    return "Choose which sources this bucket is allowed to use for uploads. SFree will preflight the selected sources before creation.";
   }, [hasSources, isSourcesLoading, sourceLoadError]);
 
   const selectedSourceNames = useMemo(
@@ -90,100 +102,46 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
     [sources, selectedSourceIds],
   );
 
-  const selectedHealthSummary = useMemo(() => {
-    const states = selectedSourceIds.map((id) => healthBySource[id]).filter(Boolean);
-    const checkingCount = states.filter((state) => state.state === "checking").length;
-    const errorCount = states.filter((state) => state.state === "error").length;
-    const readyStates = states.filter((state): state is Extract<HealthState, {state: "ready"}> => state.state === "ready");
-    const unhealthyCount = readyStates.filter((state) => state.health.status === "unhealthy").length;
-    const nearCapacityCount = readyStates.filter((state) => state.health.reason_code === "quota_low").length;
-    const degradedCount = readyStates.filter((state) => state.health.status === "degraded" && state.health.reason_code !== "quota_low").length;
-    const healthyCount = readyStates.filter((state) => state.health.status === "healthy").length;
-    return {
-      checkingCount,
-      errorCount,
-      unhealthyCount,
-      nearCapacityCount,
-      degradedCount,
-      healthyCount,
-    };
-  }, [healthBySource, selectedSourceIds]);
+  const canCreate = key.trim() !== ""
+    && selectedSourceIds.length > 0
+    && !isSourcesLoading
+    && !isPreflightLoading
+    && preflight !== null
+    && preflightError === null
+    && (preflight.decision === "ready" || (preflight.decision === "confirm_required" && riskAcknowledged));
 
-  const canCreate = key.trim() !== "" && selectedSourceIds.length > 0 && selectedHealthSummary.checkingCount === 0;
-
-  const selectionStatus = useMemo(() => {
+  const preflightState = useMemo(() => {
     if (selectedSourceIds.length === 0) return null;
-    if (selectedHealthSummary.checkingCount > 0) {
+    if (isPreflightLoading) {
       return {
-        tone: "default" as const,
         className: "border-default-200 bg-default-50 text-default-600",
-        message:
-          selectedHealthSummary.checkingCount === 1
-            ? "Checking the selected source before bucket creation."
-            : `Checking ${selectedHealthSummary.checkingCount} selected sources before bucket creation.`,
+        message: "Checking the selected sources before bucket creation.",
       };
     }
-    if (selectedHealthSummary.unhealthyCount > 0) {
-      const parts = [
-        selectedHealthSummary.unhealthyCount === 1
-          ? "1 selected source is unhealthy"
-          : `${selectedHealthSummary.unhealthyCount} selected sources are unhealthy`,
-      ];
-      if (selectedHealthSummary.nearCapacityCount > 0) {
-        parts.push(
-          selectedHealthSummary.nearCapacityCount === 1
-            ? "1 source is near capacity"
-            : `${selectedHealthSummary.nearCapacityCount} sources are near capacity`,
-        );
-      }
-      if (selectedHealthSummary.degradedCount > 0) {
-        parts.push(
-          selectedHealthSummary.degradedCount === 1
-            ? "1 source is degraded"
-            : `${selectedHealthSummary.degradedCount} sources are degraded`,
-        );
-      }
+    if (preflightError) {
       return {
-        tone: "danger" as const,
         className: "border-danger-200 bg-danger-50 text-danger-700",
-        message: `${parts.join(", ")}. SFree can create the bucket anyway, but uploads or later reads may fail while those providers remain impaired.`,
+        message: preflightError,
       };
     }
-    if (selectedHealthSummary.nearCapacityCount > 0 || selectedHealthSummary.degradedCount > 0 || selectedHealthSummary.errorCount > 0) {
-      const parts: string[] = [];
-      if (selectedHealthSummary.nearCapacityCount > 0) {
-        parts.push(
-          selectedHealthSummary.nearCapacityCount === 1
-            ? "1 selected source is near capacity"
-            : `${selectedHealthSummary.nearCapacityCount} selected sources are near capacity`,
-        );
-      }
-      if (selectedHealthSummary.degradedCount > 0) {
-        parts.push(
-          selectedHealthSummary.degradedCount === 1
-            ? "1 selected source is degraded"
-            : `${selectedHealthSummary.degradedCount} selected sources are degraded`,
-        );
-      }
-      if (selectedHealthSummary.errorCount > 0) {
-        parts.push(
-          selectedHealthSummary.errorCount === 1
-            ? "1 selected source could not be checked"
-            : `${selectedHealthSummary.errorCount} selected sources could not be checked`,
-        );
-      }
+    if (!preflight) return null;
+    if (preflight.decision === "blocked") {
       return {
-        tone: "warning" as const,
+        className: "border-danger-200 bg-danger-50 text-danger-700",
+        message: preflight.message,
+      };
+    }
+    if (preflight.decision === "confirm_required") {
+      return {
         className: "border-warning-200 bg-warning-50 text-warning-700",
-        message: `${parts.join(", ")}. Bucket creation is still allowed, but the current source signal is not fully healthy.`,
+        message: preflight.message,
       };
     }
     return {
-      tone: "success" as const,
       className: "border-success-200 bg-success-50 text-success-700",
-      message: "Selected sources currently report healthy reachability. SFree still does not replicate chunks automatically across all sources.",
+      message: preflight.message,
     };
-  }, [selectedHealthSummary, selectedSourceIds.length]);
+  }, [isPreflightLoading, preflight, preflightError, selectedSourceIds.length]);
 
   return (
     <Modal
@@ -191,13 +149,17 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
       onOpenChange={(open) => {
         if (!open) {
           sourceLoadRequestId.current += 1;
+          preflightRequestId.current += 1;
           setKey("");
           setSources([]);
-          setHealthBySource({});
           setSelectedSourceIds([]);
+          setPreflight(null);
+          setRiskAcknowledged(false);
           setCreds(null);
           setIsSourcesLoading(false);
+          setIsPreflightLoading(false);
           setSourceLoadError(null);
+          setPreflightError(null);
         }
         onOpenChange(open);
       }}
@@ -248,21 +210,30 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
                         >
                           {sources.map((source) => (
                             <Checkbox key={source.id} value={source.id} classNames={{base: "max-w-full"}}>
-                              <div className="flex flex-col gap-1 py-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span>{source.name}</span>
-                                  <SourceTypeChip type={source.type} />
-                                  <SourceHealthChip state={healthBySource[source.id]} />
-                                </div>
-                                <SourceHealthDetail state={healthBySource[source.id]} />
+                              <div className="flex flex-wrap items-center gap-2 py-1">
+                                <span>{source.name}</span>
+                                <SourceTypeChip type={source.type} />
                               </div>
                             </Checkbox>
                           ))}
                         </CheckboxGroup>
-                        {selectionStatus ? (
-                          <div className={`rounded-lg border p-3 ${selectionStatus.className}`}>
-                            <p className="text-sm">{selectionStatus.message}</p>
+                        {preflightState ? (
+                          <div className={`rounded-lg border p-3 ${preflightState.className}`}>
+                            <p className="text-sm">{preflightState.message}</p>
                           </div>
+                        ) : null}
+                        {preflightError && selectedSourceIds.length > 0 ? (
+                          <Button size="sm" variant="flat" onPress={() => void loadPreflight(selectedSourceIds)}>
+                            Retry preflight
+                          </Button>
+                        ) : null}
+                        {preflight ? (
+                          <PreflightDetails preflight={preflight} />
+                        ) : null}
+                        {preflight?.decision === "confirm_required" ? (
+                          <Checkbox isSelected={riskAcknowledged} onValueChange={setRiskAcknowledged}>
+                            I understand this bucket starts on degraded or near-capacity sources.
+                          </Checkbox>
                         ) : null}
                       </>
                     ) : null}
@@ -291,17 +262,20 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
               ) : (
                 <Button
                   color="primary"
-                  isDisabled={!canCreate || isSourcesLoading}
+                  isDisabled={!canCreate}
                   isLoading={isLoading}
                   onPress={async () => {
                     setIsLoading(true);
                     try {
                       const trimmedKey = key.trim();
-                      const res = await createBucket(trimmedKey, selectedSourceIds);
+                      const res = await createBucket(trimmedKey, selectedSourceIds, riskAcknowledged);
                       setCreds({accessKey: res.access_key, accessSecret: res.access_secret});
                       addToast({title: "Bucket created", description: `${trimmedKey} is ready`, color: "success", timeout: 4000});
                       onCreated();
                     } catch (err) {
+                      if (err instanceof ApiError && err.status === 409) {
+                        void loadPreflight(selectedSourceIds);
+                      }
                       showErrorToast(err);
                     } finally {
                       setIsLoading(false);
@@ -319,37 +293,46 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
   );
 }
 
-function SourceHealthChip({state}: {state: HealthState | undefined}) {
-  if (!state || state.state === "checking") {
-    return <Chip size="sm" variant="flat" color="default">Checking</Chip>;
-  }
-  if (state.state === "error") {
-    return <Chip size="sm" variant="flat" color="danger">Check failed</Chip>;
-  }
+function PreflightDetails({preflight}: {preflight: BucketPreflight}) {
   return (
-    <Chip size="sm" variant="flat" color={sourceHealthColor[state.health.status]}>
-      {state.health.status}
-    </Chip>
+    <div className="flex flex-col gap-3 rounded-lg border border-default-200 bg-default-50 p-3">
+      <p className="text-sm font-medium">Selected source preflight</p>
+      <div className="flex flex-wrap gap-2 text-xs text-default-500">
+        <span>{preflight.healthy_source_count} healthy</span>
+        <span>{preflight.degraded_source_count} degraded</span>
+        <span>{preflight.near_capacity_source_count} near capacity</span>
+        <span>{preflight.unhealthy_source_count} unhealthy</span>
+      </div>
+      <div className="flex flex-col gap-2">
+        {preflight.sources.map((source) => (
+          <div key={source.source_id} className="rounded-md border border-default-200 bg-background px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-sm">{source.source_name}</span>
+              <SourceTypeChip type={source.source_type} />
+              <Chip size="sm" variant="flat" color={sourceHealthColor[source.status]}>
+                {source.status}
+              </Chip>
+              {source.blocks_creation ? <Chip size="sm" variant="flat" color="danger">blocked</Chip> : null}
+              {!source.blocks_creation && source.requires_confirmation ? <Chip size="sm" variant="flat" color="warning">confirm</Chip> : null}
+            </div>
+            <p className="mt-1 text-xs text-default-500">{sourceDetail(source)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function SourceHealthDetail({state}: {state: HealthState | undefined}) {
-  if (!state || state.state === "checking") {
-    return <p className="text-xs text-default-400">Checking source health and capacity signal...</p>;
+function sourceDetail(source: BucketPreflightSource): string {
+  const parts = [source.message];
+  if (source.quota_total_bytes !== null && source.quota_free_bytes !== null) {
+    parts.push(`${formatSize(Math.max(0, source.quota_free_bytes))} free of ${formatSize(source.quota_total_bytes)}`);
+  } else if (source.source_type === "s3") {
+    parts.push("S3-compatible sources are checked for reachability here, not provider-wide capacity limits.");
+  } else if (source.source_type === "telegram") {
+    parts.push("Telegram sources do not expose native quota metadata to SFree.");
   }
-  if (state.state === "error") {
-    return <p className="text-xs text-danger">{state.message}</p>;
-  }
-
-  const quota = getSourceQuotaState(state.health);
-  const detailParts = [state.health.message];
-  if (quota.kind === "available") {
-    detailParts.push(`${formatSize(quota.freeBytes)} free of ${formatSize(quota.totalBytes)}`);
-  } else if (state.health.type === "s3" || state.health.type === "telegram") {
-    detailParts.push(quota.description);
-  }
-
-  return <p className="text-xs text-default-500">{detailParts.join(" ")}</p>;
+  return parts.join(" ");
 }
 
 function CredentialsView({accessKey, accessSecret}: {accessKey: string; accessSecret: string}) {

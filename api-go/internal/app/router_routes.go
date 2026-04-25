@@ -52,7 +52,8 @@ func registerBucketRoutes(router *gin.Engine, cfg *config.Config, deps *routerDe
 	if deps.auth == nil || deps.bucketRepo == nil {
 		return
 	}
-	router.POST("/api/v1/buckets", protectedHandlers(limits, deps.auth, handlers.CreateBucket(deps.bucketRepo, deps.sourceRepo, routerAccessSecret(cfg)))...)
+	router.POST("/api/v1/buckets/preflight", protectedHandlers(limits, deps.auth, handlers.BucketPreflightWithFactory(deps.sourceRepo, deps.sourceFactory))...)
+	router.POST("/api/v1/buckets", protectedHandlers(limits, deps.auth, handlers.CreateBucketWithFactory(deps.bucketRepo, deps.sourceRepo, routerAccessSecret(cfg), deps.sourceFactory))...)
 	router.GET("/api/v1/buckets", protectedHandlers(limits, deps.auth, handlers.ListBuckets(deps.bucketRepo, deps.grantRepo))...)
 	router.GET("/api/v1/buckets/:id", protectedHandlers(limits, deps.auth, handlers.GetBucket(deps.bucketRepo, deps.grantRepo))...)
 	router.DELETE("/api/v1/buckets/:id", protectedHandlers(limits, deps.auth, handlers.DeleteBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.shareLinkRepo, deps.grantRepo, deps.sourceFactory))...)
