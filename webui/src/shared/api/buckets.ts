@@ -141,7 +141,7 @@ export async function deleteFiles(
   bucketId: string,
   fileIds: string[],
 ): Promise<BatchDeleteFilesResponse> {
-  return apiJson<BatchDeleteFilesResponse>(
+  const result = await apiJson<Partial<BatchDeleteFilesResponse>>(
     `/buckets/${bucketId}/files/batch-delete`,
     "Failed to delete files",
     {
@@ -149,4 +149,9 @@ export async function deleteFiles(
       json: {file_ids: fileIds},
     },
   );
+  return {
+    deleted: result.deleted ?? [],
+    failed: result.failed ?? [],
+    warnings: result.warnings ?? [],
+  };
 }
