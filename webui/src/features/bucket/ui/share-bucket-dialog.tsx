@@ -133,13 +133,14 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
         onOpenChange();
       }}
       size="lg"
+      scrollBehavior="inside"
     >
       <ModalContent>
         {(onClose) => (
           <>
             <ModalHeader>Share Bucket</ModalHeader>
             <ModalBody>
-              <div className="flex gap-2 items-end">
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                 <Input
                   label="Username"
                   placeholder="Enter username"
@@ -147,29 +148,31 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
                   onValueChange={setUsername}
                   className="flex-1"
                 />
-                <Select
-                  label="Role"
-                  selectedKeys={new Set([role])}
-                  onSelectionChange={(keys) => {
-                    const val = Array.from(keys)[0] as string;
-                    if (val) setRole(val as BucketGrant["role"]);
-                  }}
-                  className="w-32"
-                >
-                  {ROLES.map((r) => (
-                    <SelectItem key={r.key}>{r.label}</SelectItem>
-                  ))}
-                </Select>
-                <Button
-                  color="primary"
-                  isLoading={isAdding}
-                  onPress={handleAdd}
-                  isDisabled={
-                    !username.trim() || isLoadingGrants || !!grantLoadError
-                  }
-                >
-                  Add
-                </Button>
+                <div className="flex gap-2 items-end">
+                  <Select
+                    label="Role"
+                    selectedKeys={new Set([role])}
+                    onSelectionChange={(keys) => {
+                      const val = Array.from(keys)[0] as string;
+                      if (val) setRole(val as BucketGrant["role"]);
+                    }}
+                    className="w-full sm:w-32"
+                  >
+                    {ROLES.map((r) => (
+                      <SelectItem key={r.key}>{r.label}</SelectItem>
+                    ))}
+                  </Select>
+                  <Button
+                    color="primary"
+                    isLoading={isAdding}
+                    onPress={handleAdd}
+                    isDisabled={
+                      !username.trim() || isLoadingGrants || !!grantLoadError
+                    }
+                  >
+                    Add
+                  </Button>
+                </div>
               </div>
 
               {isLoadingGrants && (
@@ -197,35 +200,37 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
                   {grants.map((g) => (
                     <div
                       key={g.id}
-                      className="flex items-center gap-2 border rounded p-2"
+                      className="flex flex-wrap items-center gap-2 border rounded p-2"
                     >
-                      <span className="flex-1 text-sm font-medium">
+                      <span className="flex-1 min-w-0 text-sm font-medium truncate">
                         {g.username}
                       </span>
-                      <Select
-                        size="sm"
-                        selectedKeys={new Set([g.role])}
-                        onSelectionChange={(keys) => {
-                          const val = Array.from(keys)[0] as string;
-                          if (val && val !== g.role)
-                            handleRoleChange(g.id, val);
-                        }}
-                        className="w-28"
-                        aria-label="Role"
-                      >
-                        {ROLES.map((r) => (
-                          <SelectItem key={r.key}>{r.label}</SelectItem>
-                        ))}
-                      </Select>
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        color="danger"
-                        onPress={() => handleRevoke(g.id)}
-                      >
-                        <DeleteIcon className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          size="sm"
+                          selectedKeys={new Set([g.role])}
+                          onSelectionChange={(keys) => {
+                            const val = Array.from(keys)[0] as string;
+                            if (val && val !== g.role)
+                              handleRoleChange(g.id, val);
+                          }}
+                          className="w-28"
+                          aria-label="Role"
+                        >
+                          {ROLES.map((r) => (
+                            <SelectItem key={r.key}>{r.label}</SelectItem>
+                          ))}
+                        </Select>
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="light"
+                          color="danger"
+                          onPress={() => handleRevoke(g.id)}
+                        >
+                          <DeleteIcon className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
