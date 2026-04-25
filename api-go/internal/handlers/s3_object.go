@@ -108,6 +108,24 @@ func parseObjectRange(raw string, total int64) (objectRange, bool) {
 	return objectRange{start: start, end: end}, true
 }
 
+func isBoundedObjectRange(raw string) bool {
+	if !strings.HasPrefix(raw, "bytes=") || strings.Contains(raw, ",") {
+		return false
+	}
+	spec := strings.TrimPrefix(raw, "bytes=")
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	if _, err := strconv.ParseInt(parts[0], 10, 64); err != nil {
+		return false
+	}
+	if _, err := strconv.ParseInt(parts[1], 10, 64); err != nil {
+		return false
+	}
+	return true
+}
+
 func lookupObject(c *gin.Context, bucketRepo objectBucketReader, fileRepo objectFileReader) (*repository.File, int64, bool) {
 	ctx := c.Request.Context()
 	name := s3ObjectKey(c)
@@ -250,6 +268,9 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 			return
 		}
 		rangeHeader := c.GetHeader("Range")
+		if rangeHeader != "" && isBoundedObjectRange(rangeHeader) && !shouldApplyIfRange(c.Request, manager.ObjectETag(*fileDoc), fileDoc.CreatedAt) {
+			rangeHeader = ""
+		}
 		if rangeHeader == "" {
 			w := newDeferredResponseWriter(c, func() {
 				setObjectHeaders(c, fileDoc, total)

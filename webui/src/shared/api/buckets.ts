@@ -16,6 +16,23 @@ export type FileInfo = {
   size: number;
 };
 
+export type BatchDeleteFileResult = {
+  id: string;
+  name: string;
+};
+
+export type BatchDeleteFileIssue = {
+  id: string;
+  name?: string;
+  error: string;
+};
+
+export type BatchDeleteFilesResponse = {
+  deleted: BatchDeleteFileResult[];
+  failed: BatchDeleteFileIssue[];
+  warnings: BatchDeleteFileIssue[];
+};
+
 type CreateBucketResponse = {
   key: string;
   access_key: string;
@@ -118,4 +135,23 @@ export async function deleteFile(
       method: "DELETE",
     },
   );
+}
+
+export async function deleteFiles(
+  bucketId: string,
+  fileIds: string[],
+): Promise<BatchDeleteFilesResponse> {
+  const result = await apiJson<Partial<BatchDeleteFilesResponse>>(
+    `/buckets/${bucketId}/files/batch-delete`,
+    "Failed to delete files",
+    {
+      method: "POST",
+      json: {file_ids: fileIds},
+    },
+  );
+  return {
+    deleted: result.deleted ?? [],
+    failed: result.failed ?? [],
+    warnings: result.warnings ?? [],
+  };
 }

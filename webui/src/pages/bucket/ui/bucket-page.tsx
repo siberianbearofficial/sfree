@@ -1,5 +1,6 @@
 import {
   Button,
+  Checkbox,
   Chip,
   Input,
   Snippet,
@@ -11,12 +12,13 @@ import {useCallback, useDeferredValue, useEffect, useMemo, useRef, useState} fro
 import {Link, useNavigate, useParams} from "react-router-dom";
 import {
   deleteFile,
+  deleteFiles,
   downloadFile,
   getBucket,
   listFiles,
   uploadFile,
 } from "../../../shared/api/buckets";
-import type {Bucket, FileInfo} from "../../../shared/api/buckets";
+import type {BatchDeleteFilesResponse, Bucket, FileInfo} from "../../../shared/api/buckets";
 import {DownloadIcon, ShareIcon} from "../../../shared/icons";
 import {DeleteIcon} from "@heroui/shared-icons";
 import {ConfirmDialog, EmptyState} from "../../../shared/ui";
@@ -47,9 +49,10 @@ export function BucketPage() {
   const hasLoadedRef = useRef(false);
   const requestIDRef = useRef(0);
   const confirm = useDisclosure();
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [pendingDeleteFiles, setPendingDeleteFiles] = useState<FileInfo[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileInfo | null>(null);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
 
   const shareBucket = useDisclosure();
   const [shareFile, setShareFile] = useState<FileInfo | null>(null);
@@ -133,12 +136,19 @@ export function BucketPage() {
   useEffect(() => {
     hasLoadedRef.current = false;
     setSearchQuery("");
+    setSelectedFileIds([]);
+    setPendingDeleteFiles([]);
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
     void load(hasLoadedRef.current ? "refresh" : "initial");
   }, [id, load]);
+
+  useEffect(() => {
+    const visibleFileIDs = new Set(files.map((file) => file.id));
+    setSelectedFileIds((prev) => prev.filter((fileID) => visibleFileIDs.has(fileID)));
+  }, [files]);
 
   async function handleUpload(file: File) {
     if (!id || !bucket || !canWriteFiles(bucket)) return;
@@ -164,16 +174,27 @@ export function BucketPage() {
   }
 
   async function handleDelete() {
-    if (!id || !deleteId) return;
+    if (!id || pendingDeleteFiles.length === 0) return;
     setIsDeleting(true);
     try {
-      await deleteFile(id, deleteId);
-      addToast({title: "File deleted", color: "success", timeout: 4000});
+      if (pendingDeleteFiles.length === 1) {
+        await deleteFile(id, pendingDeleteFiles[0].id);
+        addToast({title: "File deleted", color: "success", timeout: 4000});
+        setSelectedFileIds((prev) => prev.filter((fileID) => fileID !== pendingDeleteFiles[0].id));
+      } else {
+        const result = await deleteFiles(id, pendingDeleteFiles.map((file) => file.id));
+        setSelectedFileIds((prev) => {
+          const deleted = new Set(result.deleted.map((file) => file.id));
+          return prev.filter((fileID) => !deleted.has(fileID));
+        });
+        showBatchDeleteToast(result, pendingDeleteFiles.length);
+      }
       await load("refresh");
     } catch (err) {
       showErrorToast(err);
     } finally {
       setIsDeleting(false);
+      setPendingDeleteFiles([]);
       confirm.onClose();
     }
   }
@@ -189,6 +210,38 @@ export function BucketPage() {
     } catch (err) {
       showErrorToast(err);
     }
+  }
+
+  const selectedFileIDSet = useMemo(() => new Set(selectedFileIds), [selectedFileIds]);
+  const selectedFiles = useMemo(
+    () => sortedFiles.filter((file) => selectedFileIDSet.has(file.id)),
+    [selectedFileIDSet, sortedFiles],
+  );
+  const selectedCount = selectedFiles.length;
+  const allVisibleSelected = sortedFiles.length > 0 && selectedCount === sortedFiles.length;
+  const someVisibleSelected = selectedCount > 0 && !allVisibleSelected;
+
+  function setFileSelected(fileID: string, selected: boolean) {
+    setSelectedFileIds((prev) => {
+      if (selected) {
+        return prev.includes(fileID) ? prev : [...prev, fileID];
+      }
+      return prev.filter((currentID) => currentID !== fileID);
+    });
+  }
+
+  function setAllVisibleSelected(selected: boolean) {
+    if (selected) {
+      setSelectedFileIds(sortedFiles.map((file) => file.id));
+      return;
+    }
+    setSelectedFileIds([]);
+  }
+
+  function openDeleteDialog(filesToDelete: FileInfo[]) {
+    if (filesToDelete.length === 0) return;
+    setPendingDeleteFiles(filesToDelete);
+    confirm.onOpen();
   }
 
   if (isLoading) {
@@ -258,6 +311,11 @@ export function BucketPage() {
           </Chip>
         </div>
         <CredentialsPanel bucket={bucket} />
+        <div className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+          <p className="text-sm text-warning-700">
+            Files in this bucket are distributed across sources, not replicated. Losing a source can make affected files unrecoverable.
+          </p>
+        </div>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
         {canManage && (
@@ -307,6 +365,30 @@ export function BucketPage() {
             </p>
           ) : null}
         </div>
+        {canWrite ? (
+          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-divider bg-content2/60 p-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium">
+                {selectedCount === 0
+                  ? "Select files to delete in one step"
+                  : selectedCount === 1
+                    ? "1 file selected"
+                    : `${selectedCount} files selected`}
+              </p>
+              <p className="text-xs text-default-500">
+                Multi-file download is deferred for now. Use the row download action for each file.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="flat" onPress={() => setSelectedFileIds([])} isDisabled={selectedCount === 0}>
+                Clear
+              </Button>
+              <Button color="danger" onPress={() => openDeleteDialog(selectedFiles)} isDisabled={selectedCount === 0}>
+                Delete Selected
+              </Button>
+            </div>
+          </div>
+        ) : null}
         {sortedFiles.length === 0 ? (
           <EmptyState
             title={emptyTitle}
@@ -319,6 +401,16 @@ export function BucketPage() {
             <table className="w-full text-left">
               <thead>
                 <tr>
+                  {canWrite ? (
+                    <th scope="col" className="w-12 pb-2">
+                      <Checkbox
+                        aria-label={allVisibleSelected ? "Unselect all visible files" : "Select all visible files"}
+                        isSelected={allVisibleSelected}
+                        isIndeterminate={someVisibleSelected}
+                        onValueChange={setAllVisibleSelected}
+                      />
+                    </th>
+                  ) : null}
                   <th scope="col" className="pb-2" aria-sort={sortBy === "name" ? (sortAsc ? "ascending" : "descending") : undefined}>
                     <button type="button" className="cursor-pointer select-none hover:text-primary transition-colors" onClick={() => toggleSort("name")}>
                       Name<SortArrow field="name" sortBy={sortBy} sortAsc={sortAsc} />
@@ -340,17 +432,26 @@ export function BucketPage() {
               <tbody>
                 {sortedFiles.map((f) => (
                   <tr key={f.id} className="border-t">
+                    {canWrite ? (
+                      <td className="py-2 pr-3 align-middle">
+                        <Checkbox
+                          aria-label={`Select ${f.name}`}
+                          isSelected={selectedFileIDSet.has(f.id)}
+                          onValueChange={(selected) => setFileSelected(f.id, selected)}
+                        />
+                      </td>
+                    ) : null}
                     <td className="py-2">
                       <button
                         type="button"
-                        className="text-left hover:text-primary transition-colors cursor-pointer break-all"
+                        className="cursor-pointer break-all text-left transition-colors hover:text-primary"
                         onClick={() => setPreviewFile(f)}
                       >
                         {f.name}
                       </button>
                     </td>
                     <td className="py-2 whitespace-nowrap">{formatSize(f.size)}</td>
-                    <td className="py-2 whitespace-nowrap hidden sm:table-cell">
+                    <td className="hidden py-2 whitespace-nowrap sm:table-cell">
                       {new Date(f.created_at).toLocaleString()}
                     </td>
                     <td className="py-2">
@@ -363,7 +464,7 @@ export function BucketPage() {
                             variant="light"
                             onPress={() => openShareModal(f)}
                           >
-                            <ShareIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <ShareIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                           </Button>
                         )}
                         <Button
@@ -373,7 +474,7 @@ export function BucketPage() {
                           variant="light"
                           onPress={() => handleDownload(f)}
                         >
-                          <DownloadIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <DownloadIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                         </Button>
                         {canWrite && (
                           <Button
@@ -382,12 +483,9 @@ export function BucketPage() {
                             aria-label={`Delete ${f.name}`}
                             variant="light"
                             color="danger"
-                            onPress={() => {
-                              setDeleteId(f.id);
-                              confirm.onOpen();
-                            }}
+                            onPress={() => openDeleteDialog([f])}
                           >
-                            <DeleteIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <DeleteIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                           </Button>
                         )}
                       </div>
@@ -402,13 +500,17 @@ export function BucketPage() {
       <ConfirmDialog
         isOpen={confirm.isOpen}
         onOpenChange={(open) => {
-          if (!open) setDeleteId(null);
+          if (!open) setPendingDeleteFiles([]);
           confirm.onOpenChange();
         }}
-        title="Delete file?"
-        message="Are you sure you want to delete this file?"
+        title={pendingDeleteFiles.length > 1 ? "Delete selected files?" : "Delete file?"}
+        message={
+          pendingDeleteFiles.length > 1
+            ? `Are you sure you want to delete ${pendingDeleteFiles.length} files? This cannot be undone.`
+            : "Are you sure you want to delete this file?"
+        }
         onConfirm={handleDelete}
-        confirmLabel="Delete"
+        confirmLabel={pendingDeleteFiles.length > 1 ? "Delete Selected" : "Delete"}
         isConfirmLoading={isDeleting}
       />
       <FilePreviewModal
@@ -490,4 +592,50 @@ function canManageBucket(bucket: Bucket) {
 
 function canWriteFiles(bucket: Bucket) {
   return bucket.role === "owner" || bucket.role === "editor";
+}
+
+function showBatchDeleteToast(result: BatchDeleteFilesResponse, requestedCount: number) {
+  const deletedCount = result.deleted.length;
+  const failedCount = result.failed.length;
+  const warningCount = result.warnings.length;
+
+  if (deletedCount === requestedCount && failedCount === 0 && warningCount === 0) {
+    addToast({
+      title: deletedCount === 1 ? "File deleted" : `${deletedCount} files deleted`,
+      color: "success",
+      timeout: 4000,
+    });
+    return;
+  }
+
+  if (deletedCount > 0 && failedCount === 0) {
+    addToast({
+      title: deletedCount === 1 ? "File deleted" : `${deletedCount} files deleted`,
+      description: warningCount === 1
+        ? "Server cleanup reported a warning for 1 file."
+        : `Server cleanup reported warnings for ${warningCount} files.`,
+      color: "warning",
+      timeout: 6000,
+    });
+    return;
+  }
+
+  if (deletedCount > 0) {
+    addToast({
+      title: `Deleted ${deletedCount} of ${requestedCount} files`,
+      description: failedCount === 1
+        ? "1 file could not be deleted."
+        : `${failedCount} files could not be deleted.`,
+      color: "warning",
+      timeout: 6000,
+    });
+    return;
+  }
+
+  addToast({
+    title: "No files deleted",
+    description: failedCount === 1 ? result.failed[0].error : `${failedCount} files could not be deleted.`,
+    color: "danger",
+    timeout: 6000,
+  });
 }

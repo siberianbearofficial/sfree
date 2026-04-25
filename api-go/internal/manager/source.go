@@ -52,48 +52,17 @@ func InspectSource(ctx context.Context, src *repository.Source, factory SourceCl
 	if src == nil {
 		return SourceInfo{}, errors.New("nil source")
 	}
-	switch src.Type {
-	case repository.SourceTypeGDrive:
-		cli, err := sourceClientFor(ctx, src, factory)
-		if err != nil {
-			return SourceInfo{}, err
-		}
-		infoClient, ok := cli.(sourcecap.InfoProvider)
-		if !ok {
-			return SourceInfo{}, ErrUnsupportedSourceType
-		}
-		info, err := infoClient.SourceInfo(ctx)
-		if err != nil {
-			return SourceInfo{}, err
-		}
-		respFiles := make([]SourceInfoFile, 0, len(info.Files))
-		for _, f := range info.Files {
-			respFiles = append(respFiles, SourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size})
-		}
-		return SourceInfo{Files: respFiles, StorageTotal: info.StorageTotal, StorageUsed: info.StorageUsed, StorageFree: info.StorageFree}, nil
-	case repository.SourceTypeTelegram:
-		return SourceInfo{Files: []SourceInfoFile{}}, nil
-	case repository.SourceTypeS3:
-		cli, err := sourceClientFor(ctx, src, factory)
-		if err != nil {
-			return SourceInfo{}, err
-		}
-		infoClient, ok := cli.(sourcecap.InfoProvider)
-		if !ok {
-			return SourceInfo{}, ErrUnsupportedSourceType
-		}
-		info, err := infoClient.SourceInfo(ctx)
-		if err != nil {
-			return SourceInfo{}, err
-		}
-		respFiles := make([]SourceInfoFile, 0, len(info.Files))
-		for _, f := range info.Files {
-			respFiles = append(respFiles, SourceInfoFile{ID: f.ID, Name: f.Name, Size: f.Size})
-		}
-		return SourceInfo{Files: respFiles, StorageTotal: info.StorageTotal, StorageUsed: info.StorageUsed, StorageFree: info.StorageFree}, nil
-	default:
+	if info, ok := sourceTypeDefaultInfo(src.Type); ok {
+		return info, nil
+	}
+	if !sourceTypeSupportsProviderInfo(src.Type) {
 		return SourceInfo{}, ErrUnsupportedSourceType
 	}
+	cli, err := sourceClientFor(ctx, src, factory)
+	if err != nil {
+		return SourceInfo{}, err
+	}
+	return inspectSourceProvider(ctx, cli)
 }
 
 func CheckSourceHealth(ctx context.Context, src *repository.Source, factory SourceClientFactory) (SourceHealth, error) {
@@ -125,28 +94,22 @@ func CheckSourceHealth(ctx context.Context, src *repository.Source, factory Sour
 		return finish(SourceHealthUnhealthy, "client_error", "Source configuration could not be initialized."), nil
 	}
 
-	switch src.Type {
-	case repository.SourceTypeGDrive, repository.SourceTypeTelegram, repository.SourceTypeS3:
-		healthClient, ok := cli.(sourcecap.HealthProber)
-		if !ok {
-			return SourceHealth{}, ErrUnsupportedSourceType
-		}
-		result, err := healthClient.ProbeSourceHealth(ctx)
-		if errors.Is(err, sourcecap.ErrUnsupportedCapability) {
-			return SourceHealth{}, ErrUnsupportedSourceType
-		}
-		if err != nil && result.ReasonCode == "" {
-			result = sourcecap.Health{
-				Status:     sourcecap.HealthUnhealthy,
-				ReasonCode: "probe_failed",
-				Message:    "Source health probe failed.",
-			}
-		}
-		health.Quota = sourceQuotaFromCapability(result.Quota)
-		return finish(sourceHealthStatusFromCapability(result.Status), result.ReasonCode, result.Message), nil
-	default:
+	if !sourceTypeSupportsHealth(src.Type) {
 		return SourceHealth{}, ErrUnsupportedSourceType
 	}
+	result, err := probeSourceHealthProvider(ctx, cli)
+	if errors.Is(err, sourcecap.ErrUnsupportedCapability) {
+		return SourceHealth{}, ErrUnsupportedSourceType
+	}
+	if err != nil && result.ReasonCode == "" {
+		result = sourcecap.Health{
+			Status:     sourcecap.HealthUnhealthy,
+			ReasonCode: "probe_failed",
+			Message:    "Source health probe failed.",
+		}
+	}
+	health.Quota = sourceQuotaFromCapability(result.Quota)
+	return finish(sourceHealthStatusFromCapability(result.Status), result.ReasonCode, result.Message), nil
 }
 
 func sourceHealthStatusFromCapability(status sourcecap.HealthStatus) SourceHealthStatus {
@@ -172,21 +135,14 @@ func DownloadSourceFile(ctx context.Context, src *repository.Source, fileID stri
 	if src == nil {
 		return nil, errors.New("nil source")
 	}
-	switch src.Type {
-	case repository.SourceTypeGDrive, repository.SourceTypeS3:
-		cli, err := sourceClientFor(ctx, src, factory)
-		if err != nil {
-			return nil, err
-		}
-		if streamClient, ok := cli.(interface {
-			DownloadStream(context.Context, string) (io.ReadCloser, error)
-		}); ok {
-			return streamClient.DownloadStream(ctx, fileID)
-		}
-		return cli.Download(ctx, fileID)
-	default:
+	if !sourceTypeSupportsDirectDownload(src.Type) {
 		return nil, ErrUnsupportedSourceType
 	}
+	cli, err := sourceClientFor(ctx, src, factory)
+	if err != nil {
+		return nil, err
+	}
+	return downloadSourceProviderFile(ctx, cli, fileID)
 }
 
 func sourceClientFor(ctx context.Context, src *repository.Source, factory SourceClientFactory) (SourceClient, error) {
@@ -194,4 +150,40 @@ func sourceClientFor(ctx context.Context, src *repository.Source, factory Source
 		factory = NewSourceClient
 	}
 	return factory(ctx, src)
+}
+
+func sourceTypeDefaultInfo(sourceType repository.SourceType) (SourceInfo, bool) {
+	switch sourceType {
+	case repository.SourceTypeTelegram:
+		return SourceInfo{Files: []SourceInfoFile{}}, true
+	default:
+		return SourceInfo{}, false
+	}
+}
+
+func sourceTypeSupportsProviderInfo(sourceType repository.SourceType) bool {
+	switch sourceType {
+	case repository.SourceTypeGDrive, repository.SourceTypeS3:
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceTypeSupportsHealth(sourceType repository.SourceType) bool {
+	switch sourceType {
+	case repository.SourceTypeGDrive, repository.SourceTypeTelegram, repository.SourceTypeS3:
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceTypeSupportsDirectDownload(sourceType repository.SourceType) bool {
+	switch sourceType {
+	case repository.SourceTypeGDrive, repository.SourceTypeS3:
+		return true
+	default:
+		return false
+	}
 }
