@@ -332,7 +332,7 @@ test.describe("File listing and download", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
     await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
-    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+    await mockBucketFiles(page, MOCK_FILES);
 
     let reportDownloaded = false;
     let dataDownloaded = false;

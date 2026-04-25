@@ -8,7 +8,7 @@
  * - Upload File button is present on the bucket detail page
  */
 
-import { test, expect, type Route } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 import { API_GLOB, injectAuth, mockGet, mockPost } from "./helpers";
 
 const MOCK_SOURCE = {
