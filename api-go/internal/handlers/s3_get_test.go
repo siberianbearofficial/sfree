@@ -279,6 +279,89 @@ func TestGetObjectStreamsBodyWithoutPreflight(t *testing.T) {
 	}
 }
 
+func TestGetObjectAppliesSupportedResponseHeaderOverrides(t *testing.T) {
+	origStream := streamS3Object
+	t.Cleanup(func() { streamS3Object = origStream })
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		_, err := io.WriteString(w, "complete")
+		return err
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/s3/bucket/object.txt?response-cache-control=no-store&response-content-disposition=attachment%3B%20filename%3D%22download.txt%22&response-content-encoding=gzip&response-content-language=en-US&response-content-type=application%2Fpdf&response-expires=Mon%2C%2002%20Jan%202006%2015%3A04%3A05%20GMT",
+		nil,
+	)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got := w.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("expected override Cache-Control, got %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); got != `attachment; filename="download.txt"` {
+		t.Fatalf("expected override Content-Disposition, got %q", got)
+	}
+	if got := w.Header().Get("Content-Encoding"); got != "gzip" {
+		t.Fatalf("expected override Content-Encoding, got %q", got)
+	}
+	if got := w.Header().Get("Content-Language"); got != "en-US" {
+		t.Fatalf("expected override Content-Language, got %q", got)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/pdf" {
+		t.Fatalf("expected override Content-Type, got %q", got)
+	}
+	if got := w.Header().Get("Expires"); got != "Mon, 02 Jan 2006 15:04:05 GMT" {
+		t.Fatalf("expected override Expires, got %q", got)
+	}
+	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
+		t.Fatalf("expected stored metadata to remain, got %q", got)
+	}
+}
+
+func TestGetObjectIgnoresUnsafeAndUnsupportedResponseHeaderOverrides(t *testing.T) {
+	origStream := streamS3Object
+	t.Cleanup(func() { streamS3Object = origStream })
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		_, err := io.WriteString(w, "complete")
+		return err
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/s3/bucket/object.txt?response-content-type=text%2Fhtml%0D%0AX-Injected%3A%20yes&response-content-length=1",
+		nil,
+	)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("expected stored Content-Type after unsafe override, got %q", got)
+	}
+	if got := w.Header().Get("Content-Length"); got != "7" {
+		t.Fatalf("expected stored Content-Length after unsupported override, got %q", got)
+	}
+}
+
 func TestGetObjectRangeReturnsStoredMetadataHeaders(t *testing.T) {
 	origStreamRange := streamS3ObjectRange
 	t.Cleanup(func() { streamS3ObjectRange = origStreamRange })
@@ -318,6 +401,34 @@ func TestGetObjectRangeReturnsStoredMetadataHeaders(t *testing.T) {
 	}
 	if got := w.Header().Get("x-amz-meta-owner"); got != "alice" {
 		t.Fatalf("expected stored metadata, got %q", got)
+	}
+}
+
+func TestGetObjectRangeAppliesResponseHeaderOverrides(t *testing.T) {
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() { streamS3ObjectRange = origStreamRange })
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
+		_, err := io.WriteString(w, "cde")
+		return err
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt?response-content-type=application%2Fjson", nil)
+	req.Header.Set("Range", "bytes=2-4")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("expected 206, got %d", w.Code)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("expected override Content-Type on ranged response, got %q", got)
 	}
 }
 

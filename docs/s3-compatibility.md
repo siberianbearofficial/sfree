@@ -28,7 +28,7 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 
 | S3 operation | Status | Notes |
 | --- | --- | --- |
-| GetObject | Partial | Basic full-object download and byte `Range` requests work. Stored Content-Type and user metadata are returned. `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since` now gate full-object and ranged reads with `304`/`412` responses before streaming. Response header overrides and checksum-related response semantics are still missing. |
+| GetObject | Partial | Basic full-object download and byte `Range` requests work. Stored Content-Type and user metadata are returned. `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since` now gate full-object and ranged reads with `304`/`412` responses before streaming. Signed requests can override `Cache-Control`, `Content-Disposition`, `Content-Encoding`, `Content-Language`, `Content-Type`, and `Expires` at response time via the matching S3 `response-*` query parameters when each value is a single-line ASCII string up to 1024 bytes. These overrides do not mutate stored object metadata. Checksum-related response semantics are still missing. |
 | PutObject | Partial | Basic upload and overwrite work. Content-Type and `x-amz-meta-*` user metadata are persisted. Object tags, storage class, checksum validation, and server-side encryption headers are ignored. |
 | DeleteObject | Implemented | Single-object delete is idempotent and returns no content for missing keys. |
 | HeadObject | Partial | Returns ETag, Last-Modified, Content-Length, Content-Type, and user metadata. `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since` are now honored with `304`/`412` responses. Range awareness and checksum headers remain missing. |
@@ -74,7 +74,7 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | Feature | Status | Notes |
 | --- | --- | --- |
 | AWS Signature V4 header auth | Implemented | Validates `AWS4-HMAC-SHA256` requests against bucket access credentials. Requests with bodies must send `X-Amz-Content-Sha256`; otherwise validation rejects the request without buffering the body. |
-| AWS Signature V4 presigned URLs | Implemented | Query-string presign validation supports default S3 unsigned payload behavior and a max TTL of seven days. Woodpecker-runnable Python SDK coverage now verifies aiobotocore-generated presigned `PUT` and `GET` URLs for simple object upload/download flows. |
+| AWS Signature V4 presigned URLs | Implemented | Query-string presign validation supports default S3 unsigned payload behavior and a max TTL of seven days. Presigned `GetObject` URLs now honor bounded `response-cache-control`, `response-content-disposition`, `response-content-encoding`, `response-content-language`, `response-content-type`, and `response-expires` overrides without mutating stored metadata. Woodpecker-runnable Python SDK coverage now verifies aiobotocore-generated presigned `PUT` and `GET` URLs for simple object upload/download flows. |
 | AWS Signature V2 | Missing | Legacy clients that require V2 are unsupported. |
 | Anonymous access | Missing | S3 API requests require signed bucket credentials. |
 | Virtual-hosted-style addressing | Missing | Path-style routing is supported on `/{bucket}` and the legacy `/api/s3/{bucket}` alias, but bucket-in-host virtual-hosted requests are still unsupported. |
@@ -174,3 +174,19 @@ Not automated in this PR:
 - AWS CLI, rclone, and s3cmd live binary smoke tests. They still need extra runtime installation and remain documented/manual in this PR.
 - MinIO `mc` live validation still needs Woodpecker or documented manual execution. The root-style endpoint removes the alias-configuration blocker, but this PR does not itself add fresh `mc` runtime evidence.
 - AWS SDK for Go/JavaScript client fixtures. The Go e2e suite already validates signed S3 endpoint behavior directly; this PR keeps SDK automation to one pinned SDK path to avoid widening CI dependencies.
+
+## Response Header Override Scope
+
+Shipped `GetObject` response override query parameters:
+- `response-cache-control` -> `Cache-Control`
+- `response-content-disposition` -> `Content-Disposition`
+- `response-content-encoding` -> `Content-Encoding`
+- `response-content-language` -> `Content-Language`
+- `response-content-type` -> `Content-Type`
+- `response-expires` -> `Expires`
+
+Deliberate limits in the current slice:
+- Overrides are applied on `GetObject` responses only, including byte-range reads.
+- Each override value must be a non-empty single-line ASCII string no longer than 1024 bytes.
+- Unsupported `response-*` parameters are ignored rather than mapped to arbitrary headers.
+- `HeadObject` does not currently mirror these overrides.
