@@ -15,17 +15,15 @@ import {
 } from "@heroui/react";
 import {useState} from "react";
 import {Link, NavLink, Outlet, useNavigate} from "react-router-dom";
-import {logout} from "../shared/lib/auth";
+import {useAuth} from "../app/providers";
+import {deleteSession} from "../shared/api/auth";
+import {showErrorToast} from "../shared/api/error";
 
 const navItems = [
   {label: "Dashboard", to: "/dashboard"},
   {label: "Sources", to: "/sources"},
   {label: "Buckets", to: "/buckets"},
 ] as const;
-
-function getUsername(): string {
-  return localStorage.getItem("username") ?? "User";
-}
 
 function UserInitial({name}: {name: string}) {
   return (
@@ -38,13 +36,19 @@ function UserInitial({name}: {name: string}) {
 }
 
 export function AppShell() {
+  const {clearSession, user} = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
-  const username = getUsername();
+  const username = user?.username ?? "User";
 
-  function handleLogout() {
-    logout();
-    navigate("/");
+  async function handleLogout() {
+    try {
+      await deleteSession();
+      clearSession();
+      navigate("/", {replace: true});
+    } catch (err) {
+      showErrorToast(err);
+    }
   }
 
   return (

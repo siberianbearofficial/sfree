@@ -41,10 +41,12 @@ func registerAuthRoutes(router *gin.Engine, cfg *config.Config, deps *routerDepe
 	}
 	router.GET("/api/v1/auth/github", publicHandlers(limits, handlers.GitHubLogin(cfg))...)
 	router.GET("/api/v1/auth/github/callback", publicHandlers(limits, handlers.GitHubCallback(cfg, deps.userRepo))...)
+	router.DELETE("/api/v1/auth/session", publicHandlers(limits, handlers.SessionLogout(cfg))...)
 	if deps.auth == nil {
 		return
 	}
 	router.GET("/api/v1/auth/me", protectedHandlers(limits, deps.auth, handlers.GetCurrentUser(deps.userRepo))...)
+	router.POST("/api/v1/auth/session", protectedHandlers(limits, deps.auth, handlers.SessionLogin(cfg))...)
 	router.POST("/api/v1/auth/token", protectedHandlers(limits, deps.auth, handlers.TokenLogin(cfg, deps.userRepo))...)
 }
 

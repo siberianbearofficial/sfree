@@ -7,7 +7,6 @@ export async function createUser(
     "/users",
     "Failed to create user",
     {
-      auth: false,
       method: "POST",
       json: {username},
     },

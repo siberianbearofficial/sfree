@@ -1,3 +1,4 @@
+import type {ReactNode} from "react";
 import {BrowserRouter, Routes, Route, Navigate} from "react-router-dom";
 import LandingPage from "../pages/landing";
 import DashboardPage from "../pages/dashboard";
@@ -6,8 +7,38 @@ import BucketPage from "../pages/bucket";
 import SourcesPage from "../pages/sources";
 import SourcePage from "../pages/source";
 import {OAuthCallback} from "../pages/auth-callback";
-import {isAuthenticated} from "../shared/lib/auth";
+import {useAuth} from "./providers";
 import {AppShell} from "../widgets/app-shell";
+
+function FullPageStatus({label}: {label: string}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center text-sm text-default-500">
+      {label}
+    </div>
+  );
+}
+
+function RequireAuth({children}: {children: ReactNode}) {
+  const {status} = useAuth();
+  if (status === "loading") {
+    return <FullPageStatus label="Loading session..." />;
+  }
+  if (status !== "authenticated") {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
+function RequireGuest({children}: {children: ReactNode}) {
+  const {status} = useAuth();
+  if (status === "loading") {
+    return <FullPageStatus label="Loading session..." />;
+  }
+  if (status === "authenticated") {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
 
 export default function App() {
   return (
@@ -15,10 +46,20 @@ export default function App() {
       <Routes>
         <Route
           path="/"
-          element={isAuthenticated() ? <Navigate to="/dashboard" replace /> : <LandingPage />}
+          element={
+            <RequireGuest>
+              <LandingPage />
+            </RequireGuest>
+          }
         />
         <Route path="/auth/callback" element={<OAuthCallback />} />
-        <Route element={<AppShell />}>
+        <Route
+          element={
+            <RequireAuth>
+              <AppShell />
+            </RequireAuth>
+          }
+        >
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/buckets" element={<BucketsPage />} />
           <Route path="/buckets/:id" element={<BucketPage />} />

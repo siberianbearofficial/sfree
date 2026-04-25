@@ -11,8 +11,9 @@ import {
   Snippet,
 } from "@heroui/react";
 import {useEffect, useState} from "react";
+import {useAuth} from "../../../app/providers";
+import {createSession} from "../../../shared/api/auth";
 import {createUser} from "../../../shared/api/users";
-import {saveAuth} from "../../../shared/lib/auth";
 import {showErrorToast} from "../../../shared/api/error";
 import {apiUrl} from "../../../shared/api/client";
 import {GitHubIcon} from "../../../shared/icons";
@@ -24,6 +25,7 @@ type Props = {
 };
 
 export function RegisterDialog({isOpen, onOpenChange, onSwitchToLogin}: Props) {
+  const {refreshSession} = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -64,6 +66,7 @@ export function RegisterDialog({isOpen, onOpenChange, onSwitchToLogin}: Props) {
                   <Snippet hideSymbol className="w-full">
                     {password}
                   </Snippet>
+                  {error && <p className="text-sm text-danger">{error}</p>}
                 </div>
               ) : (
                 <>
@@ -97,7 +100,26 @@ export function RegisterDialog({isOpen, onOpenChange, onSwitchToLogin}: Props) {
             </ModalBody>
             <ModalFooter className="flex flex-col gap-3">
               {password ? (
-                <Button color="primary" className="w-full" onPress={onClose}>
+                <Button
+                  color="primary"
+                  className="w-full"
+                  isLoading={isLoading}
+                  onPress={async () => {
+                    if (!password) return;
+                    setIsLoading(true);
+                    setError(null);
+                    try {
+                      await createSession(username.trim(), password);
+                      await refreshSession();
+                      onClose();
+                    } catch (err) {
+                      showErrorToast(err);
+                      setError("Account created, but the session could not be started.");
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                >
                   I saved my password
                 </Button>
               ) : (
@@ -112,7 +134,6 @@ export function RegisterDialog({isOpen, onOpenChange, onSwitchToLogin}: Props) {
                       setError(null);
                       try {
                         const result = await createUser(username.trim());
-                        saveAuth(username.trim(), result.password);
                         setPassword(result.password);
                       } catch (err) {
                         showErrorToast(err);

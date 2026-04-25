@@ -5,7 +5,7 @@
  * - "Bucket not found" when navigating to a non-existent bucket ID
  * - Landing page auth dialogs open and close without crashing
  * - Register flow shows password after API call
- * - Login flow closes dialog and persists auth
+ * - Login flow closes dialog and starts a session
  */
 
 import { test, expect } from "@playwright/test";
@@ -49,19 +49,28 @@ test.describe("Error states", () => {
     await dialog.getByLabel("Username").fill("newuser");
     await dialog.getByRole("button", { name: "Create Account" }).click();
 
-    // Generated password is shown via Snippet
     await expect(dialog.getByText("generated-secret-pw")).toBeVisible();
 
-    // Confirmation button dismisses
+    await page.route(`${API_GLOB}/auth/session`, (route) =>
+      route.fulfill({status: 204, body: ""}),
+    );
+    await page.route(`${API_GLOB}/auth/me`, (route) =>
+      route.fulfill({status: 200, json: {id: "u-new", username: "newuser"}}),
+    );
+
     await dialog.getByRole("button", { name: "I saved my password" }).click();
     await expect(dialog).not.toBeVisible();
   });
 
-  test("Login dialog opens and closes, storing credentials", async ({
+  test("Login dialog opens and closes, starting a session", async ({
     page,
   }) => {
-    // Login is purely client-side — saves btoa(user:pass) to localStorage
-    await page.route(`${API_GLOB}/**`, (route) => route.abort());
+    await page.route(`${API_GLOB}/auth/session`, (route) =>
+      route.fulfill({status: 204, body: ""}),
+    );
+    await page.route(`${API_GLOB}/auth/me`, (route) =>
+      route.fulfill({status: 200, json: {id: "u-1", username: "alice"}}),
+    );
 
     await page.goto("/");
     await page.getByRole("button", { name: "Log In" }).first().click();
@@ -73,12 +82,8 @@ test.describe("Error states", () => {
     await dialog.getByLabel("Password").fill("secret");
     await dialog.getByRole("button", { name: "Log In" }).click();
 
-    // Dialog closes after login
     await expect(dialog).not.toBeVisible();
-
-    // localStorage should now have auth set
-    const auth = await page.evaluate(() => localStorage.getItem("auth"));
-    expect(auth).toBe(btoa("alice:secret"));
+    await expect(page).toHaveURL("/dashboard");
   });
 
   test("sources page renders without crashing when API returns error", async ({

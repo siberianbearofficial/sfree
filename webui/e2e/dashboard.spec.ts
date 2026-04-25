@@ -147,7 +147,7 @@ test.describe("Dashboard", () => {
   });
 
   test("unauthenticated user at / sees landing page", async ({ page }) => {
-    // No injectAuth — localStorage is empty
+    // No injectAuth — session lookup fails and the landing page stays visible
     await page.route(`${API_GLOB}/**`, (route) => route.abort());
     await page.goto("/");
     await expect(

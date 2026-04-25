@@ -78,9 +78,9 @@ copy:
 - Do not claim redundancy, erasure coding, or durable multi-provider storage.
   The current design distributes chunks; it does not replicate them.
 - Do not describe the auth model as hardened. The API accepts HTTP Basic Auth,
-  bearer tokens, and GitHub OAuth sessions through an `auth_token` cookie. The
-  frontend still stores Basic Auth credentials or token state in `localStorage`,
-  and source create/list responses echo stored credential payloads.
+  bearer tokens, and bounded browser sessions through an `auth_token` cookie.
+  The web UI now relies on that HttpOnly cookie plus `/api/v1/auth/me`, but
+  source create/list responses still echo stored credential payloads.
 - Do not imply identical observability across source types. Google Drive,
   Telegram, and S3-compatible sources return different levels of file/quota
   detail, and only provider-native quota should be rendered as capacity.
