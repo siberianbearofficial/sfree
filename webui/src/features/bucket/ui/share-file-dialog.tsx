@@ -76,6 +76,7 @@ export function ShareFileDialog({bucketId, file, onClose}: Props) {
         if (!open) handleClose();
       }}
       size="lg"
+      scrollBehavior="inside"
     >
       <ModalContent>
         {(closeModal) => (
@@ -91,28 +92,30 @@ export function ShareFileDialog({bucketId, file, onClose}: Props) {
                   {shareLinks.map((link) => (
                     <div
                       key={link.id}
-                      className="flex items-center gap-2 border rounded p-2 text-sm"
+                      className="flex flex-col sm:flex-row sm:items-center gap-2 border rounded p-2 text-sm"
                     >
-                      <code className="flex-1 truncate">
+                      <code className="flex-1 min-w-0 break-all text-xs sm:text-sm">
                         {window.location.origin}{link.url}
                       </code>
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        onPress={() => copyShareUrl(link)}
-                      >
-                        {copiedToken === link.token ? "Copied!" : "Copy"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        color="danger"
-                        onPress={() => handleDeleteShare(link.id)}
-                      >
-                        Revoke
-                      </Button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          onPress={() => copyShareUrl(link)}
+                        >
+                          {copiedToken === link.token ? "Copied!" : "Copy"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          color="danger"
+                          onPress={() => handleDeleteShare(link.id)}
+                        >
+                          Revoke
+                        </Button>
+                      </div>
                       {link.expires_at && (
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-default-400">
                           expires {new Date(link.expires_at).toLocaleString()}
                         </span>
                       )}
