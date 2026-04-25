@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +15,7 @@ import (
 	"github.com/example/sfree/api-go/internal/repository"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func TestDeleteFileCleansShareLinksBeforeObjectDelete(t *testing.T) {
@@ -82,6 +85,108 @@ func TestDeleteFileShareCleanupFailureReturns500AndSkipsObjectDelete(t *testing.
 	}
 	if !reflect.DeepEqual(events, []string{"share_file"}) {
 		t.Fatalf("unexpected event order: %v", events)
+	}
+}
+
+func TestBatchDeleteFilesDeletesUniqueRequestedFiles(t *testing.T) {
+	t.Parallel()
+
+	userID := primitive.NewObjectID()
+	bucketID := primitive.NewObjectID()
+	fileAID := primitive.NewObjectID()
+	fileBID := primitive.NewObjectID()
+	shareDeleted := []primitive.ObjectID{}
+	objectDeleted := []primitive.ObjectID{}
+
+	router := gin.New()
+	router.POST("/buckets/:id/files/batch-delete",
+		setUserID(userID.Hex()),
+		func(c *gin.Context) {
+			handleBatchDeleteFiles(
+				c,
+				fakeBucketDeleteStore{bucket: testDeleteBucket(bucketID, userID)},
+				fakeBatchDeleteFileReader{files: map[primitive.ObjectID]*repository.File{
+					fileAID: {ID: fileAID, BucketID: bucketID, Name: "alpha.txt", CreatedAt: time.Now().UTC()},
+					fileBID: {ID: fileBID, BucketID: bucketID, Name: "beta.txt", CreatedAt: time.Now().UTC()},
+				}},
+				&fakeBatchShareLinkCleanup{deletedIDs: &shareDeleted},
+				&fakeBatchObjectFileDelete{deletedIDs: &objectDeleted},
+				nil,
+			)
+		},
+	)
+
+	body, _ := json.Marshal(batchDeleteFilesRequest{
+		FileIDs: []string{fileAID.Hex(), fileAID.Hex(), fileBID.Hex()},
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/buckets/"+bucketID.Hex()+"/files/batch-delete", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp batchDeleteFilesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(resp.Deleted) != 2 || len(resp.Failed) != 0 || len(resp.Warnings) != 0 {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+	if !reflect.DeepEqual(shareDeleted, []primitive.ObjectID{fileAID, fileBID}) {
+		t.Fatalf("unexpected share cleanup ids: %v", shareDeleted)
+	}
+	if !reflect.DeepEqual(objectDeleted, []primitive.ObjectID{fileAID, fileBID}) {
+		t.Fatalf("unexpected object delete ids: %v", objectDeleted)
+	}
+}
+
+func TestBatchDeleteFilesReportsMissingFilesWithoutStopping(t *testing.T) {
+	t.Parallel()
+
+	userID := primitive.NewObjectID()
+	bucketID := primitive.NewObjectID()
+	fileID := primitive.NewObjectID()
+	missingID := primitive.NewObjectID()
+
+	router := gin.New()
+	router.POST("/buckets/:id/files/batch-delete",
+		setUserID(userID.Hex()),
+		func(c *gin.Context) {
+			handleBatchDeleteFiles(
+				c,
+				fakeBucketDeleteStore{bucket: testDeleteBucket(bucketID, userID)},
+				fakeBatchDeleteFileReader{files: map[primitive.ObjectID]*repository.File{
+					fileID: {ID: fileID, BucketID: bucketID, Name: "keep-going.txt", CreatedAt: time.Now().UTC()},
+				}},
+				&fakeBatchShareLinkCleanup{},
+				&fakeBatchObjectFileDelete{},
+				nil,
+			)
+		},
+	)
+
+	body, _ := json.Marshal(batchDeleteFilesRequest{
+		FileIDs: []string{fileID.Hex(), missingID.Hex()},
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/buckets/"+bucketID.Hex()+"/files/batch-delete", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp batchDeleteFilesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(resp.Deleted) != 1 || resp.Deleted[0].ID != fileID.Hex() {
+		t.Fatalf("unexpected deleted response: %+v", resp.Deleted)
+	}
+	if len(resp.Failed) != 1 || resp.Failed[0].ID != missingID.Hex() || resp.Failed[0].Error != "File not found" {
+		t.Fatalf("unexpected failed response: %+v", resp.Failed)
 	}
 }
 
@@ -219,6 +324,22 @@ func (f fakeDeleteFileReader) GetByID(_ context.Context, _ primitive.ObjectID) (
 	return f.file, nil
 }
 
+type fakeBatchDeleteFileReader struct {
+	files map[primitive.ObjectID]*repository.File
+	err   error
+}
+
+func (f fakeBatchDeleteFileReader) GetByID(_ context.Context, id primitive.ObjectID) (*repository.File, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	file, ok := f.files[id]
+	if !ok {
+		return nil, mongo.ErrNoDocuments
+	}
+	return file, nil
+}
+
 type fakeShareLinkCleanup struct {
 	events *[]string
 	err    error
@@ -259,6 +380,31 @@ type fakeObjectFileDelete struct {
 func (f *fakeObjectFileDelete) DeleteFile(_ context.Context, _ primitive.ObjectID, _ primitive.ObjectID) (manager.DeleteObjectResult, error) {
 	if f.events != nil {
 		*f.events = append(*f.events, "object_file")
+	}
+	return f.result, f.err
+}
+
+type fakeBatchShareLinkCleanup struct {
+	deletedIDs *[]primitive.ObjectID
+	err        error
+}
+
+func (f *fakeBatchShareLinkCleanup) DeleteByFile(_ context.Context, fileID primitive.ObjectID) error {
+	if f.deletedIDs != nil {
+		*f.deletedIDs = append(*f.deletedIDs, fileID)
+	}
+	return f.err
+}
+
+type fakeBatchObjectFileDelete struct {
+	deletedIDs *[]primitive.ObjectID
+	err        error
+	result     manager.DeleteObjectResult
+}
+
+func (f *fakeBatchObjectFileDelete) DeleteFile(_ context.Context, _ primitive.ObjectID, fileID primitive.ObjectID) (manager.DeleteObjectResult, error) {
+	if f.deletedIDs != nil {
+		*f.deletedIDs = append(*f.deletedIDs, fileID)
 	}
 	return f.result, f.err
 }
