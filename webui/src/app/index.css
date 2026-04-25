@@ -8,3 +8,12 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Accessible focus ring for interactive elements */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid hsl(var(--heroui-primary));
+  outline-offset: 2px;
+  border-radius: 4px;
+}

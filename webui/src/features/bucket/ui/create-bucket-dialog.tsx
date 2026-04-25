@@ -116,20 +116,27 @@ export function CreateBucketDialog({isOpen, onOpenChange, onCreated}: Props) {
                       </div>
                     ) : null}
                     {hasSources ? (
-                      <CheckboxGroup
-                        value={selectedSourceIds}
-                        onValueChange={(values) => setSelectedSourceIds(values as string[])}
-                        classNames={{wrapper: "gap-3"}}
-                      >
-                        {sources.map((source) => (
-                          <Checkbox key={source.id} value={source.id} classNames={{base: "max-w-full"}}>
-                            <div className="flex items-center gap-2">
-                              <span>{source.name}</span>
-                              <SourceTypeChip type={source.type} />
-                            </div>
-                          </Checkbox>
-                        ))}
-                      </CheckboxGroup>
+                      <>
+                        <CheckboxGroup
+                          value={selectedSourceIds}
+                          onValueChange={(values) => setSelectedSourceIds(values as string[])}
+                          classNames={{wrapper: "gap-3"}}
+                        >
+                          {sources.map((source) => (
+                            <Checkbox key={source.id} value={source.id} classNames={{base: "max-w-full"}}>
+                              <div className="flex items-center gap-2">
+                                <span>{source.name}</span>
+                                <SourceTypeChip type={source.type} />
+                              </div>
+                            </Checkbox>
+                          ))}
+                        </CheckboxGroup>
+                        <div className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+                          <p className="text-sm text-warning-700">
+                            SFree distributes file chunks across your selected sources but does not replicate them. If an upstream source becomes unavailable, affected files may be unrecoverable.
+                          </p>
+                        </div>
+                      </>
                     ) : null}
                   </div>
 

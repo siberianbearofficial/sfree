@@ -373,6 +373,149 @@ func TestGetObjectRangeStreamsBodyOnce(t *testing.T) {
 	}
 }
 
+func TestGetObjectIfRangeMatchUsesBoundedRange(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer) error {
+		t.Fatal("expected range stream path")
+		return nil
+	}
+	var calls int
+	var gotStart, gotEnd int64
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer, start, end int64) error {
+		calls++
+		gotStart, gotEnd = start, end
+		_, err := io.WriteString(w, "bcd")
+		return err
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("Range", "bytes=1-3")
+	req.Header.Set("If-Range", `"persisted-etag"`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("expected 206, got %d", w.Code)
+	}
+	if calls != 1 {
+		t.Fatalf("expected one range stream call, got %d", calls)
+	}
+	if gotStart != 1 || gotEnd != 3 {
+		t.Fatalf("expected range 1-3, got %d-%d", gotStart, gotEnd)
+	}
+	if body := w.Body.String(); body != "bcd" {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if got := w.Header().Get("Content-Range"); got != "bytes 1-3/7" {
+		t.Fatalf("expected Content-Range bytes 1-3/7, got %q", got)
+	}
+}
+
+func TestGetObjectIfRangeMismatchFallsBackToFullObject(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	var fullCalls int
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		fullCalls++
+		_, err := io.WriteString(w, "complete")
+		return err
+	}
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, _, _ int64) error {
+		t.Fatal("expected full-object stream path")
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("Range", "bytes=1-3")
+	req.Header.Set("If-Range", `"other-etag"`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if fullCalls != 1 {
+		t.Fatalf("expected one full-object stream call, got %d", fullCalls)
+	}
+	if body := w.Body.String(); body != "complete" {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if got := w.Header().Get("Content-Range"); got != "" {
+		t.Fatalf("expected no Content-Range header, got %q", got)
+	}
+	if got := w.Header().Get("Content-Length"); got != "7" {
+		t.Fatalf("expected full-object Content-Length, got %q", got)
+	}
+}
+
+func TestGetObjectIfRangeDateMismatchFallsBackToFullObject(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	var fullCalls int
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		fullCalls++
+		_, err := io.WriteString(w, "complete")
+		return err
+	}
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, _, _ int64) error {
+		t.Fatal("expected full-object stream path")
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("Range", "bytes=1-3")
+	req.Header.Set("If-Range", time.Unix(1700000000, 0).Add(-time.Hour).UTC().Format(http.TimeFormat))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if fullCalls != 1 {
+		t.Fatalf("expected one full-object stream call, got %d", fullCalls)
+	}
+	if body := w.Body.String(); body != "complete" {
+		t.Fatalf("unexpected body: %s", body)
+	}
+	if got := w.Header().Get("Content-Range"); got != "" {
+		t.Fatalf("expected no Content-Range header, got %q", got)
+	}
+}
+
 func TestGetObjectIfNoneMatchReturnsNotModifiedWithoutStreaming(t *testing.T) {
 	origStream := streamS3Object
 	origStreamRange := streamS3ObjectRange

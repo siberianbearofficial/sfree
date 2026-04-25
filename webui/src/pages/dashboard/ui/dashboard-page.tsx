@@ -179,6 +179,7 @@ export function DashboardPage() {
                     {quota.kind === "available" ? (
                       <div className="flex items-center gap-4">
                         <CircularProgress
+                          aria-label={`${s.name} quota usage: ${quota.percent}%`}
                           classNames={{
                             svg: "w-14 h-14",
                             indicator:
