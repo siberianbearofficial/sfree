@@ -196,6 +196,49 @@ func (r *FileRepository) ListByBucketByNameQuery(ctx context.Context, bucketID p
 	return r.listByBucketFilter(ctx, filter)
 }
 
+func (r *FileRepository) ListByBucketByNameQueryPage(ctx context.Context, bucketID primitive.ObjectID, query, after string, limit int) ([]File, bool, error) {
+	filter := bson.M{"bucket_id": bucketID}
+	nameFilter := bson.M{}
+	if query = strings.TrimSpace(query); query != "" {
+		nameFilter["$regex"] = regexp.QuoteMeta(query)
+		nameFilter["$options"] = "i"
+	}
+	if after = strings.TrimSpace(after); after != "" {
+		nameFilter["$gt"] = after
+	}
+	if len(nameFilter) > 0 {
+		filter["name"] = nameFilter
+	}
+
+	findOpts := options.Find().SetSort(bson.D{{Key: "name", Value: 1}})
+	if limit >= 0 {
+		findOpts.SetLimit(int64(limit + 1))
+	}
+	cursor, err := r.coll.Find(ctx, filter, findOpts)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = cursor.Close(ctx) }()
+
+	files := make([]File, 0, max(limit, 0))
+	for cursor.Next(ctx) {
+		var f File
+		if err := cursor.Decode(&f); err != nil {
+			return nil, false, err
+		}
+		files = append(files, f)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, false, err
+	}
+
+	hasMore := limit >= 0 && len(files) > limit
+	if hasMore {
+		files = files[:limit]
+	}
+	return files, hasMore, nil
+}
+
 func (r *FileRepository) ListByBucketWithPrefix(ctx context.Context, bucketID primitive.ObjectID, prefix string) ([]File, error) {
 	filter := bson.M{"bucket_id": bucketID}
 	if prefix != "" {

@@ -16,7 +16,7 @@ import {
   downloadFile,
   downloadFiles,
   getBucket,
-  listFiles,
+  listFilesPage,
   MAX_MULTI_FILE_DOWNLOAD_COUNT,
   uploadFile,
 } from "../../../shared/api/buckets";
@@ -38,13 +38,17 @@ const ROLE_COLOR: Record<string, "default" | "primary" | "secondary" | "success"
 
 type SortField = "name" | "size" | "created_at";
 
+const FILE_PAGE_SIZE = 100;
+
 export function BucketPage() {
   const {id} = useParams<{id: string}>();
   const navigate = useNavigate();
   const [bucket, setBucket] = useState<Bucket | null>(null);
   const [files, setFiles] = useState<FileInfo[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshingFiles, setIsRefreshingFiles] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
@@ -94,26 +98,36 @@ export function BucketPage() {
     });
   }, [files, sortBy, sortAsc]);
 
-  const load = useCallback(async (mode: "initial" | "refresh" = "initial") => {
+  const load = useCallback(async (mode: "initial" | "refresh" | "append" = "initial") => {
     if (!id) return;
+    if (mode === "append" && !nextCursor) return;
     const requestID = requestIDRef.current + 1;
     requestIDRef.current = requestID;
     if (mode === "initial") {
       setIsLoading(true);
+    } else if (mode === "append") {
+      setIsLoadingMore(true);
     } else {
       setIsRefreshingFiles(true);
     }
     setError(null);
     try {
-      const [loadedBucket, fs] = await Promise.all([
-        getBucket(id),
-        listFiles(id, activeSearchQuery),
+      const [loadedBucket, page] = await Promise.all([
+        mode === "append" ? Promise.resolve(bucket) : getBucket(id),
+        listFilesPage(id, {
+          query: activeSearchQuery,
+          limit: FILE_PAGE_SIZE,
+          cursor: mode === "append" ? nextCursor ?? undefined : undefined,
+        }),
       ]);
       if (requestID !== requestIDRef.current) {
         return;
       }
-      setBucket(loadedBucket);
-      setFiles(fs);
+      if (loadedBucket) {
+        setBucket(loadedBucket);
+      }
+      setFiles((prev) => mode === "append" ? [...prev, ...page.items] : page.items);
+      setNextCursor(page.next_cursor ?? null);
       hasLoadedRef.current = true;
     } catch (err) {
       if (requestID !== requestIDRef.current) {
@@ -129,16 +143,20 @@ export function BucketPage() {
       if (requestID === requestIDRef.current) {
         if (mode === "initial") {
           setIsLoading(false);
+        } else if (mode === "append") {
+          setIsLoadingMore(false);
         } else {
           setIsRefreshingFiles(false);
         }
       }
     }
-  }, [activeSearchQuery, id]);
+  }, [activeSearchQuery, bucket, id, nextCursor]);
 
   useEffect(() => {
     hasLoadedRef.current = false;
     setSearchQuery("");
+    setFiles([]);
+    setNextCursor(null);
     setSelectedFileIds([]);
     setPendingDeleteFiles([]);
   }, [id]);
@@ -226,6 +244,13 @@ export function BucketPage() {
   const canSelectFiles = sortedFiles.length > 0;
   const canDeleteSelected = bucket !== null && canWriteFiles(bucket);
   const selectedDownloadLimitExceeded = selectedCount > MAX_MULTI_FILE_DOWNLOAD_COUNT;
+  const searchStatus = activeSearchQuery
+    ? nextCursor
+      ? `Showing ${files.length}+ matching files`
+      : files.length === 1
+        ? "1 matching file"
+        : `${files.length} matching files`
+    : null;
 
   function setFileSelected(fileID: string, selected: boolean) {
     setSelectedFileIds((prev) => {
@@ -404,9 +429,9 @@ export function BucketPage() {
             onValueChange={setSearchQuery}
             endContent={isRefreshingFiles ? <Spinner size="sm" /> : null}
           />
-          {activeSearchQuery ? (
+          {searchStatus ? (
             <p className="text-sm text-default-500" aria-live="polite">
-              {files.length === 1 ? "1 matching file" : `${files.length} matching files`}
+              {searchStatus}
             </p>
           ) : null}
         </div>
@@ -555,6 +580,13 @@ export function BucketPage() {
             </table>
           </div>
         )}
+        {nextCursor ? (
+          <div className="mt-4 flex justify-center">
+            <Button variant="flat" isLoading={isLoadingMore} onPress={() => load("append")}>
+              Load More
+            </Button>
+          </div>
+        ) : null}
       </section>
       <ConfirmDialog
         isOpen={confirm.isOpen}

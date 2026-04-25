@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +30,15 @@ type fileResponse struct {
 	Size      int64     `json:"size"`
 }
 
-const maxBatchDeleteFiles = 100
+type paginatedFileResponse struct {
+	Items      []fileResponse `json:"items"`
+	NextCursor string         `json:"next_cursor,omitempty"`
+}
+
+const (
+	maxBatchDeleteFiles       = 100
+	maxBucketFileListPageSize = 200
+)
 
 type batchDeleteFilesRequest struct {
 	FileIDs []string `json:"file_ids"`
@@ -125,6 +135,8 @@ func UploadFileWithFactory(bucketRepo *repository.BucketRepository, sourceRepo *
 // @Produce json
 // @Param id path string true "Bucket ID"
 // @Param q query string false "Filename search query"
+// @Param limit query int false "Page size for bounded file listing"
+// @Param cursor query string false "Continuation cursor for bounded file listing"
 // @Success 200 {array} fileResponse
 // @Failure 400 {string} string ""
 // @Failure 401 {string} string ""
@@ -146,7 +158,34 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 			return
 		}
 		bucketID := acc.Bucket.ID
-		files, err := fileRepo.ListByBucketByNameQuery(c.Request.Context(), bucketID, strings.TrimSpace(c.Query("q")))
+		query := strings.TrimSpace(c.Query("q"))
+		limitParam := strings.TrimSpace(c.Query("limit"))
+		if limitParam == "" {
+			files, err := fileRepo.ListByBucketByNameQuery(c.Request.Context(), bucketID, query)
+			if err != nil {
+				slog.ErrorContext(ctx, "list files: list files", slog.String("error", err.Error()))
+				c.Status(http.StatusInternalServerError)
+				return
+			}
+			resp := make([]fileResponse, 0, len(files))
+			for _, f := range files {
+				resp = append(resp, fileResponse{
+					ID:        f.ID.Hex(),
+					Name:      f.Name,
+					CreatedAt: f.CreatedAt,
+					Size:      manager.FileSize(f),
+				})
+			}
+			c.JSON(http.StatusOK, resp)
+			return
+		}
+
+		limit, err := strconv.Atoi(limitParam)
+		if err != nil || limit < 1 || limit > maxBucketFileListPageSize {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("limit must be between 1 and %d", maxBucketFileListPageSize)})
+			return
+		}
+		files, hasMore, err := fileRepo.ListByBucketByNameQueryPage(c.Request.Context(), bucketID, query, c.Query("cursor"), limit)
 		if err != nil {
 			slog.ErrorContext(ctx, "list files: list files", slog.String("error", err.Error()))
 			c.Status(http.StatusInternalServerError)
@@ -161,7 +200,11 @@ func ListFiles(bucketRepo *repository.BucketRepository, fileRepo *repository.Fil
 				Size:      manager.FileSize(f),
 			})
 		}
-		c.JSON(http.StatusOK, resp)
+		page := paginatedFileResponse{Items: resp}
+		if hasMore && len(files) > 0 {
+			page.NextCursor = files[len(files)-1].Name
+		}
+		c.JSON(http.StatusOK, page)
 	}
 }
 

@@ -178,6 +178,44 @@ func TestFileRepositoryListByBucketByNameQuery(t *testing.T) {
 	assertFileNames(t, blankMatches, fileNames(unfiltered))
 }
 
+func TestFileRepositoryListByBucketByNameQueryPage(t *testing.T) {
+	_, repo := newFileRepositoryTestDB(t)
+	ctx := context.Background()
+	bucketID := primitive.NewObjectID()
+	otherBucketID := primitive.NewObjectID()
+	now := time.Now().UTC()
+
+	for _, file := range []File{
+		{BucketID: bucketID, Name: "alpha.txt", CreatedAt: now},
+		{BucketID: bucketID, Name: "report-final.txt", CreatedAt: now},
+		{BucketID: bucketID, Name: "report-notes.txt", CreatedAt: now},
+		{BucketID: bucketID, Name: "report[1].txt", CreatedAt: now},
+		{BucketID: otherBucketID, Name: "report-zeta.txt", CreatedAt: now},
+	} {
+		if _, err := repo.Create(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, hasMore, err := repo.ListByBucketByNameQueryPage(ctx, bucketID, "report", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasMore {
+		t.Fatal("expected more results on first page")
+	}
+	assertFileNames(t, page, []string{"report-final.txt", "report-notes.txt"})
+
+	nextPage, hasMore, err := repo.ListByBucketByNameQueryPage(ctx, bucketID, "report", page[len(page)-1].Name, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore {
+		t.Fatal("expected last page")
+	}
+	assertFileNames(t, nextPage, []string{"report[1].txt"})
+}
+
 func newFileRepositoryTestDB(t *testing.T) (*mongo.Database, *FileRepository) {
 	t.Helper()
 	cfg, err := config.Load()
