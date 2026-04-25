@@ -224,7 +224,7 @@ export function BucketPage() {
   const allVisibleSelected = sortedFiles.length > 0 && selectedCount === sortedFiles.length;
   const someVisibleSelected = selectedCount > 0 && !allVisibleSelected;
   const canSelectFiles = sortedFiles.length > 0;
-  const canDeleteSelected = canWrite;
+  const canDeleteSelected = bucket !== null && canWriteFiles(bucket);
   const selectedDownloadLimitExceeded = selectedCount > MAX_MULTI_FILE_DOWNLOAD_COUNT;
 
   function setFileSelected(fileID: string, selected: boolean) {
