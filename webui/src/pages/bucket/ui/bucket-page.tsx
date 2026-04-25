@@ -311,6 +311,11 @@ export function BucketPage() {
           </Chip>
         </div>
         <CredentialsPanel bucket={bucket} />
+        <div className="rounded-lg border border-warning-200 bg-warning-50 p-3">
+          <p className="text-sm text-warning-700">
+            Files in this bucket are distributed across sources, not replicated. Losing a source can make affected files unrecoverable.
+          </p>
+        </div>
       </div>
       <div className="flex flex-wrap justify-end gap-2">
         {canManage && (
