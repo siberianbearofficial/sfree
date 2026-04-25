@@ -215,11 +215,11 @@ func TestGitHubCallbackExistingUserSetsCookieAndRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse redirect location: %v", err)
 	}
-	if redirectURL.String() != "https://frontend.example/auth/callback?username=existing-user" {
+	if redirectURL.String() != "https://frontend.example/auth/callback" {
 		t.Fatalf("redirect location = %q", redirectURL.String())
 	}
-	if redirectURL.Query().Get("auth_token") != "" {
-		t.Fatal("redirect URL should not include auth_token")
+	if redirectURL.RawQuery != "" {
+		t.Fatalf("redirect query = %q, want empty", redirectURL.RawQuery)
 	}
 }
 
@@ -283,8 +283,8 @@ func TestGitHubCallbackUsernameConflictFallsBackToGitHubIDSuffix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse redirect location: %v", err)
 	}
-	if redirectURL.Query().Get("username") != "octocat-42" {
-		t.Fatalf("redirect username = %q, want %q", redirectURL.Query().Get("username"), "octocat-42")
+	if redirectURL.String() != "https://frontend.example/auth/callback" {
+		t.Fatalf("redirect location = %q", redirectURL.String())
 	}
 }
 

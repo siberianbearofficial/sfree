@@ -1,20 +1,20 @@
 import {useEffect} from "react";
-import {useNavigate, useSearchParams} from "react-router-dom";
-import {saveCookieAuth} from "../../shared/lib/auth";
+import {useNavigate} from "react-router-dom";
+import {useAuth} from "../../app/providers";
 
 export function OAuthCallback() {
-  const [params] = useSearchParams();
+  const {refreshSession} = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const username = params.get("username");
-    if (username) {
-      saveCookieAuth(username);
-      navigate("/dashboard", {replace: true});
-    } else {
-      navigate("/", {replace: true});
-    }
-  }, [params, navigate]);
+    void refreshSession()
+      .then((user) => {
+        navigate(user ? "/dashboard" : "/", {replace: true});
+      })
+      .catch(() => {
+        navigate("/", {replace: true});
+      });
+  }, [navigate, refreshSession]);
 
   return <div className="flex items-center justify-center min-h-screen">Signing in...</div>;
 }

@@ -48,7 +48,7 @@ func GitHubLogin(cfg *config.Config) gin.HandlerFunc {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		c.SetCookie("oauth_state", state, 600, "/", "", true, true)
+		c.SetCookie("oauth_state", state, 600, "/", "", useSecureCookies(cfg, c.Request), true)
 		c.Redirect(http.StatusTemporaryRedirect, oauthCfg.AuthCodeURL(state))
 	}
 }
@@ -104,8 +104,7 @@ func gitHubCallback(cfg *config.Config, userRepo gitHubOAuthUserRepository, deps
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid oauth state"})
 			return
 		}
-		// Clear the state cookie immediately to prevent replay attacks.
-		c.SetCookie("oauth_state", "", -1, "/", "", true, true)
+		c.SetCookie("oauth_state", "", -1, "/", "", useSecureCookies(cfg, c.Request), true)
 
 		token, err := deps.exchangeCode(ctx, c.Query("code"))
 		if err != nil {
@@ -181,20 +180,13 @@ func gitHubCallback(cfg *config.Config, userRepo gitHubOAuthUserRepository, deps
 			return
 		}
 
-		// Set JWT as HttpOnly cookie instead of URL query parameter to
-		// prevent token leakage via logs, browser history, and Referer headers.
 		frontendURL := cfg.FrontendURL
 		if frontendURL == "" {
 			frontendURL = ""
 		}
-		c.SetSameSite(http.SameSiteLaxMode)
-		c.SetCookie("auth_token", jwtToken, 7*24*3600, "/", "", true, true)
+		setAuthCookie(c, cfg, jwtToken)
 
 		redirectURL, _ := url.Parse(frontendURL + "/auth/callback")
-		q := redirectURL.Query()
-		q.Set("username", user.Username)
-		redirectURL.RawQuery = q.Encode()
-
 		c.Redirect(http.StatusTemporaryRedirect, redirectURL.String())
 	}
 }
@@ -204,7 +196,7 @@ func IssueJWT(userID string, secret string) (string, error) {
 	claims := jwt.MapClaims{
 		"sub": userID,
 		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(7 * 24 * time.Hour).Unix(),
+		"exp": time.Now().Add(authSessionDuration).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))

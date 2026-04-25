@@ -2,19 +2,23 @@ import type { Page } from "@playwright/test";
 
 export const API_GLOB = "**/api/v1";
 
-/**
- * Inject Basic auth credentials into localStorage before the page loads.
- * Must be called before page.goto().
- */
 export async function injectAuth(
   page: Page,
   username = "testuser",
-  password = "testpass",
 ) {
-  await page.addInitScript(
-    ({ u, p }) => localStorage.setItem("auth", btoa(`${u}:${p}`)),
-    { u: username, p: password },
-  );
+  await page.route(`${API_GLOB}/auth/me`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      json: {
+        id: "user-1",
+        username,
+      },
+    });
+  });
 }
 
 /**

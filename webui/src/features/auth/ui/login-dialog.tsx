@@ -10,7 +10,9 @@ import {
   ModalHeader,
 } from "@heroui/react";
 import {useEffect, useState} from "react";
-import {saveAuth} from "../../../shared/lib/auth";
+import {useAuth} from "../../../app/providers";
+import {createSession} from "../../../shared/api/auth";
+import {ApiError, showErrorToast} from "../../../shared/api/error";
 import {apiUrl} from "../../../shared/api/client";
 import {GitHubIcon} from "../../../shared/icons";
 
@@ -21,6 +23,7 @@ type Props = {
 };
 
 export function LoginDialog({isOpen, onOpenChange, onSwitchToRegister}: Props) {
+  const {refreshSession} = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -96,10 +99,16 @@ export function LoginDialog({isOpen, onOpenChange, onSwitchToRegister}: Props) {
                   setIsLoading(true);
                   setError(null);
                   try {
-                    saveAuth(username.trim(), password);
+                    await createSession(username.trim(), password);
+                    await refreshSession();
                     onClose();
-                  } catch {
-                    setError("Unable to log in. Check your credentials and try again.");
+                  } catch (err) {
+                    if (err instanceof ApiError && err.status === 401) {
+                      setError("Invalid username or password.");
+                    } else {
+                      showErrorToast(err);
+                      setError("Unable to log in. Check your credentials and try again.");
+                    }
                   } finally {
                     setIsLoading(false);
                   }
