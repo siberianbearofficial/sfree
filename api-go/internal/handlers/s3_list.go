@@ -176,7 +176,7 @@ func ListObjects(bucketRepo *repository.BucketRepository, fileRepo *repository.F
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketKey := c.Param("bucket")
+		bucketKey := S3BucketKey(c)
 		bucketDoc, ok := lookupBucket(c, bucketRepo)
 		if !ok {
 			return
@@ -218,7 +218,7 @@ func ListObjectsV2(bucketRepo *repository.BucketRepository, fileRepo *repository
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
-		bucketKey := c.Param("bucket")
+		bucketKey := S3BucketKey(c)
 		bucketDoc, ok := lookupBucket(c, bucketRepo)
 		if !ok {
 			return
