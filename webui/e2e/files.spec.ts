@@ -221,7 +221,9 @@ test.describe("File listing and download", () => {
     await expect(
       firstRowActions.getByRole("button", { name: "Download report.pdf" }),
     ).toBeVisible();
-    await expect(page.getByLabel("Select all visible files")).toBeVisible();
+    await expect(
+      page.getByRole("checkbox", { name: "Select all visible files" }),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: "Download Selected" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Delete Selected" })).not.toBeVisible();
     await expect(
@@ -312,8 +314,8 @@ test.describe("File listing and download", () => {
       page.getByText("Download up to 5 selected files at once."),
     ).toBeVisible();
 
-    await page.getByLabel("Select report.pdf").click();
-    await page.getByLabel("Select data.csv").click();
+    await page.getByRole("checkbox", { name: "Select report.pdf" }).click();
+    await page.getByRole("checkbox", { name: "Select data.csv" }).click();
     await page.getByRole("button", { name: "Download Selected" }).click();
 
     await expect.poll(() => reportDownloaded).toBe(true);
