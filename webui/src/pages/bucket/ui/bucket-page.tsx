@@ -309,8 +309,8 @@ export function BucketPage() {
           <EmptyState
             title={emptyTitle}
             description={emptyDescription}
-            ctaLabel={!activeSearchQuery && canWrite ? "Upload File" : undefined}
-            onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
+            ctaLabel={canWrite ? "Upload File" : undefined}
+            onCtaPress={canWrite ? () => fileInput.current?.click() : undefined}
           />
         ) : (
           <table className="w-full text-left">
