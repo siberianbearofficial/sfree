@@ -99,6 +99,7 @@ export function BucketsPage() {
                     isIconOnly
                     variant="light"
                     color="danger"
+                    aria-label={`Delete bucket ${b.key}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeleteId(b.id);

@@ -164,7 +164,7 @@ export function SourcesPage() {
                     <Button
                       isIconOnly
                       variant="light"
-                      aria-label="Refresh health"
+                      aria-label={`Refresh health for ${s.name}`}
                       isLoading={healthBySource[s.id]?.state === "checking"}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -178,7 +178,7 @@ export function SourcesPage() {
                     isIconOnly
                     variant="light"
                     color="danger"
-                    aria-label="Delete source"
+                    aria-label={`Delete source ${s.name}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeleteId(s.id);

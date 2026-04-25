@@ -226,6 +226,7 @@ export function ShareBucketDialog({isOpen, onOpenChange, bucketId}: Props) {
                           size="sm"
                           variant="light"
                           color="danger"
+                          aria-label={`Revoke access for ${g.username}`}
                           onPress={() => handleRevoke(g.id)}
                         >
                           <DeleteIcon className="w-4 h-4" />
