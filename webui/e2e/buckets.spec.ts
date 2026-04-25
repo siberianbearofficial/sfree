@@ -19,6 +19,61 @@ const MOCK_SOURCE = {
   created_at: "2024-01-15T10:00:00Z",
 };
 
+const MOCK_SOURCE_HEALTH = {
+  id: MOCK_SOURCE.id,
+  type: MOCK_SOURCE.type,
+  status: "healthy",
+  checked_at: "2024-01-15T10:05:00Z",
+  latency_ms: 25,
+  reason_code: "ok",
+  message: "Google Drive metadata is reachable.",
+  quota_total_bytes: 1024 * 1024,
+  quota_used_bytes: 512 * 1024,
+  quota_free_bytes: 512 * 1024,
+};
+
+const MOCK_DEGRADED_SOURCE = {
+  id: "src-2",
+  name: "Crowded Drive",
+  type: "gdrive",
+  key: "k-2",
+  created_at: "2024-01-15T10:10:00Z",
+};
+
+const MOCK_DEGRADED_SOURCE_HEALTH = {
+  id: MOCK_DEGRADED_SOURCE.id,
+  type: MOCK_DEGRADED_SOURCE.type,
+  status: "degraded",
+  checked_at: "2024-01-15T10:11:00Z",
+  latency_ms: 31,
+  reason_code: "quota_low",
+  message: "Google Drive quota is nearly exhausted.",
+  quota_total_bytes: 1024 * 1024,
+  quota_used_bytes: 1000 * 1024,
+  quota_free_bytes: 24 * 1024,
+};
+
+const MOCK_UNHEALTHY_SOURCE = {
+  id: "src-3",
+  name: "Offline Bucket",
+  type: "s3",
+  key: "k-3",
+  created_at: "2024-01-15T10:20:00Z",
+};
+
+const MOCK_UNHEALTHY_SOURCE_HEALTH = {
+  id: MOCK_UNHEALTHY_SOURCE.id,
+  type: MOCK_UNHEALTHY_SOURCE.type,
+  status: "unhealthy",
+  checked_at: "2024-01-15T10:21:00Z",
+  latency_ms: 200,
+  reason_code: "probe_failed",
+  message: "Source health probe failed.",
+  quota_total_bytes: null,
+  quota_used_bytes: null,
+  quota_free_bytes: null,
+};
+
 const MOCK_BUCKET = {
   id: "bkt-1",
   key: "my-bucket",
@@ -72,6 +127,7 @@ test.describe("Bucket creation flow", () => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await mockGet(page, "/sources", [MOCK_SOURCE]);
+    await mockGet(page, `/sources/${MOCK_SOURCE.id}/health`, MOCK_SOURCE_HEALTH);
     await page.goto("/buckets");
     const dialog = page.getByRole("dialog");
 
@@ -84,6 +140,7 @@ test.describe("Bucket creation flow", () => {
 
     // Source checkbox should appear after sources load
     await expect(dialog.getByText("My Drive", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Google Drive metadata is reachable.")).toBeVisible();
   });
 
   test("Create Bucket dialog surfaces source loading failures and retries", async ({ page }) => {
@@ -102,6 +159,7 @@ test.describe("Bucket creation flow", () => {
       }
       await route.fulfill({ status: 200, json: [MOCK_SOURCE] });
     });
+    await mockGet(page, `/sources/${MOCK_SOURCE.id}/health`, MOCK_SOURCE_HEALTH);
 
     await page.goto("/buckets");
     const dialog = page.getByRole("dialog");
@@ -114,12 +172,14 @@ test.describe("Bucket creation flow", () => {
 
     await dialog.getByRole("button", { name: "Retry" }).click();
     await expect(dialog.getByText("My Drive", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Google Drive metadata is reachable.")).toBeVisible();
   });
 
   test("creating a bucket shows S3 credentials", async ({ page }) => {
     await injectAuth(page);
     await mockGet(page, "/buckets", []);
     await mockGet(page, "/sources", [MOCK_SOURCE]);
+    await mockGet(page, `/sources/${MOCK_SOURCE.id}/health`, MOCK_SOURCE_HEALTH);
     await mockPost(page, "/buckets", MOCK_BUCKET_CREDS);
 
     await page.goto("/buckets");
@@ -155,6 +215,33 @@ test.describe("Bucket creation flow", () => {
       .last()
       .click();
     await expect(page.getByRole("dialog")).not.toBeVisible();
+  });
+
+  test("Create Bucket dialog warns about near-capacity and unhealthy sources", async ({ page }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", []);
+    await mockGet(page, "/sources", [MOCK_DEGRADED_SOURCE, MOCK_UNHEALTHY_SOURCE]);
+    await mockGet(page, `/sources/${MOCK_DEGRADED_SOURCE.id}/health`, MOCK_DEGRADED_SOURCE_HEALTH);
+    await mockGet(page, `/sources/${MOCK_UNHEALTHY_SOURCE.id}/health`, MOCK_UNHEALTHY_SOURCE_HEALTH);
+
+    await page.goto("/buckets");
+    const dialog = page.getByRole("dialog");
+    await page.getByRole("button", { name: /^(Add|Create) Bucket$/ }).first().click();
+    await expect(dialog).toBeVisible();
+
+    await expect(dialog.getByText("Crowded Drive", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Google Drive quota is nearly exhausted.")).toBeVisible();
+    await expect(dialog.getByText("Source health probe failed.")).toBeVisible();
+
+    await page.getByLabel("Key").fill("risk-bucket");
+    await page.getByLabel("Crowded Drive").check();
+    await page.getByLabel("Offline Bucket").check();
+
+    await expect(
+      dialog.getByText(
+        "1 selected source is unhealthy, 1 source is near capacity. SFree can create the bucket anyway, but uploads or later reads may fail while those providers remain impaired.",
+      ),
+    ).toBeVisible();
   });
 
   test("owner bucket detail shows owner actions", async ({
