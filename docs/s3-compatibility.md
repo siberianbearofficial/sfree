@@ -1,6 +1,6 @@
 # S3 Compatibility Matrix
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
 
 Baseline: `origin/main` at `ea8c3bcc33b4edc6a0474c70c86b155371aaf773`. SFree exposes its S3-compatible API on the root path using path-style addressing: `/{bucket}/{key}`. The legacy `/api/s3/{bucket}/{key}` alias remains supported for backward compatibility.
 
@@ -28,10 +28,10 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 
 | S3 operation | Status | Notes |
 | --- | --- | --- |
-| GetObject | Partial | Basic full-object download and byte `Range` requests work. Stored Content-Type and user metadata are returned. Conditional headers, response header overrides, and checksum-related response semantics are missing. |
+| GetObject | Partial | Basic full-object download and byte `Range` requests work. Stored Content-Type and user metadata are returned. `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since` now gate full-object and ranged reads with `304`/`412` responses before streaming. Response header overrides and checksum-related response semantics are still missing. |
 | PutObject | Partial | Basic upload and overwrite work. Content-Type and `x-amz-meta-*` user metadata are persisted. Object tags, storage class, checksum validation, and server-side encryption headers are ignored. |
 | DeleteObject | Implemented | Single-object delete is idempotent and returns no content for missing keys. |
-| HeadObject | Partial | Returns ETag, Last-Modified, Content-Length, Content-Type, and user metadata. Range awareness, checksum headers, and conditional request behavior are missing. |
+| HeadObject | Partial | Returns ETag, Last-Modified, Content-Length, Content-Type, and user metadata. `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since` are now honored with `304`/`412` responses. Range awareness and checksum headers remain missing. |
 | CopyObject | Partial | Basic same-bucket and cross-bucket copies are implemented and covered by Go and Python SDK E2E. COPY preserves object bytes, Content-Type, and user metadata. `x-amz-metadata-directive: REPLACE` returns XML `NotImplemented`. |
 | DeleteObjects | Implemented | SDK multi-delete is covered by `test_s3_sdk_delete_objects_removes_multiple_keys`, including missing-key idempotency. |
 | GetObjectAcl / PutObjectAcl | Missing | ACLs are not modeled in the S3 API. |
@@ -79,7 +79,7 @@ Bucket administration APIs, ACLs, versioning, lifecycle, object lock, tagging, a
 | Anonymous access | Missing | S3 API requests require signed bucket credentials. |
 | Virtual-hosted-style addressing | Missing | Path-style routing is supported on `/{bucket}` and the legacy `/api/s3/{bucket}` alias, but bucket-in-host virtual-hosted requests are still unsupported. |
 | Range requests | Partial | GetObject byte ranges and `Accept-Ranges` are covered by Go e2e and the Python SDK e2e fixture. HeadObject range behavior is not validated as a v0.2 SDK path. |
-| Conditional requests | Missing | `If-Match`, `If-None-Match`, `If-Modified-Since`, and related headers are not evaluated. |
+| Conditional requests | Partial | `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since` are evaluated for `GetObject` and `HeadObject`, including combined-header precedence where ETag validators win over date validators. `If-Range`, copy-condition headers, and non-object conditional APIs remain unsupported. |
 | User metadata | Partial | `x-amz-meta-*` headers are stored with lowercase keys, returned on HeadObject/GetObject, replaced on overwrite, and preserved by CopyObject COPY. Metadata search/listing and tags are not supported. |
 | Content-Type persistence | Partial | PutObject and CreateMultipartUpload store request Content-Type; HeadObject/GetObject return it and legacy objects default to `application/octet-stream`. |
 | Checksums | Missing | S3 checksum headers are not validated or returned. |

@@ -372,3 +372,160 @@ func TestGetObjectRangeStreamsBodyOnce(t *testing.T) {
 		t.Fatalf("expected Content-Range bytes 1-3/7, got %q", got)
 	}
 }
+
+func TestGetObjectIfNoneMatchReturnsNotModifiedWithoutStreaming(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer) error {
+		t.Fatal("expected no full-object stream")
+		return nil
+	}
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, _, _ int64) error {
+		t.Fatal("expected no range stream")
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("If-None-Match", `"persisted-etag"`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotModified {
+		t.Fatalf("expected 304, got %d", w.Code)
+	}
+	if body := w.Body.String(); body != "" {
+		t.Fatalf("expected empty body, got %q", body)
+	}
+	if got := w.Header().Get("ETag"); got != `"persisted-etag"` {
+		t.Fatalf("expected persisted ETag header, got %q", got)
+	}
+}
+
+func TestGetObjectIfMatchMismatchReturnsPreconditionFailedWithoutStreaming(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer) error {
+		t.Fatal("expected no full-object stream")
+		return nil
+	}
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, _, _ int64) error {
+		t.Fatal("expected no range stream")
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("If-Match", `"other-etag"`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("expected 412, got %d", w.Code)
+	}
+	if body := w.Body.String(); body != "" {
+		t.Fatalf("expected empty body, got %q", body)
+	}
+	if got := w.Header().Get("ETag"); got != `"persisted-etag"` {
+		t.Fatalf("expected persisted ETag header, got %q", got)
+	}
+}
+
+func TestGetObjectIfNoneMatchTakesPrecedenceOverIfModifiedSince(t *testing.T) {
+	origStream := streamS3Object
+	origStreamRange := streamS3ObjectRange
+	t.Cleanup(func() {
+		streamS3Object = origStream
+		streamS3ObjectRange = origStreamRange
+	})
+	streamS3ObjectRange = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, _ io.Writer, _, _ int64) error {
+		t.Fatal("expected full-object stream path")
+		return nil
+	}
+	streamS3Object = func(_ context.Context, _ *repository.SourceRepository, _ *repository.File, w io.Writer) error {
+		_, err := io.WriteString(w, "complete")
+		return err
+	}
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	r.GET("/api/s3/:bucket/*object", getObjectFailureTestHandler(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("If-None-Match", `"other-etag"`)
+	req.Header.Set("If-Modified-Since", time.Unix(1700000000, 0).Add(24*time.Hour).UTC().Format(http.TimeFormat))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if body := w.Body.String(); body != "complete" {
+		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestHeadObjectIfUnmodifiedSinceReturnsPreconditionFailed(t *testing.T) {
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set("accessKey", "access-key")
+		c.Next()
+	})
+	bucketID := primitive.NewObjectID()
+	r.HEAD("/api/s3/:bucket/*object", headObject(
+		fakeObjectBucketReader{
+			bucket: &repository.Bucket{
+				ID:        bucketID,
+				Key:       "bucket",
+				AccessKey: "access-key",
+			},
+		},
+		fakeObjectFileReader{
+			file: &repository.File{
+				ID:        primitive.NewObjectID(),
+				BucketID:  bucketID,
+				Name:      "object.txt",
+				CreatedAt: time.Unix(1700000000, 0).UTC(),
+				ETag:      `"persisted-etag"`,
+			},
+		},
+	))
+
+	req := httptest.NewRequest(http.MethodHead, "/api/s3/bucket/object.txt", nil)
+	req.Header.Set("If-Unmodified-Since", time.Unix(1700000000, 0).Add(-time.Hour).UTC().Format(http.TimeFormat))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPreconditionFailed {
+		t.Fatalf("expected 412, got %d", w.Code)
+	}
+	if body := w.Body.String(); body != "" {
+		t.Fatalf("expected empty body, got %q", body)
+	}
+	if got := w.Header().Get("ETag"); got != `"persisted-etag"` {
+		t.Fatalf("expected persisted ETag header, got %q", got)
+	}
+}
