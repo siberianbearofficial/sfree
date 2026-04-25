@@ -251,15 +251,15 @@ export function BucketPage() {
         &larr; Buckets
       </Link>
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold">{bucket.key}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-bold break-all">{bucket.key}</h1>
           <Chip size="sm" variant="flat" color={ROLE_COLOR[bucket.role] ?? "default"}>
             {bucket.role}
           </Chip>
         </div>
         <CredentialsPanel bucket={bucket} />
       </div>
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         {canManage && (
           <Button variant="flat" onPress={shareBucket.onOpen}>
             Share Bucket
@@ -313,77 +313,82 @@ export function BucketPage() {
             onCtaPress={!activeSearchQuery && canWrite ? () => fileInput.current?.click() : undefined}
           />
         ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr>
-                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("name")}>
-                  Name<SortArrow field="name" sortBy={sortBy} sortAsc={sortAsc} />
-                </th>
-                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("size")}>
-                  Size<SortArrow field="size" sortBy={sortBy} sortAsc={sortAsc} />
-                </th>
-                <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("created_at")}>
-                  Created<SortArrow field="created_at" sortBy={sortBy} sortAsc={sortAsc} />
-                </th>
-                <th className="pb-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedFiles.map((f) => (
-                <tr key={f.id} className="border-t">
-                  <td className="py-2">
-                    <button
-                      type="button"
-                      className="text-left hover:text-primary transition-colors cursor-pointer"
-                      onClick={() => setPreviewFile(f)}
-                    >
-                      {f.name}
-                    </button>
-                  </td>
-                  <td className="py-2">{formatSize(f.size)}</td>
-                  <td className="py-2">
-                    {new Date(f.created_at).toLocaleString()}
-                  </td>
-                  <td className="py-2">
-                    <div className="flex gap-2">
-                      {canWrite && (
-                        <Button
-                          isIconOnly
-                          aria-label={`Share ${f.name}`}
-                          variant="light"
-                          onPress={() => openShareModal(f)}
-                        >
-                          <ShareIcon className="w-5 h-5" />
-                        </Button>
-                      )}
-                      <Button
-                        isIconOnly
-                        aria-label={`Download ${f.name}`}
-                        variant="light"
-                        onPress={() => handleDownload(f)}
-                      >
-                        <DownloadIcon className="w-5 h-5" />
-                      </Button>
-                      {canWrite && (
-                        <Button
-                          isIconOnly
-                          aria-label={`Delete ${f.name}`}
-                          variant="light"
-                          color="danger"
-                          onPress={() => {
-                            setDeleteId(f.id);
-                            confirm.onOpen();
-                          }}
-                        >
-                          <DeleteIcon className="w-5 h-5" />
-                        </Button>
-                      )}
-                    </div>
-                  </td>
+          <div className="overflow-x-auto -mx-4 px-4">
+            <table className="w-full text-left">
+              <thead>
+                <tr>
+                  <th className="pb-2 cursor-pointer select-none" onClick={() => toggleSort("name")}>
+                    Name<SortArrow field="name" sortBy={sortBy} sortAsc={sortAsc} />
+                  </th>
+                  <th className="pb-2 cursor-pointer select-none whitespace-nowrap" onClick={() => toggleSort("size")}>
+                    Size<SortArrow field="size" sortBy={sortBy} sortAsc={sortAsc} />
+                  </th>
+                  <th className="pb-2 cursor-pointer select-none whitespace-nowrap hidden sm:table-cell" onClick={() => toggleSort("created_at")}>
+                    Created<SortArrow field="created_at" sortBy={sortBy} sortAsc={sortAsc} />
+                  </th>
+                  <th className="pb-2"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sortedFiles.map((f) => (
+                  <tr key={f.id} className="border-t">
+                    <td className="py-2">
+                      <button
+                        type="button"
+                        className="text-left hover:text-primary transition-colors cursor-pointer break-all"
+                        onClick={() => setPreviewFile(f)}
+                      >
+                        {f.name}
+                      </button>
+                    </td>
+                    <td className="py-2 whitespace-nowrap">{formatSize(f.size)}</td>
+                    <td className="py-2 whitespace-nowrap hidden sm:table-cell">
+                      {new Date(f.created_at).toLocaleString()}
+                    </td>
+                    <td className="py-2">
+                      <div className="flex gap-1 sm:gap-2">
+                        {canWrite && (
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            aria-label={`Share ${f.name}`}
+                            variant="light"
+                            onPress={() => openShareModal(f)}
+                          >
+                            <ShareIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                          </Button>
+                        )}
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          aria-label={`Download ${f.name}`}
+                          variant="light"
+                          onPress={() => handleDownload(f)}
+                        >
+                          <DownloadIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </Button>
+                        {canWrite && (
+                          <Button
+                            isIconOnly
+                            size="sm"
+                            aria-label={`Delete ${f.name}`}
+                            variant="light"
+                            color="danger"
+                            onPress={() => {
+                              setDeleteId(f.id);
+                              confirm.onOpen();
+                            }}
+                          >
+                            <DeleteIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
       <ConfirmDialog
@@ -440,14 +445,14 @@ function CredentialsPanel({bucket}: {bucket: Bucket}) {
         </svg>
       </button>
       {open && (
-        <div className="px-4 pb-4 flex flex-col gap-3">
-          <div>
+        <div className="px-4 pb-4 flex flex-col gap-3 overflow-hidden">
+          <div className="min-w-0">
             <p className="text-xs text-default-500 mb-1">Bucket ID</p>
-            <Snippet size="sm" variant="flat" symbol="">{bucket.id}</Snippet>
+            <Snippet size="sm" variant="flat" symbol="" classNames={{base: "max-w-full", pre: "whitespace-pre-wrap break-all"}}>{bucket.id}</Snippet>
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-default-500 mb-1">Access Key</p>
-            <Snippet size="sm" variant="flat" symbol="">{bucket.access_key}</Snippet>
+            <Snippet size="sm" variant="flat" symbol="" classNames={{base: "max-w-full", pre: "whitespace-pre-wrap break-all"}}>{bucket.access_key}</Snippet>
           </div>
           <p className="text-xs text-default-500">
             Created {new Date(bucket.created_at).toLocaleString()}

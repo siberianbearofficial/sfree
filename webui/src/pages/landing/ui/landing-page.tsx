@@ -125,7 +125,7 @@ export function LandingPage() {
         <p className="text-default-500 text-center mb-12 max-w-xl mx-auto">
           Three steps from sign-up to a working distributed object store.
         </p>
-        <div className="grid sm:grid-cols-3 gap-8">
+        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
           {steps.map((s) => (
             <div key={s.num} className="flex flex-col items-center text-center gap-3">
               <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary text-primary-foreground text-lg font-bold">
@@ -145,7 +145,7 @@ export function LandingPage() {
           <p className="text-default-500 text-center mb-12 max-w-xl mx-auto">
             Bring the storage you already have. SFree handles the rest.
           </p>
-          <div className="grid sm:grid-cols-3 gap-6">
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
             {sources.map((s) => (
               <Card key={s.name} className="border border-default-200">
                 <CardBody className="flex flex-col items-center text-center gap-3 p-6">
@@ -184,7 +184,7 @@ export function LandingPage() {
           <p className="text-default-500 mb-8 max-w-xl mx-auto">
             SFree is in early access. Here is what that means right now.
           </p>
-          <div className="grid sm:grid-cols-3 gap-6 text-left">
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 text-left">
             <div className="p-5 rounded-xl border border-default-200 bg-background">
               <h3 className="font-semibold mb-2">Not for production-critical data</h3>
               <p className="text-default-500 text-sm">

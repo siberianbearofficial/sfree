@@ -124,7 +124,7 @@ export function SourcePage() {
               <>
                 <CircularProgress
                   classNames={{
-                    svg: "w-36 h-36",
+                    svg: "w-24 h-24 sm:w-36 sm:h-36",
                     indicator:
                       health?.status === "healthy"
                         ? "stroke-success"
@@ -194,32 +194,34 @@ export function SourcePage() {
             description="Files will appear here once synced from the connected service."
           />
         ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr>
-                <th className="pb-2">Name</th>
-                <th className="pb-2">Size</th>
-                <th className="pb-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {info.files.map((f) => (
-                <tr key={f.id} className="border-t">
-                  <td className="py-2">{f.name}</td>
-                  <td className="py-2">{formatSize(f.size)}</td>
-                  <td className="py-2">
-                    <Button
-                      isIconOnly
-                      variant="light"
-                      onPress={() => handleDownload(f)}
-                    >
-                      <DownloadIcon className="w-5 h-5" />
-                    </Button>
-                  </td>
+          <div className="overflow-x-auto -mx-4 px-4">
+            <table className="w-full text-left">
+              <thead>
+                <tr>
+                  <th className="pb-2">Name</th>
+                  <th className="pb-2 whitespace-nowrap">Size</th>
+                  <th className="pb-2"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {info.files.map((f) => (
+                  <tr key={f.id} className="border-t">
+                    <td className="py-2 break-all">{f.name}</td>
+                    <td className="py-2 whitespace-nowrap">{formatSize(f.size)}</td>
+                    <td className="py-2">
+                      <Button
+                        isIconOnly
+                        variant="light"
+                        onPress={() => handleDownload(f)}
+                      >
+                        <DownloadIcon className="w-5 h-5" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
