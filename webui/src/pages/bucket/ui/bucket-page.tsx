@@ -14,8 +14,10 @@ import {
   deleteFile,
   deleteFiles,
   downloadFile,
+  downloadFiles,
   getBucket,
   listFiles,
+  MAX_MULTI_FILE_DOWNLOAD_COUNT,
   uploadFile,
 } from "../../../shared/api/buckets";
 import type {BatchDeleteFilesResponse, Bucket, FileInfo} from "../../../shared/api/buckets";
@@ -51,6 +53,7 @@ export function BucketPage() {
   const confirm = useDisclosure();
   const [pendingDeleteFiles, setPendingDeleteFiles] = useState<FileInfo[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDownloadingSelected, setIsDownloadingSelected] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileInfo | null>(null);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
 
@@ -220,6 +223,9 @@ export function BucketPage() {
   const selectedCount = selectedFiles.length;
   const allVisibleSelected = sortedFiles.length > 0 && selectedCount === sortedFiles.length;
   const someVisibleSelected = selectedCount > 0 && !allVisibleSelected;
+  const canSelectFiles = sortedFiles.length > 0;
+  const canDeleteSelected = bucket !== null && canWriteFiles(bucket);
+  const selectedDownloadLimitExceeded = selectedCount > MAX_MULTI_FILE_DOWNLOAD_COUNT;
 
   function setFileSelected(fileID: string, selected: boolean) {
     setSelectedFileIds((prev) => {
@@ -242,6 +248,45 @@ export function BucketPage() {
     if (filesToDelete.length === 0) return;
     setPendingDeleteFiles(filesToDelete);
     confirm.onOpen();
+  }
+
+  async function handleDownloadSelected() {
+    if (!id || selectedCount === 0) return;
+    if (selectedDownloadLimitExceeded) {
+      addToast({
+        title: "Select fewer files",
+        description: `Download up to ${MAX_MULTI_FILE_DOWNLOAD_COUNT} files at once.`,
+        color: "warning",
+        timeout: 5000,
+      });
+      return;
+    }
+
+    setIsDownloadingSelected(true);
+    try {
+      const result = await downloadFiles(id, selectedFiles);
+      if (result.failed.length === 0) {
+        addToast({
+          title: result.downloaded.length === 1 ? "Download started" : "Downloads started",
+          description: "Your browser may ask to allow multiple downloads.",
+          color: "success",
+          timeout: 4000,
+        });
+        return;
+      }
+
+      addToast({
+        title: result.downloaded.length > 0 ? "Some downloads failed" : "Downloads failed",
+        description:
+          result.downloaded.length > 0
+            ? `${result.downloaded.length} started, ${result.failed.length} failed.`
+            : `Unable to start ${result.failed.length} download${result.failed.length === 1 ? "" : "s"}.`,
+        color: "warning",
+        timeout: 5000,
+      });
+    } finally {
+      setIsDownloadingSelected(false);
+    }
   }
 
   if (isLoading) {
@@ -365,27 +410,41 @@ export function BucketPage() {
             </p>
           ) : null}
         </div>
-        {canWrite ? (
+        {canSelectFiles ? (
           <div className="mb-4 flex flex-col gap-3 rounded-lg border border-divider bg-content2/60 p-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">
                 {selectedCount === 0
-                  ? "Select files to delete in one step"
+                  ? canDeleteSelected
+                    ? "Select files to download or delete in one step"
+                    : "Select files to download together"
                   : selectedCount === 1
                     ? "1 file selected"
                     : `${selectedCount} files selected`}
               </p>
               <p className="text-xs text-default-500">
-                Multi-file download is deferred for now. Use the row download action for each file.
+                {selectedDownloadLimitExceeded
+                  ? `Download up to ${MAX_MULTI_FILE_DOWNLOAD_COUNT} files at once. Clear some selections to continue.`
+                  : `Download up to ${MAX_MULTI_FILE_DOWNLOAD_COUNT} selected files at once. Your browser may ask to allow multiple downloads.`}
               </p>
             </div>
             <div className="flex gap-2">
               <Button variant="flat" onPress={() => setSelectedFileIds([])} isDisabled={selectedCount === 0}>
                 Clear
               </Button>
-              <Button color="danger" onPress={() => openDeleteDialog(selectedFiles)} isDisabled={selectedCount === 0}>
-                Delete Selected
+              <Button
+                color="primary"
+                onPress={handleDownloadSelected}
+                isDisabled={selectedCount === 0 || selectedDownloadLimitExceeded}
+                isLoading={isDownloadingSelected}
+              >
+                Download Selected
               </Button>
+              {canDeleteSelected ? (
+                <Button color="danger" onPress={() => openDeleteDialog(selectedFiles)} isDisabled={selectedCount === 0}>
+                  Delete Selected
+                </Button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -401,7 +460,7 @@ export function BucketPage() {
             <table className="w-full text-left">
               <thead>
                 <tr>
-                  {canWrite ? (
+                  {canSelectFiles ? (
                     <th scope="col" className="w-12 pb-2">
                       <Checkbox
                         aria-label={allVisibleSelected ? "Unselect all visible files" : "Select all visible files"}
@@ -432,7 +491,7 @@ export function BucketPage() {
               <tbody>
                 {sortedFiles.map((f) => (
                   <tr key={f.id} className="border-t">
-                    {canWrite ? (
+                    {canSelectFiles ? (
                       <td className="py-2 pr-3 align-middle">
                         <Checkbox
                           aria-label={`Select ${f.name}`}

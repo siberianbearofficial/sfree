@@ -222,6 +222,11 @@ test.describe("File listing and download", () => {
       firstRowActions.getByRole("button", { name: "Download report.pdf" }),
     ).toBeVisible();
     await expect(
+      page.getByRole("checkbox", { name: "Select all visible files" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download Selected" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Delete Selected" })).not.toBeVisible();
+    await expect(
       page.getByRole("button", { name: /^Upload( File)?$/ }),
     ).not.toBeVisible();
     await expect(
@@ -274,6 +279,47 @@ test.describe("File listing and download", () => {
     await page.getByRole("button", { name: "Download report.pdf" }).click();
 
     await expect.poll(() => downloadCalled).toBe(true);
+  });
+
+  test("selected files download through a bounded multi-file action", async ({
+    page,
+  }) => {
+    await injectAuth(page);
+    await mockGet(page, "/buckets", [MOCK_VIEWER_BUCKET]);
+    await mockGet(page, "/buckets/bkt-1", MOCK_VIEWER_BUCKET);
+    await mockGet(page, "/buckets/bkt-1/files", MOCK_FILES);
+
+    let reportDownloaded = false;
+    let dataDownloaded = false;
+    await page.route("**/api/v1/buckets/bkt-1/files/file-1/download", async (route) => {
+      reportDownloaded = true;
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/octet-stream" },
+        body: Buffer.from("report"),
+      });
+    });
+    await page.route("**/api/v1/buckets/bkt-1/files/file-2/download", async (route) => {
+      dataDownloaded = true;
+      await route.fulfill({
+        status: 200,
+        headers: { "Content-Type": "application/octet-stream" },
+        body: Buffer.from("data"),
+      });
+    });
+
+    await page.goto("/buckets/bkt-1");
+
+    await expect(
+      page.getByText("Download up to 5 selected files at once."),
+    ).toBeVisible();
+
+    await page.getByRole("checkbox", { name: "Select report.pdf" }).click();
+    await page.getByRole("checkbox", { name: "Select data.csv" }).click();
+    await page.getByRole("button", { name: "Download Selected" }).click();
+
+    await expect.poll(() => reportDownloaded).toBe(true);
+    await expect.poll(() => dataDownloaded).toBe(true);
   });
 
   test("failed bucket download shows an error toast", async ({ page }) => {
