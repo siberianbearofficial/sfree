@@ -38,7 +38,7 @@ func createMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposito
 	}
 	c.XML(http.StatusOK, initiateMultipartUploadResult{
 		Xmlns:    "http://s3.amazonaws.com/doc/2006-03-01/",
-		Bucket:   c.Param("bucket"),
+		Bucket:   S3BucketKey(c),
 		Key:      objectKey,
 		UploadId: uploadID,
 	})

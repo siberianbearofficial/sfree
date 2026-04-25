@@ -129,19 +129,43 @@ func registerS3Routes(router *gin.Engine, cfg *config.Config, deps *routerDepend
 	}
 	s3Auth := handlers.AWS4Auth(deps.bucketRepo, routerAccessSecret(cfg))
 	uploadChunkSize := routerUploadChunkSize(cfg)
+	listBuckets := handlers.ListBucketsS3(deps.bucketRepo)
+	headBucket := handlers.HeadBucket(deps.bucketRepo)
+	headObject := handlers.HeadObject(deps.bucketRepo, deps.fileRepo)
+	getObjectOrParts := handlers.GetObjectOrPartsWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory)
+	listObjectsOrUploads := handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo)
+	putObjectOrPart := handlers.PutObjectOrPartWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory)
+	postBucket := handlers.PostBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.sourceFactory)
+	postObject := handlers.PostObjectWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory)
+	deleteObjectOrAbort := handlers.DeleteObjectOrAbortWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory)
+
+	getDispatch := s3GetDispatchHandler(listBuckets, listObjectsOrUploads, getObjectOrParts)
+	headDispatch := s3HeadDispatchHandler(headBucket, headObject)
+	putDispatch := s3PutDispatchHandler(putObjectOrPart)
+	postDispatch := s3PostDispatchHandler(postBucket, postObject)
+	deleteDispatch := s3DeleteDispatchHandler(deleteObjectOrAbort)
+
 	for _, root := range []string{"/", "/api/s3"} {
-		router.GET(root, protectedHandlers(limits, s3Auth, handlers.ListBucketsS3(deps.bucketRepo))...)
+		router.GET(root, protectedHandlers(limits, s3Auth, getDispatch)...)
+		if root == "/" {
+			router.HEAD(root, protectedHandlers(limits, s3Auth, headDispatch)...)
+			router.POST(root, protectedHandlers(limits, s3Auth, postDispatch)...)
+		}
 	}
 	for _, prefix := range []string{"", "/api/s3"} {
 		bucketPath, objectPath := s3RoutePaths(prefix)
-		router.HEAD(bucketPath, protectedHandlers(limits, s3Auth, handlers.HeadBucket(deps.bucketRepo))...)
-		router.HEAD(objectPath, protectedHandlers(limits, s3Auth, handlers.HeadObject(deps.bucketRepo, deps.fileRepo))...)
-		router.GET(objectPath, protectedHandlers(limits, s3Auth, handlers.GetObjectOrPartsWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
-		router.GET(bucketPath, protectedHandlers(limits, s3Auth, handlers.ListObjectsOrUploads(deps.bucketRepo, deps.fileRepo, deps.mpRepo))...)
-		router.PUT(objectPath, protectedHandlers(limits, s3Auth, handlers.PutObjectOrPartWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory))...)
-		router.POST(bucketPath, protectedHandlers(limits, s3Auth, handlers.PostBucketWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.sourceFactory))...)
-		router.POST(objectPath, protectedHandlers(limits, s3Auth, handlers.PostObjectWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, uploadChunkSize, deps.sourceFactory))...)
-		router.DELETE(objectPath, protectedHandlers(limits, s3Auth, handlers.DeleteObjectOrAbortWithFactory(deps.bucketRepo, deps.sourceRepo, deps.fileRepo, deps.mpRepo, deps.sourceFactory))...)
+		router.HEAD(bucketPath, protectedHandlers(limits, s3Auth, headDispatch)...)
+		router.HEAD(objectPath, protectedHandlers(limits, s3Auth, headDispatch)...)
+		router.GET(objectPath, protectedHandlers(limits, s3Auth, getDispatch)...)
+		router.GET(bucketPath, protectedHandlers(limits, s3Auth, getDispatch)...)
+		router.PUT(objectPath, protectedHandlers(limits, s3Auth, putDispatch)...)
+		router.POST(bucketPath, protectedHandlers(limits, s3Auth, postDispatch)...)
+		router.POST(objectPath, protectedHandlers(limits, s3Auth, postDispatch)...)
+		router.DELETE(objectPath, protectedHandlers(limits, s3Auth, deleteDispatch)...)
+		if prefix == "" {
+			router.PUT(bucketPath, protectedHandlers(limits, s3Auth, putDispatch)...)
+			router.DELETE(bucketPath, protectedHandlers(limits, s3Auth, deleteDispatch)...)
+		}
 	}
 }
 
