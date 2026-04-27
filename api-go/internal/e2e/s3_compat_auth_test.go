@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -159,6 +160,84 @@ func TestS3CompatPresignedGetObject(t *testing.T) {
 	}
 
 	// Cleanup
+	s3Do(t, http.MethodDelete, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
+}
+
+func TestS3CompatPresignedGetObjectResponseHeaderOverrides(t *testing.T) {
+	env, ok := loadS3E2EEnv()
+	if !ok {
+		t.Skip("E2E_S3_ENDPOINT not set; skipping S3 E2E tests")
+	}
+
+	ts, _ := newTestServer(t)
+	ensureMinIOBucket(t, env)
+
+	suffix := uniqueSuffix()
+	username, password := createTestUser(t, ts, suffix)
+	sourceID := createS3Source(t, ts, username, password, "src-"+suffix, env)
+	bucket := createBucket(t, ts, username, password, "bkt-"+suffix, sourceID)
+
+	t.Cleanup(func() {
+		apiDelete(t, ts, "/api/v1/buckets/"+bucket.ID, username, password)
+		apiDelete(t, ts, "/api/v1/sources/"+sourceID, username, password)
+	})
+
+	objectKey := "presign-overrides-" + suffix + ".txt"
+	objectContent := []byte("Presigned GET overrides content!")
+	s3URL := fmt.Sprintf("%s/api/s3/%s/%s", ts.URL, bucket.Key, objectKey)
+
+	status, _, body := s3DoWithHeaders(t, http.MethodPut, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, objectContent, map[string]string{
+		"Content-Type": "text/plain",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("PUT object: expected 200, got %d: %s", status, body)
+	}
+
+	overrideURL, err := url.Parse(s3URL)
+	if err != nil {
+		t.Fatalf("parse override URL: %v", err)
+	}
+	values := overrideURL.Query()
+	values.Set("response-content-disposition", `attachment; filename="download.txt"`)
+	values.Set("response-content-type", "application/octet-stream")
+	overrideURL.RawQuery = values.Encode()
+
+	presignedURL, err := presignS3URL(overrideURL.String(), "GET", bucket.AccessKey, bucket.AccessSecret, env.Region, 3600)
+	if err != nil {
+		t.Fatalf("presign URL: %v", err)
+	}
+
+	resp, err := http.Get(presignedURL)
+	if err != nil {
+		t.Fatalf("presigned GET: %v", err)
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("presigned GET: expected 200, got %d: %s", resp.StatusCode, respBody)
+	}
+	if !bytes.Equal(respBody, objectContent) {
+		t.Fatalf("presigned GET: content mismatch; want %q got %q", objectContent, respBody)
+	}
+	if got := resp.Header.Get("Content-Disposition"); got != `attachment; filename="download.txt"` {
+		t.Fatalf("presigned GET: expected Content-Disposition override, got %q", got)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "application/octet-stream" {
+		t.Fatalf("presigned GET: expected Content-Type override, got %q", got)
+	}
+
+	status, headers, body := s3DoWithHeaders(t, http.MethodGet, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil, nil)
+	if status != http.StatusOK {
+		t.Fatalf("plain GET: expected 200, got %d: %s", status, body)
+	}
+	if got := headers.Get("Content-Type"); got != "text/plain" {
+		t.Fatalf("plain GET: expected stored Content-Type, got %q", got)
+	}
+	if got := headers.Get("Content-Disposition"); got != "" {
+		t.Fatalf("plain GET: expected no stored Content-Disposition override, got %q", got)
+	}
+
 	s3Do(t, http.MethodDelete, s3URL, bucket.AccessKey, bucket.AccessSecret, env.Region, nil)
 }
 

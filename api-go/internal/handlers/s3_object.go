@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	defaultObjectContentType = "application/octet-stream"
-	userMetadataHeaderPrefix = "x-amz-meta-"
+	defaultObjectContentType     = "application/octet-stream"
+	userMetadataHeaderPrefix     = "x-amz-meta-"
+	maxResponseHeaderOverrideLen = 1024
 )
 
 type copyObjectResult struct {
@@ -40,6 +41,18 @@ var (
 	streamS3Object      = manager.StreamFile
 	streamS3ObjectRange = manager.StreamFileRange
 )
+
+var responseHeaderOverrideSpecs = []struct {
+	queryKey string
+	header   string
+}{
+	{queryKey: "response-cache-control", header: "Cache-Control"},
+	{queryKey: "response-content-disposition", header: "Content-Disposition"},
+	{queryKey: "response-content-encoding", header: "Content-Encoding"},
+	{queryKey: "response-content-language", header: "Content-Language"},
+	{queryKey: "response-content-type", header: "Content-Type"},
+	{queryKey: "response-expires", header: "Expires"},
+}
 
 type objectFileReader interface {
 	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
@@ -155,6 +168,29 @@ func setObjectHeaders(c *gin.Context, fileDoc *repository.File, total int64) {
 	for key, value := range fileDoc.UserMetadata {
 		c.Header(userMetadataHeaderPrefix+key, value)
 	}
+}
+
+func applyResponseHeaderOverrides(c *gin.Context) {
+	query := c.Request.URL.Query()
+	for _, spec := range responseHeaderOverrideSpecs {
+		value := query.Get(spec.queryKey)
+		if !validResponseHeaderOverrideValue(value) {
+			continue
+		}
+		c.Header(spec.header, value)
+	}
+}
+
+func validResponseHeaderOverrideValue(value string) bool {
+	if value == "" || len(value) > maxResponseHeaderOverrideLen {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < 0x20 || value[i] == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 func objectContentType(contentType string) string {
@@ -274,6 +310,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		if rangeHeader == "" {
 			w := newDeferredResponseWriter(c, func() {
 				setObjectHeaders(c, fileDoc, total)
+				applyResponseHeaderOverrides(c)
 				c.Status(http.StatusOK)
 			})
 			if err := streamFile(c.Request.Context(), sourceRepo, fileDoc, w); err != nil {
@@ -298,6 +335,7 @@ func getObject(bucketRepo objectBucketReader, sourceRepo *repository.SourceRepos
 		}
 		w := newDeferredResponseWriter(c, func() {
 			setObjectHeaders(c, fileDoc, total)
+			applyResponseHeaderOverrides(c)
 			c.Header("Content-Length", strconv.FormatInt(objRange.end-objRange.start+1, 10))
 			c.Header("Content-Range", "bytes "+strconv.FormatInt(objRange.start, 10)+"-"+strconv.FormatInt(objRange.end, 10)+"/"+strconv.FormatInt(total, 10))
 			c.Status(http.StatusPartialContent)
