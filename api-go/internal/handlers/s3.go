@@ -33,7 +33,7 @@ func isBucketSourceResolutionError(err error) bool {
 
 func lookupBucket(c *gin.Context, bucketRepo objectBucketReader) (*repository.Bucket, bool) {
 	ctx := c.Request.Context()
-	bucketDoc, err := bucketRepo.GetByKey(ctx, c.Param("bucket"))
+	bucketDoc, err := bucketRepo.GetByKey(ctx, S3BucketKey(c))
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			writeS3Error(c, http.StatusNotFound, "NoSuchBucket", "")

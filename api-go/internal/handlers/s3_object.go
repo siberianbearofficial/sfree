@@ -45,10 +45,6 @@ type objectFileReader interface {
 	GetByName(ctx context.Context, bucketID primitive.ObjectID, name string) (*repository.File, error)
 }
 
-func s3ObjectKey(c *gin.Context) string {
-	return strings.TrimPrefix(c.Param("object"), "/")
-}
-
 func parseCopySource(raw string) (string, string, bool) {
 	raw = strings.TrimSpace(raw)
 	raw = strings.TrimPrefix(raw, "/")

@@ -45,8 +45,8 @@ func completeMultipartUpload(c *gin.Context, bucketRepo *repository.BucketReposi
 	}
 	c.XML(http.StatusOK, completeMultipartUploadResult{
 		Xmlns:    "http://s3.amazonaws.com/doc/2006-03-01/",
-		Location: fmt.Sprintf("/%s/%s", c.Param("bucket"), result.Upload.ObjectKey),
-		Bucket:   c.Param("bucket"),
+		Location: fmt.Sprintf("/%s/%s", S3BucketKey(c), result.Upload.ObjectKey),
+		Bucket:   S3BucketKey(c),
 		Key:      result.Upload.ObjectKey,
 		ETag:     result.ETag,
 	})

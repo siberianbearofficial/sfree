@@ -157,7 +157,7 @@ func listMultipartUploads(c *gin.Context, bucketRepo objectBucketReader, mpRepo 
 
 	c.XML(http.StatusOK, listMultipartUploadsResult{
 		Xmlns:              "http://s3.amazonaws.com/doc/2006-03-01/",
-		Bucket:             c.Param("bucket"),
+		Bucket:             S3BucketKey(c),
 		KeyMarker:          keyMarker,
 		UploadIDMarker:     uploadIDMarker,
 		NextKeyMarker:      page.nextKeyMarker,
@@ -199,7 +199,7 @@ func listParts(c *gin.Context, bucketRepo objectBucketReader, mpRepo multipartUp
 
 	c.XML(http.StatusOK, listPartsResult{
 		Xmlns:                "http://s3.amazonaws.com/doc/2006-03-01/",
-		Bucket:               c.Param("bucket"),
+		Bucket:               S3BucketKey(c),
 		Key:                  mu.ObjectKey,
 		UploadId:             uploadID,
 		PartNumberMarker:     partNumberMarker,
